@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meu Financeiro Pessoal</title>
+  <!-- 
+    Tailwind CSS via CDN:
+    For development and simplicity, the Tailwind CSS CDN is used here.
+    IMPORTANT FOR PRODUCTION: For optimal performance and smaller bundle sizes, 
+    it is highly recommended to install Tailwind CSS as a PostCSS plugin 
+    and build your CSS. This ensures only the styles you actually use are 
+    included in your final application.
+    See: https://tailwindcss.com/docs/installation
+    You would typically:
+    1. npm install -D tailwindcss postcss autoprefixer
+    2. npx tailwindcss init -p
+    3. Configure tailwind.config.js and postcss.config.js
+    4. Create a src/index.css file with Tailwind directives
+    5. Import src/index.css in your main JavaScript/TypeScript entry file (e.g., src/index.tsx)
+    6. Remove this CDN script.
+  -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class', // Enable class-based dark mode
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563EB',      // Tailwind blue-600
+            primaryDark: '#3B82F6', // Tailwind blue-500 (for dark mode)
+            secondary: '#059669',    // Tailwind emerald-600
+            secondaryDark: '#10B981',// Tailwind emerald-500 (for dark mode)
+            destructive: '#DC2626', // Tailwind red-600
+            destructiveDark: '#EF4444', // Tailwind red-500 (for dark mode)
+            
+            background: '#F1F5F9',   // Tailwind slate-100 (Overall page background)
+            backgroundDark: '#0F172A', // Tailwind slate-900 (Deep dark for dark mode)
+            
+            surface: '#FFFFFF',      // Tailwind white (For cards, modals, navbars)
+            surfaceDark: '#1E293B',  // Tailwind slate-800 (Cards, modals in dark mode)
+            
+            textBase: '#1E293B',     // Tailwind slate-800 (Main text color)
+            textBaseDark: '#E2E8F0', // Tailwind slate-200 (Main text for dark mode)
+            
+            textMuted: '#64748B',    // Tailwind slate-500 (Subtle text, placeholders)
+            textMutedDark: '#94A3B8',// Tailwind slate-400 (Subtle text for dark mode)
+            
+            neutral: '#64748B',      // Tailwind slate-500 (For borders, icons etc.)
+            neutralDark: '#475569',  // Tailwind slate-600 (Borders, icons in dark mode)
+
+            borderBase: '#CBD5E1', // slate-300
+            borderBaseDark: '#334155', // slate-700
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .progress-bar-bg {
+        background-color: #E5E7EB; /* neutral-200 */
+    }
+    .dark .progress-bar-bg {
+        background-color: #4B5563; /* neutral-600 */
+    }
+  </style>
+<!-- 
+  The importmap below is for development convenience when not using a build tool like Vite.
+  When using Vite, dependencies are bundled, and this importmap is not used by the build output.
+  It's kept here for reference or if you run this index.html directly without Vite's dev server.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "recharts": "https://esm.sh/recharts@^2.15.3",
+    "@google/genai": "https://esm.sh/@google/generative-ai",
+    "@google/generative-ai": "https://esm.sh/@google/generative-ai@^0.24.1"
+  }
+}
+</script>
+</head>
+<body class="bg-background text-textBase dark:bg-backgroundDark dark:text-textBaseDark transition-colors duration-300">
+  <div id="root"></div>
+  <script type="module" src="/src/index.tsx"></script> 
+  <!-- Vite expects the entry point relative to project root -->
+</body>
+</html>
