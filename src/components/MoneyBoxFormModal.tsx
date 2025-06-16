@@ -5,8 +5,6 @@ import { generateId, getISODateString } from '../utils/helpers';
 import Button from './Button';
 import Input from './Input';
 import Modal from './Modal';
-import PiggyBankIcon from './icons/PiggyBankIcon'; // Default icon
-import Select from './Select';
 
 const defaultColors = [
   "#F87171", // red-400

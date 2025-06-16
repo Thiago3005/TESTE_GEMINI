@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag } from '../../types';
+import { Tag } from '../types';
 import Button from './Button';
 import EditIcon from './icons/EditIcon';
 import TrashIcon from './icons/TrashIcon';
