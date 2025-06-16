@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, GenerateContentResponse } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus } from '../types';
 import { generateId, getISODateString, formatCurrency } from '../utils/helpers';
 
@@ -137,7 +137,14 @@ const constructPromptForFuturePurchaseAnalysis = (purchase: FuturePurchase, cont
   const totalBalance = context.accountBalances.reduce((sum, acc) => sum + acc.balance, 0);
   const totalSavings = context.moneyBoxBalances?.reduce((sum, mb) => sum + mb.balance, 0) || 0;
   
-  let prompt = `Você é um assistente financeiro. O usuário deseja comprar "${purchase.name}", que custa aproximadamente ${formatCurrency(purchase.estimatedCost)}. A prioridade é ${purchase.priority}.
+  const prompt = `Analise a seguinte compra futura e forneça uma recomendação sobre quando realizá-la, considerando o contexto financeiro atual:
+
+Compra: ${purchase.name}
+Valor: ${formatCurrency(purchase.estimatedCost)}
+Data Planejada: ${purchase.plannedDate}
+Prioridade: ${purchase.priority}
+
+Contexto Financeiro:
 Data Atual: ${context.currentDate}.
 Renda Mensal: ${context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada'}.
 Saldo Total em Contas: ${formatCurrency(totalBalance)}.
@@ -149,242 +156,13 @@ ${context.categories.filter(c => c.type === TransactionType.EXPENSE && c.monthly
 Outras Compras Futuras Planejadas:
 ${context.futurePurchases?.filter(fp => fp.id !== purchase.id).map(fp => `- ${fp.name} (Custo: ${formatCurrency(fp.estimatedCost)}, Prioridade: ${fp.priority})`).join('\n') || 'Nenhuma outra.'}
 
-Analise a viabilidade desta compra ("${purchase.name}").
-Considere se o usuário tem fundos suficientes, se a compra impactaria significativamente seus orçamentos ou outras metas.
-Se a renda não for informada, baseie-se nos saldos e economias.
-Forneça uma análise concisa (2-3 frases) e sugira um status. Status possíveis: ACHIEVABLE_SOON (se viável em breve ou agora), NOT_RECOMMENDED_NOW (se deve adiar), PLANNED (manter como planejado se a análise não for conclusiva ou se depender de mais economia).
+Forneça sua análise em formato JSON com os seguintes campos:
+- analysisText: Uma breve explicação da sua recomendação
+- recommendedStatus: Um dos seguintes valores: "ACHIEVABLE_SOON", "NOT_RECOMMENDED_NOW", "PLANNED"
 
-Responda APENAS com um objeto JSON contendo as chaves "analysisText" (string com sua análise) e "recommendedStatus" (string com um dos status: 'ACHIEVABLE_SOON', 'NOT_RECOMMENDED_NOW', 'PLANNED').
 Não adicione nenhum outro texto, explicação ou markdown.
 Exemplo de resposta: {"analysisText": "Comprar ${purchase.name} parece razoável agora, considerando seus saldos. Lembre-se de ajustar seu orçamento de Lazer.", "recommendedStatus": "ACHIEVABLE_SOON"}
+
 Análise:`;
   return prompt;
-};
-
-
-// --- API Call Functions ---
-
-export const fetchGeneralAdvice = async (context: FinancialContext): Promise<AIInsight | null> => {
-  if (!ai || !isGeminiApiKeyAvailable()) {
-    console.warn("Gemini API not available for fetchGeneralAdvice.");
-    return {
-        id: generateId(),
-        timestamp: new Date().toISOString(),
-        type: 'error_message',
-        content: "AI Coach desativado ou API Key não configurada.", // Updated message
-        isRead: false,
-      };
-  }
-  const prompt = constructPromptForGeneralAdvice(context);
-  const model = ai.getGenerativeModel({ model: "gemini-pro" });
-  try {
-    const result = await model?.generateContent(prompt);
-    const response = result?.response;
-    const text = response?.text();
-
-    if (text) {
-      return {
-        id: generateId(),
-        timestamp: new Date().toISOString(), 
-        type: 'general_advice',
-        content: text,
-        isRead: false,
-      };
-    }
-    return { 
-        id: generateId(),
-        timestamp: new Date().toISOString(),
-        type: 'error_message',
-        content: "Não foi possível obter um conselho geral no momento (resposta vazia).",
-        isRead: false,
-      };
-  } catch (error) {
-    console.error("Error fetching general advice from Gemini:", error);
-    let errorMessage = "Desculpe, não consegui buscar um conselho geral no momento.";
-    if (error instanceof Error) {
-        errorMessage += ` Detalhe: ${error.message}`;
-    }
-    return {
-        id: generateId(),
-        timestamp: new Date().toISOString(),
-        type: 'error_message',
-        content: errorMessage,
-        isRead: false,
-      };
-  }
-};
-
-export const fetchCommentForTransaction = async (transaction: Transaction, context: FinancialContext, categoryName?: string, accountName?: string): Promise<AIInsight | null> => {
-  if (!ai || !isGeminiApiKeyAvailable()) {
-    console.warn("Gemini API not available for fetchCommentForTransaction.");
-     return { 
-        id: generateId(),
-        timestamp: new Date().toISOString(),
-        type: 'error_message',
-        content: "AI Coach desativado ou API Key não configurada para comentar transação.", // Updated message
-        relatedTransactionId: transaction.id,
-        isRead: false,
-      };
-  }
-  const prompt = constructPromptForTransactionComment(transaction, context, categoryName, accountName);
-  const model = ai.getGenerativeModel({ model: "gemini-pro" });
-  try {
-    const result = await model?.generateContent(prompt);
-    const response = result?.response;
-    const text = response?.text();
-    
-    if (text) {
-      return {
-        id: generateId(),
-        timestamp: new Date().toISOString(), 
-        type: 'transaction_comment',
-        content: text,
-        relatedTransactionId: transaction.id,
-        isRead: false,
-      };
-    }
-    return { 
-        id: generateId(),
-        timestamp: new Date().toISOString(),
-        type: 'error_message',
-        content: "Não foi possível gerar um comentário para esta transação (resposta vazia).",
-        relatedTransactionId: transaction.id,
-        isRead: false,
-      };
-  } catch (error) {
-    console.error("Error fetching transaction comment from Gemini:", error);
-    let errorMessage = "Desculpe, não consegui gerar um comentário para esta transação.";
-     if (error instanceof Error) {
-        errorMessage += ` Detalhe: ${error.message}`;
-    }
-     return {
-        id: generateId(),
-        timestamp: new Date().toISOString(),
-        type: 'error_message',
-        content: errorMessage,
-        relatedTransactionId: transaction.id,
-        isRead: false,
-      };
-  }
-};
-
-
-export const fetchBudgetSuggestion = async (
-    categoryName: string,
-    monthlyIncome: number,
-    existingBudgets: {name: string, budget?: number}[],
-    context: FinancialContext
-): Promise<{ suggestedBudget: number } | AIInsight | null> => {
-    if (!ai || !isGeminiApiKeyAvailable()) {
-        console.warn("Gemini API not available for fetchBudgetSuggestion.");
-        return {
-            id: generateId(),
-            timestamp: new Date().toISOString(),
-            type: 'error_message',
-            content: "AI Coach desativado ou API Key não configurada para sugerir orçamentos.", // Updated message
-            isRead: false,
-        };
-    }
-    if (!monthlyIncome || monthlyIncome <= 0) {
-         return {
-            id: generateId(),
-            timestamp: new Date().toISOString(),
-            type: 'error_message',
-            content: "Por favor, informe sua renda mensal na tela do AI Coach para receber sugestões de orçamento.",
-            isRead: false,
-        };
-    }
-
-    const prompt = constructPromptForBudgetSuggestion(categoryName, monthlyIncome, existingBudgets, context);
-    const model = ai.getGenerativeModel({ model: "gemini-pro" });
-    try {
-        const result = await model?.generateContent(prompt);
-        const response = result?.response;
-        const text = response?.text();
-        
-        let jsonStr = text || '';
-        const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
-        const match = jsonStr.match(fenceRegex);
-        if (match && match[2]) {
-            jsonStr = match[2].trim();
-        }
-        
-        const parsed = JSON.parse(jsonStr);
-
-        if (parsed && typeof parsed.suggestedBudget === 'number' && parsed.suggestedBudget >= 0) { // Allow 0 budget
-            return { suggestedBudget: parsed.suggestedBudget };
-        }
-        return { 
-            id: generateId(),
-            timestamp: new Date().toISOString(),
-            type: 'error_message',
-            content: "Não foi possível obter uma sugestão de orçamento válida no momento (resposta inválida da IA).",
-            isRead: false,
-        };
-    } catch (error) {
-        console.error("Error fetching budget suggestion from Gemini:", error);
-        let errorMessage = "Desculpe, não consegui buscar uma sugestão de orçamento.";
-        if (error instanceof Error) {
-            errorMessage += ` Detalhe: ${error.message}`;
-        }
-        return {
-            id: generateId(),
-            timestamp: new Date().toISOString(),
-            type: 'error_message',
-            content: errorMessage,
-            isRead: false,
-        };
-    }
-};
-
-export const fetchFuturePurchaseAnalysis = async (
-  purchase: FuturePurchase,
-  context: FinancialContext
-): Promise<{ analysisText: string; recommendedStatus: FuturePurchaseStatus } | AIInsight | null> => {
-  if (!ai || !isGeminiApiKeyAvailable()) {
-    return {
-      id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-      content: "AI Coach desativado ou API Key não configurada para analisar compra futura.", // Updated message
-      relatedFuturePurchaseId: purchase.id, isRead: false,
-    };
-  }
-
-  const prompt = constructPromptForFuturePurchaseAnalysis(purchase, context);
-  const model = ai.getGenerativeModel({ model: "gemini-pro" });
-  try {
-    const result = await model?.generateContent(prompt);
-    const response = result?.response;
-    const text = response?.text();
-
-    let jsonStr = text || '';
-    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
-    const match = jsonStr.match(fenceRegex);
-    if (match && match[2]) {
-        jsonStr = match[2].trim();
-    }
-    
-    const parsed = JSON.parse(jsonStr);
-
-    if (parsed && typeof parsed.analysisText === 'string' && 
-        typeof parsed.recommendedStatus === 'string' &&
-        ['ACHIEVABLE_SOON', 'NOT_RECOMMENDED_NOW', 'PLANNED'].includes(parsed.recommendedStatus)) {
-      return { 
-        analysisText: parsed.analysisText, 
-        recommendedStatus: parsed.recommendedStatus as FuturePurchaseStatus 
-      };
-    }
-    return {
-        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-        content: "Não foi possível obter uma análise válida da IA para esta compra (resposta inválida).",
-        relatedFuturePurchaseId: purchase.id, isRead: false,
-    };
-  } catch (error) {
-    console.error("Error fetching future purchase analysis from Gemini:", error);
-    let errorMessage = "Desculpe, não consegui analisar esta compra futura no momento.";
-    if (error instanceof Error) errorMessage += ` Detalhe: ${error.message}`;
-    return {
-        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-        content: errorMessage, relatedFuturePurchaseId: purchase.id, isRead: false,
-    };
-  }
 };

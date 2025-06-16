@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { RecurringTransaction, Account, Category } from '../types';
-import { generateId, getISODateString } from '../utils/helpers';
+import { getISODateString } from '../utils/helpers';
 import Button from './Button';
 import Input from './Input';
 import Select from './Select';
