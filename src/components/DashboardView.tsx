@@ -1,7 +1,7 @@
 
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
-import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment } from '../types'; // Added Loan, LoanRepayment
+import { Transaction, Account, Category, TransactionType, InstallmentPurchase, MoneyBox, Loan, LoanRepayment } from '../types'; // Removed CreditCard
 import { formatCurrency, getISODateString, formatDate } from '../utils/helpers'; 
 import PlusIcon from './icons/PlusIcon';
 import ScaleIcon from './icons/ScaleIcon'; 
@@ -17,7 +17,7 @@ interface DashboardViewProps {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
-  creditCards: CreditCard[]; 
+  // creditCards: CreditCard[]; // Removed
   installmentPurchases: InstallmentPurchase[]; 
   moneyBoxes: MoneyBox[]; 
   loans: Loan[]; // New
@@ -28,7 +28,7 @@ interface DashboardViewProps {
 }
 
 const DashboardView: React.FC<DashboardViewProps> = ({ 
-    transactions, accounts, categories, creditCards, installmentPurchases, moneyBoxes,
+    transactions, accounts, categories, /*creditCards,*/ installmentPurchases, moneyBoxes, // Removed creditCards
     loans, loanRepayments, // New props
     onAddTransaction, calculateAccountBalance, calculateMoneyBoxBalance 
 }) => {

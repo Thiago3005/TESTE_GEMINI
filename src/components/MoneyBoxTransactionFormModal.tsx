@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { useState, useEffect, ChangeEvent } from 'react';
-import { MoneyBox, MoneyBoxTransaction, MoneyBoxTransactionType, Account, TransactionType as MainTransactionType } from '../types';
+import { MoneyBox, MoneyBoxTransaction, MoneyBoxTransactionType, Account } from '../types'; // Removed MainTransactionType
 import Modal from './Modal';
 import Input from './Input';
 import Select from './Select';

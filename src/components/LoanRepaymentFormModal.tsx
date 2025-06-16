@@ -7,7 +7,7 @@ import Input from './Input';
 import Select from './Select';
 import Button from './Button';
 import Textarea from './Textarea';
-import { generateId, getISODateString } from '../utils/helpers';
+import { getISODateString } from '../utils/helpers'; // Removed generateId
 
 interface LoanRepaymentFormModalProps {
   isOpen: boolean;

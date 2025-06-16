@@ -1,11 +1,10 @@
-
 import React from 'react';
-import { useState, useEffect, ChangeEvent } from 'react';
+import { useState, useEffect } from 'react'; // Removed ChangeEvent
 import { 
     RecurringTransaction, TransactionType, Account, Category, RecurringTransactionFrequency 
 } from '../types';
 import { TRANSACTION_TYPE_OPTIONS } from '../constants';
-import { generateId, getISODateString, formatDate } from '../utils/helpers';
+import { generateId, getISODateString } from '../utils/helpers'; // Removed formatDate
 import Modal from './Modal';
 import Input from './Input';
 import Select from './Select';

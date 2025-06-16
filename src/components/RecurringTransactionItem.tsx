@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { RecurringTransaction, TransactionType, Account, Category } from '../types';
 import { formatDate, formatCurrency } from '../utils/helpers';
@@ -13,11 +12,11 @@ interface RecurringTransactionItemProps {
   categories: Category[];
   onEdit: (rt: RecurringTransaction) => void;
   onDelete: (rtId: string) => void;
-  onTogglePause?: (rtId: string) => void; // Optional for future use
+  // onTogglePause?: (rtId: string) => void; // Removed
 }
 
 const RecurringTransactionItem: React.FC<RecurringTransactionItemProps> = ({ 
-    rt, accounts, categories, onEdit, onDelete, onTogglePause 
+    rt, accounts, categories, onEdit, onDelete, /*onTogglePause*/ 
 }) => {
   const account = accounts.find(a => a.id === rt.accountId);
   const category = rt.categoryId ? categories.find(c => c.id === rt.categoryId) : null;

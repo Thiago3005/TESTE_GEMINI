@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Legend, Tooltip } from 'recharts';
 import { Transaction, Category, TransactionType, ChartData } from '../types';
@@ -72,7 +71,7 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ transactions, categories,
             fill="#8884d8"
             dataKey="value"
             nameKey="name"
-            label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+            label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
               const RADIAN = Math.PI / 180;
               const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
               const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -86,12 +85,12 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ transactions, categories,
               );
             }}
           >
-            {data.map((entry, index) => (
+            {data.map((_entry, index) => ( // entry -> _entry
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
           <Tooltip content={<CustomTooltip />} />
-          <Legend formatter={(value, entry) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} />
+          <Legend formatter={(value, _entry) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} />
         </PieChart>
       </ResponsiveContainer>
     </div>

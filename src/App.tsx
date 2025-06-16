@@ -6,10 +6,10 @@ import {
   Tag, RecurringTransaction, RecurringTransactionFrequency,
   Loan, LoanRepayment,
   AIConfig, AIInsight, UserProfile,
-  FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority // Added FuturePurchase types
+  FuturePurchase // Removed FuturePurchaseStatus, FuturePurchasePriority
 } from './types';
 import { APP_NAME, getInitialCategories, getInitialAccounts } from './constants';
-import { generateId, getISODateString, formatDate, formatCurrency } from './utils/helpers'; 
+import { generateId, getISODateString, formatCurrency } from './utils/helpers';
 import useLocalStorage from './hooks/useLocalStorage';
 
 // Views
@@ -19,10 +19,10 @@ import AccountsView from './components/AccountsView';
 import CategoriesView from './components/CategoriesView';
 import CreditCardsView from './components/CreditCardsView';
 import MoneyBoxesView from './components/MoneyBoxesView';
-import FuturePurchasesView from './components/FuturePurchasesView'; // New
+import FuturePurchasesView from './components/FuturePurchasesView'; 
 import DataManagementView from './components/DataManagementView';
 import TagsView from './components/TagsView'; 
-import RecurringTransactionsView from './components/RecurringTransactionsView'; 
+import RecurringTransactionsView from './components/RecurringTransactionsView'; // Corrected path
 import LoansView from './components/LoansView'; 
 import AICoachView from './components/AICoachView';
 import ProfileSelectionView from './components/ProfileSelectionView'; 
@@ -41,7 +41,7 @@ import TagIcon from './components/icons/TagIcon';
 import CogIcon from './components/icons/CogIcon';
 import PlusIcon from './components/icons/PlusIcon';
 import PiggyBankIcon from './components/icons/PiggyBankIcon';
-import ShoppingCartIcon from './components/icons/ShoppingCartIcon'; // New
+import ShoppingCartIcon from './components/icons/ShoppingCartIcon'; 
 import BookmarkSquareIcon from './components/icons/BookmarkSquareIcon'; 
 import ArrowPathIcon from './components/icons/ArrowPathIcon'; 
 import UsersIcon from './components/icons/UsersIcon'; 
@@ -502,6 +502,9 @@ const App: React.FC = () => {
   };
   const handleDeleteMoneyBoxTransaction = (mbtId: string, linkedTransactionId?: string) => {
     if (!activeProfileId) return;
+    if (linkedTransactionId) {
+        console.log(`MoneyBoxTransaction ${mbtId} deleted, was linked to main transaction ${linkedTransactionId}. Main transaction not deleted by this action.`);
+    }
     setMoneyBoxTransactions(prev => prev.filter(t => t.id !== mbtId));
     triggerAutoBackupIfEnabled();
   };
@@ -730,7 +733,7 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (activeView) {
       case 'DASHBOARD':
-        return <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} onAddTransaction={openTransactionModalForNew} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} />;
+        return <DashboardView transactions={transactions} accounts={accounts} categories={categories} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} onAddTransaction={openTransactionModalForNew} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} />;
       case 'TRANSACTIONS':
         return <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} onAddTransaction={openTransactionModalForNew} onEditTransaction={openTransactionModalForEdit} onDeleteTransaction={handleDeleteTransaction} />;
       case 'ACCOUNTS':
@@ -769,7 +772,7 @@ const App: React.FC = () => {
       case 'PROFILE_SELECTION': 
         return <ProfileSelectionView profiles={profiles} onSelectProfile={handleSelectProfile} onCreateProfile={handleCreateProfile} />;
       default:
-        return <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} onAddTransaction={openTransactionModalForNew} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} />;
+        return <DashboardView transactions={transactions} accounts={accounts} categories={categories} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} onAddTransaction={openTransactionModalForNew} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} />;
     }
   };
   

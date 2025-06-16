@@ -9,10 +9,10 @@ let ai: GoogleGenerativeAI | null = null;
 
 if (GEMINI_API_KEY_FROM_ENV) {
   try {
-    ai = new GoogleGenerativeAI(GEMINI_API_KEY_FROM_ENV); 
+    ai = new GoogleGenerativeAI(GEMINI_API_KEY_FROM_ENV);
   } catch (error) {
     console.error("Failed to initialize GoogleGenerativeAI:", error);
-    ai = null; 
+    ai = null;
   }
 } else {
   console.warn("Gemini API Key (VITE_GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
@@ -176,7 +176,7 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<AII
     const model = ai.getGenerativeModel({ model: "gemini-pro" });
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const text = response.text(); 
+    const text = response.text();
 
     if (text) {
       return {
@@ -196,13 +196,17 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<AII
       };
   } catch (error) {
     console.error("Error fetching general advice from Gemini:", error);
+    let errorMessage = "Desculpe, não consegui buscar um conselho geral no momento.";
+    if (error instanceof Error) {
+        errorMessage += ` Detalhe: ${error.message}`;
+    }
     return {
-      id: generateId(),
-      timestamp: new Date().toISOString(),
-      type: 'error_message',
-      content: "Erro ao obter conselho geral. Tente novamente mais tarde.",
-      isRead: false,
-    };
+        id: generateId(),
+        timestamp: new Date().toISOString(),
+        type: 'error_message',
+        content: errorMessage,
+        isRead: false,
+      };
   }
 };
 

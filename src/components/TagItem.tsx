@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Tag } from '../types';
 import Button from './Button';
@@ -13,13 +12,13 @@ interface TagItemProps {
 }
 
 const TagItem: React.FC<TagItemProps> = ({ tag, transactionCount, onEdit, onDelete }) => {
-  const tagStyle: React.CSSProperties = tag.color
-    ? { backgroundColor: tag.color, color: '#fff', borderColor: tag.color } // Assuming light text on colored background
-    : { backgroundColor: 'transparent' }; // Default Tailwind styling will apply for text
+  // const tagStyle: React.CSSProperties = tag.color // Removed
+  //   ? { backgroundColor: tag.color, color: '#fff', borderColor: tag.color } 
+  //   : { backgroundColor: 'transparent' }; 
 
-  const textColorClass = tag.color ? 'text-white' : 'text-textBase dark:text-textBaseDark';
-  const tagClasses = `text-xs font-semibold mr-2 px-2.5 py-0.5 rounded-full inline-block border
-    ${tag.color ? '' : 'bg-neutral/10 dark:bg-neutralDark/20 border-neutral/30 dark:border-neutralDark/40'}`;
+  // const textColorClass = tag.color ? 'text-white' : 'text-textBase dark:text-textBaseDark'; // Removed
+  // const tagClasses = `text-xs font-semibold mr-2 px-2.5 py-0.5 rounded-full inline-block border // Removed
+  //   ${tag.color ? '' : 'bg-neutral/10 dark:bg-neutralDark/20 border-neutral/30 dark:border-neutralDark/40'}`;
 
 
   // Basic function to determine if a color is light or dark
