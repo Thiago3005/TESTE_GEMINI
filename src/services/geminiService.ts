@@ -1,4 +1,4 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenerativeAI, GenerateContentResponse } from '@google/generative-ai';
 import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus } from '../types';
 import { generateId, getISODateString, formatCurrency } from '../utils/helpers';
 
@@ -9,14 +9,14 @@ import { generateId, getISODateString, formatCurrency } from '../utils/helpers';
 // And in GitHub repository secrets, add VITE_GEMINI_API_KEY for the GitHub Actions workflow.
 const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY; // TODO: Change to import.meta.env.VITE_GEMINI_API_KEY
 
-let ai: GoogleGenAI | null = null;
+let ai: GoogleGenerativeAI | null = null;
 
 if (GEMINI_API_KEY_FROM_ENV) {
   try {
-    ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY_FROM_ENV }); 
+    ai = new GoogleGenerativeAI(GEMINI_API_KEY_FROM_ENV);
   } catch (error) {
-    console.error("Failed to initialize GoogleGenAI:", error);
-    ai = null; 
+    console.error("Failed to initialize GoogleGenerativeAI:", error);
+    ai = null;
   }
 } else {
   console.warn("Gemini API Key (VITE_GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
@@ -176,13 +176,11 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<AII
       };
   }
   const prompt = constructPromptForGeneralAdvice(context);
+  const model = ai.getGenerativeModel({ model: "gemini-pro" });
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-04-17",
-        contents: prompt,
-    });
-    
-    const text = response.text?.trim(); 
+    const result = await model?.generateContent(prompt);
+    const response = result?.response;
+    const text = response?.text();
 
     if (text) {
       return {
@@ -229,13 +227,11 @@ export const fetchCommentForTransaction = async (transaction: Transaction, conte
       };
   }
   const prompt = constructPromptForTransactionComment(transaction, context, categoryName, accountName);
+  const model = ai.getGenerativeModel({ model: "gemini-pro" });
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-04-17",
-        contents: prompt,
-    });
-    
-    const text = response.text?.trim();
+    const result = await model?.generateContent(prompt);
+    const response = result?.response;
+    const text = response?.text();
     
     if (text) {
       return {
@@ -300,14 +296,13 @@ export const fetchBudgetSuggestion = async (
     }
 
     const prompt = constructPromptForBudgetSuggestion(categoryName, monthlyIncome, existingBudgets, context);
+    const model = ai.getGenerativeModel({ model: "gemini-pro" });
     try {
-        const response: GenerateContentResponse = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-04-17",
-            contents: prompt,
-            config: { responseMimeType: "application/json" }
-        });
+        const result = await model?.generateContent(prompt);
+        const response = result?.response;
+        const text = response?.text();
         
-        let jsonStr = response.text?.trim() || '';
+        let jsonStr = text || '';
         const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
         const match = jsonStr.match(fenceRegex);
         if (match && match[2]) {
@@ -355,14 +350,13 @@ export const fetchFuturePurchaseAnalysis = async (
   }
 
   const prompt = constructPromptForFuturePurchaseAnalysis(purchase, context);
+  const model = ai.getGenerativeModel({ model: "gemini-pro" });
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-04-17",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-    });
+    const result = await model?.generateContent(prompt);
+    const response = result?.response;
+    const text = response?.text();
 
-    let jsonStr = response.text?.trim() || '';
+    let jsonStr = text || '';
     const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
     const match = jsonStr.match(fenceRegex);
     if (match && match[2]) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag } from '../types';
+import { Tag } from '../../types';
 import Button from './Button';
 import EditIcon from './icons/EditIcon';
 import TrashIcon from './icons/TrashIcon';
@@ -43,9 +43,6 @@ const TagItem: React.FC<TagItemProps> = ({ tag, onEdit, onDelete }) => {
             <TagIcon className="w-5 h-5 text-primary dark:text-primaryDark" />
             <h3 className="text-md font-medium text-textBase dark:text-textBaseDark">{tag.name}</h3>
           </div>
-          {tag.description && (
-            <p className="text-sm text-textMuted dark:text-textMutedDark ml-8">{tag.description}</p>
-          )}
         </div>
         <div className="flex space-x-2 self-end sm:self-center">
           <Button variant="ghost" size="sm" onClick={() => onEdit(tag)} aria-label="Editar Tag">

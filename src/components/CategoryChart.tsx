@@ -93,6 +93,15 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ transactions, categories,
           <Legend formatter={(value, entry) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} />
         </PieChart>
       </ResponsiveContainer>
+      <div className="mt-4">
+        {data.map((category) => (
+          <div key={category.name} className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[data.indexOf(category) % COLORS.length] }} />
+            <span className="text-sm">{category.name}</span>
+            <span className="text-sm font-medium">{formatCurrency(category.value)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
