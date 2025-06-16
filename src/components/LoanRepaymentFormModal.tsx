@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useEffect, ChangeEvent } from 'react';
-import { Loan, LoanRepayment, Account } from '../types';
+import { Loan, LoanRepayment, Account, Transaction } from '../types';
 import Modal from './Modal';
 import Input from './Input';
 import Select from './Select';

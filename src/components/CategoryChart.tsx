@@ -90,7 +90,7 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ transactions, categories,
             ))}
           </Pie>
           <Tooltip content={<CustomTooltip />} />
-          <Legend formatter={(value, entry) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} />
+          <Legend formatter={(value) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} />
         </PieChart>
       </ResponsiveContainer>
       <div className="mt-4">

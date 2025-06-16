@@ -515,7 +515,7 @@ const App: React.FC = () => {
     setMoneyBoxTransactions(prev => [...prev, finalMbt]);
     if (!createLinkedTransaction) triggerAutoBackupIfEnabled(); // Only trigger if no main transaction was created (which would trigger its own)
   };
-  const handleDeleteMoneyBoxTransaction = (mbtId: string, linkedTransactionId?: string) => {
+  const handleDeleteMoneyBoxTransaction = (mbtId: string) => {
     if (!activeProfileId) return;
     setMoneyBoxTransactions(prev => prev.filter(t => t.id !== mbtId));
     triggerAutoBackupIfEnabled();

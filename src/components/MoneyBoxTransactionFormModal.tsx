@@ -1,5 +1,5 @@
-import React from 'react';
-import { useState, useEffect, ChangeEvent } from 'react';
+import React, { useState } from 'react';
+import { useEffect, ChangeEvent } from 'react';
 import { MoneyBox, MoneyBoxTransaction, MoneyBoxTransactionType, Account, TransactionType as MainTransactionType } from '../types';
 import Modal from './Modal';
 import Input from './Input';

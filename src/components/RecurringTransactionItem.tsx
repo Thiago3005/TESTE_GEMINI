@@ -16,7 +16,7 @@ interface RecurringTransactionItemProps {
 }
 
 const RecurringTransactionItem: React.FC<RecurringTransactionItemProps> = ({ 
-    transaction, accounts, categories, onEdit, onDelete, onTogglePause 
+    transaction, accounts, categories, onEdit, onDelete 
 }) => {
   const account = accounts.find(a => a.id === transaction.accountId);
   const category = transaction.categoryId ? categories.find(c => c.id === transaction.categoryId) : null;

@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI, GenerateContentResponse } from '@google/generative-ai';
-import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus } from '../types';
+import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus } from '../types';
 import { generateId, getISODateString, formatCurrency } from '../utils/helpers';
 
 // --- API Key Configuration ---
