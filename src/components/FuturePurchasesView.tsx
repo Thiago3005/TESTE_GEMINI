@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { useState, useMemo } from 'react';
-import { FuturePurchase } from '../../types';
+import { FuturePurchase, FuturePurchasePriority, FuturePurchaseStatus } from '../types';
 import FuturePurchaseItem from './FuturePurchaseItem';
 import FuturePurchaseFormModal from './FuturePurchaseFormModal';
 import Button from './Button';

@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { useEffect } from 'react';
+
+import React from 'react';
+import { useState, useEffect } from 'react';
 import { MoneyBox } from '../types';
-import { generateId, getISODateString } from '../utils/helpers';
-import Button from './Button';
-import Input from './Input';
 import Modal from './Modal';
+import Input from './Input';
+import Button from './Button';
+import { generateId, getISODateString } from '../utils/helpers';
+import PiggyBankIcon from './icons/PiggyBankIcon'; // Default icon
 
 const defaultColors = [
   "#F87171", // red-400

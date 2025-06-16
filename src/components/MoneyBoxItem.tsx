@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { MoneyBox, MoneyBoxTransactionType } from '../types';
 import { formatCurrency } from '../utils/helpers';

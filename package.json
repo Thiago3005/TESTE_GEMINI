@@ -13,14 +13,13 @@
     "deploy": "gh-pages -d dist -u \"github-actions-bot <support+actions@github.com>\" -m \"Deploy to GitHub Pages\""
   },
   "dependencies": {
-    "@google/genai": "^1.5.1",
     "@google/generative-ai": "^0.24.1",
-    "@types/node": "^24.0.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "recharts": "^2.15.3"
   },
   "devDependencies": {
+    "@types/node": "^24.0.3",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

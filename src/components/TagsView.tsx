@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState }from 'react';
 import { Tag, Transaction } from '../types';
@@ -34,14 +35,6 @@ const TagsView: React.FC<TagsViewProps> = ({ tags, transactions, onAddTag, onUpd
   
   const allTagNames = tags.map(t => t.name);
 
-  const handleEditTag = (tag: Tag) => {
-    openModalForEdit(tag);
-  };
-
-  const handleDeleteTag = (tagId: string) => {
-    onDeleteTag(tagId);
-  };
-
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -54,12 +47,13 @@ const TagsView: React.FC<TagsViewProps> = ({ tags, transactions, onAddTag, onUpd
 
       {tags.length > 0 ? (
         <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {tags.map((tag) => (
+          {tags.map(tag => (
             <TagItem
               key={tag.id}
               tag={tag}
-              onEdit={handleEditTag}
-              onDelete={handleDeleteTag}
+              transactionCount={getTransactionCountForTag(tag.id)}
+              onEdit={openModalForEdit}
+              onDelete={onDeleteTag}
             />
           ))}
         </ul>

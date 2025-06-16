@@ -1,18 +1,15 @@
-import React, { useState } from 'react';
-import { useEffect } from 'react';
+
+import React from 'react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import { 
-  RecurringTransaction, 
-  TransactionType, 
-  Account, 
-  Category, 
-  RecurringTransactionFrequency 
+    RecurringTransaction, TransactionType, Account, Category, RecurringTransactionFrequency 
 } from '../types';
 import { TRANSACTION_TYPE_OPTIONS } from '../constants';
-import { generateId, getISODateString } from '../utils/helpers';
-import Button from './Button';
+import { generateId, getISODateString, formatDate } from '../utils/helpers';
+import Modal from './Modal';
 import Input from './Input';
 import Select from './Select';
-import Modal from './Modal';
+import Button from './Button';
 import Textarea from './Textarea'; // Assuming you have or will create a Textarea component similar to Input
 
 const frequencyOptions: { value: RecurringTransactionFrequency; label: string }[] = [

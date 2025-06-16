@@ -4,6 +4,7 @@ import { Loan, LoanRepayment, LoanStatus, Account, CreditCard } from '../types';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import Button from './Button';
 import EditIcon from './icons/EditIcon';
+import TrashIcon from './icons/TrashIcon';
 import PlusIcon from './icons/PlusIcon'; // For "Register Repayment"
 import UsersIcon from './icons/UsersIcon';
 
@@ -83,7 +84,7 @@ const LoanItem: React.FC<LoanItemProps> = ({
              disabled={totalPaid > 0 && status !== 'PAID'} // Prevent delete if partially paid unless user really wants
              title={totalPaid > 0 && status !== 'PAID' ? "Exclua os pagamentos primeiro ou quite o empréstimo" : "Excluir Empréstimo"}
            >
-             <EditIcon className={`w-4 h-4 ${(totalPaid > 0 && status !== 'PAID') ? 'text-neutral/50 dark:text-neutralDark/50' : 'text-destructive dark:text-destructiveDark'}`} />
+             <TrashIcon className={`w-4 h-4 ${(totalPaid > 0 && status !== 'PAID') ? 'text-neutral/50 dark:text-neutralDark/50' : 'text-destructive dark:text-destructiveDark'}`} />
            </Button>
         </div>
       </div>

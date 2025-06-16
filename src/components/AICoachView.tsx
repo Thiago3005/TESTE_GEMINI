@@ -97,7 +97,7 @@ const AICoachView: React.FC<AICoachViewProps> = ({
       {aiConfig.apiKeyStatus === 'unavailable' && (
         <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg relative" role="alert">
           <strong className="font-bold">API Key Indisponível! </strong>
-          <span className="block sm:inline">A funcionalidade do AI Coach está desativada. A chave da API Gemini (process.env.GEMINI_API_KEY) não foi configurada no ambiente. Sem ela, o AI Coach não pode operar.</span>
+          <span className="block sm:inline">A funcionalidade do AI Coach está desativada. A chave da API Gemini (VITE_GEMINI_API_KEY) não foi configurada no ambiente. Sem ela, o AI Coach não pode operar.</span>
         </div>
       )}
       
@@ -175,6 +175,7 @@ const AICoachView: React.FC<AICoachViewProps> = ({
                           {formatDate(insight.timestamp, 'pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                           {insight.relatedTransactionId && <span className="ml-2"> (Ref. Transação)</span>} 
                           {insight.relatedCategoryId && insight.type === 'budget_recommendation' && <span className="ml-2"> (Ref. Categoria)</span>}
+                          {insight.relatedFuturePurchaseId && <span className="ml-2"> (Ref. Compra Futura)</span>}
                         </p>
                       </div>
                     </div>

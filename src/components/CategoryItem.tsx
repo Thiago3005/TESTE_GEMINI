@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Category, TransactionType, Transaction } from '../types'; // Added Transaction
 import TrashIcon from './icons/TrashIcon';

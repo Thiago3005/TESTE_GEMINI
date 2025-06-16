@@ -1,3 +1,4 @@
+
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
 import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment } from '../types'; // Added Loan, LoanRepayment
@@ -7,10 +8,9 @@ import ScaleIcon from './icons/ScaleIcon';
 import UsersIcon from './icons/UsersIcon'; // For Loans Summary
 import Button from './Button';
 import CategoryChart from './CategoryChart';
-import DailySummaryBarChart from './CategoryBarChart'; // Corrected import path
-import ChartPieIcon from './icons/ChartPieIcon'; // For Pie chart toggle
-// Using a generic bar chart icon for the toggle
-import BarChartIcon from './icons/BarChartIcon'; // Assuming BarChartIcon.tsx exists or will be created
+import DailySummaryBarChart from './CategoryBarChart'; 
+import ChartPieIcon from './icons/ChartPieIcon'; 
+import BarChartIcon from './icons/BarChartIcon'; 
 
 
 interface DashboardViewProps {

@@ -1,3 +1,4 @@
+
 import React from 'react'; 
 import { useState, ChangeEvent }from 'react'; 
 import { Category, TransactionType, Transaction, AIConfig } from '../types'; // Added AIConfig

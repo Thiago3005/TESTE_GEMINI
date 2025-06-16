@@ -14,7 +14,7 @@ interface LoansViewProps {
   loanRepayments: LoanRepayment[]; // All repayments from App state
   accounts: Account[];
   creditCards: CreditCard[];
-  onAddLoan: (loanData: Omit<Loan, 'repaymentIds' | 'status'>, ccInstallments?: number) => void; // ccInstallments for new CC loans
+  onAddLoan: (loanData: Omit<Loan, 'repaymentIds' | 'status'>, ccInstallments?: number) => void; 
   onUpdateLoan: (loanData: Omit<Loan, 'repaymentIds' | 'status'>) => void;
   onDeleteLoan: (loanId: string) => void;
   onAddLoanRepayment: (repaymentData: Omit<LoanRepayment, 'id' | 'loanId' | 'linkedIncomeTransactionId'>, loanId: string) => void;
@@ -46,30 +46,11 @@ const LoansView: React.FC<LoansViewProps> = ({
     setIsLoanFormModalOpen(true);
   };
   
-  const handleSaveLoan = (loanData: Omit<Loan, 'repaymentIds' | 'status'>) => {
-    // This is tricky because the LoanFormModal doesn't know about ccInstallments directly.
-    // The onSave in LoanFormModal should probably be adapted or App.tsx's onAddLoan should infer.
-    // For now, assume onAddLoan in App.tsx might need more info if it's a new CC loan.
-    // The current signature of onAddLoan in LoansViewProps already takes ccInstallments.
-    // The LoanFormModal's onSave needs to be more flexible to pass this or App.tsx should handle it.
-
-    // Let's simplify: LoanFormModal's onSave returns the raw form data.
-    // The onAddLoan in App.tsx (which this calls) will parse out numberOfInstallments from loanData if it's a credit card type.
-    // This requires LoanFormModal to potentially pass more data than strictly in the Loan type.
-    // Or, we can keep ccInstallments as a separate parameter for onAddLoan.
-
-    // Sticking to current onAddLoan signature: ccInstallments needs to be passed if it's a new CC loan.
-    // The LoanFormModal would need to supply this. For now, let's assume it's part of `loanData` somehow
-    // and `onAddLoan` in `App.tsx` extracts it. The `Omit<Loan,...>` type is the primary structure.
-    
+  const handleSaveLoan = (loanData: Omit<Loan, 'repaymentIds' | 'status'>, ccInstallments?: number) => {
     if (editingLoan) {
       onUpdateLoan(loanData);
     } else {
-      // For a new loan, if it's from credit card, we need `numberOfInstallments`.
-      // This info is collected in LoanFormModal but not part of the `Loan` type itself.
-      // This is a bit of a mismatch. We'll pass it as an optional property on loanData for now if new.
-      const loanWithPotentialCCInstallments = loanData as any; // Cast to access potential extra prop
-      onAddLoan(loanData, loanWithPotentialCCInstallments.numberOfInstallments);
+      onAddLoan(loanData, ccInstallments);
     }
   };
 

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { MoneyBox, MoneyBoxTransaction, MoneyBoxTransactionType, Account } from '../types';
 import Modal from './Modal';
