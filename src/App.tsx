@@ -1,16 +1,15 @@
-import React from 'react';
-import { useState, useEffect, useCallback, useMemo }from 'react'; 
-import { 
-  TransactionType, 
-  Transaction, 
-  Account, 
-  Category, 
-  CreditCard, 
-  MoneyBox, 
-  FuturePurchase, 
-  Tag, 
-  RecurringTransaction, 
-  Loan, 
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  TransactionType,
+  Transaction,
+  Account,
+  Category,
+  CreditCard,
+  MoneyBox,
+  FuturePurchase,
+  Tag,
+  RecurringTransaction,
+  Loan,
   Profile,
   AppView,
   MoneyBoxTransaction,
@@ -21,10 +20,10 @@ import {
   AIConfig,
   AIInsight,
   UserProfile,
-  InstallmentPurchase
+  InstallmentPurchase,
 } from './types';
 import { APP_NAME, getInitialCategories, getInitialAccounts } from './constants';
-import { generateId, getISODateString, formatDate, formatCurrency } from './utils/helpers'; 
+import { generateId, getISODateString, formatDate, formatCurrency } from './utils/helpers';
 import useLocalStorage from './hooks/useLocalStorage';
 
 // Views
@@ -36,54 +35,52 @@ import CreditCardsView from './components/CreditCardsView';
 import MoneyBoxesView from './components/MoneyBoxesView';
 import FuturePurchasesView from './components/FuturePurchasesView'; // New
 import DataManagementView from './components/DataManagementView';
-import TagsView from './components/TagsView'; 
-import RecurringTransactionsView from './components/RecurringTransactionsView'; 
-import LoansView from './components/LoansView'; 
+import TagsView from './components/TagsView';
+import RecurringTransactionsView from './components/RecurringTransactionsView';
+import LoansView from './components/LoansView';
 import AICoachView from './components/AICoachView';
-import ProfileSelectionView from './components/ProfileSelectionView'; 
+import ProfileSelectionView from './components/ProfileSelectionView';
 
 // Components
 import Modal from './components/Modal';
 import TransactionForm from './components/TransactionForm';
 import ThemeSwitcher from './components/ThemeSwitcher';
-import Button from './components/Button'; 
+import Button from './components/Button';
 
 // Icons
 import ChartPieIcon from './components/icons/ChartPieIcon';
 import ListBulletIcon from './components/icons/ListBulletIcon';
 import CreditCardIcon from './components/icons/CreditCardIcon';
-import TagIcon from './components/icons/TagIcon'; 
+import TagIcon from './components/icons/TagIcon';
 import CogIcon from './components/icons/CogIcon';
 import PlusIcon from './components/icons/PlusIcon';
 import PiggyBankIcon from './components/icons/PiggyBankIcon';
 import ShoppingCartIcon from './components/icons/ShoppingCartIcon'; // New
-import BookmarkSquareIcon from './components/icons/BookmarkSquareIcon'; 
-import ArrowPathIcon from './components/icons/ArrowPathIcon'; 
-import UsersIcon from './components/icons/UsersIcon'; 
+import BookmarkSquareIcon from './components/icons/BookmarkSquareIcon';
+import ArrowPathIcon from './components/icons/ArrowPathIcon';
+import UsersIcon from './components/icons/UsersIcon';
 import ChatBubbleLeftRightIcon from './components/icons/ChatBubbleLeftRightIcon';
-import UserCircleIcon from './components/icons/UserCircleIcon'; 
+import UserCircleIcon from './components/icons/UserCircleIcon';
 
 // Services
 import * as geminiService from './services/geminiService';
 import type { FinancialContext } from './services/geminiService';
 
-
 // Helper to generate profile-specific keys
 const getProfileKey = (baseKey: string, profileId: string | null): string => {
   if (!profileId) {
     console.warn(`Attempting to generate key "${baseKey}" without an active profile.`);
-    return `${baseKey}_NO_PROFILE_ACTIVE_STATE`; 
+    return `${baseKey}_NO_PROFILE_ACTIVE_STATE`;
   }
   return `profile_${profileId}_${baseKey}`;
 };
-
 
 const App: React.FC = () => {
   // Profile Management State
   const [profiles, setProfiles] = useLocalStorage<UserProfile[]>('finapp_profiles_list', []);
   const [activeProfileId, setActiveProfileId] = useLocalStorage<string | null>('finapp_active_profile_id', null);
   const [isProfileSelectionOpen, setIsProfileSelectionOpen] = useState(false);
-  
+
   // Data States
   const [transactions, setTransactions] = useLocalStorage<Transaction[]>(getProfileKey('finapp_transactions', activeProfileId), []);
   const [accounts, setAccounts] = useLocalStorage<Account[]>(getProfileKey('finapp_accounts', activeProfileId), getInitialAccounts);
@@ -92,12 +89,12 @@ const App: React.FC = () => {
   const [installmentPurchases, setInstallmentPurchases] = useLocalStorage<InstallmentPurchase[]>(getProfileKey('finapp_installmentPurchases', activeProfileId), []);
   const [moneyBoxes, setMoneyBoxes] = useLocalStorage<MoneyBox[]>(getProfileKey('finapp_moneyBoxes', activeProfileId), []);
   const [moneyBoxTransactions, setMoneyBoxTransactions] = useLocalStorage<MoneyBoxTransaction[]>(getProfileKey('finapp_moneyBoxTransactions', activeProfileId), []);
-  const [futurePurchases, setFuturePurchases] = useLocalStorage<FuturePurchase[]>(getProfileKey('finapp_future_purchases', activeProfileId), []); 
+  const [futurePurchases, setFuturePurchases] = useLocalStorage<FuturePurchase[]>(getProfileKey('finapp_future_purchases', activeProfileId), []);
   const [tags, setTags] = useLocalStorage<Tag[]>(getProfileKey('finapp_tags', activeProfileId), []);
   const [recurringTransactions, setRecurringTransactions] = useLocalStorage<RecurringTransaction[]>(getProfileKey('finapp_recurringTransactions', activeProfileId), []);
   const [loans, setLoans] = useLocalStorage<Loan[]>(getProfileKey('finapp_loans', activeProfileId), []);
   const [loanRepayments, setLoanRepayments] = useLocalStorage<LoanRepayment[]>(getProfileKey('finapp_loanRepayments', activeProfileId), []);
-  
+
   const [aiConfig, setAiConfig] = useLocalStorage<AIConfig>(getProfileKey('finapp_aiConfig', activeProfileId), {
     isEnabled: false,
     apiKeyStatus: 'unknown',
@@ -106,11 +103,10 @@ const App: React.FC = () => {
   });
   const [aiInsights, setAiInsights] = useLocalStorage<AIInsight[]>(getProfileKey('finapp_aiInsights', activeProfileId), []);
 
-
   const [activeView, setActiveView] = useState<AppView>('DASHBOARD');
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  
+
   const [theme, setTheme] = useLocalStorage<Theme>(getProfileKey('finapp_theme', activeProfileId), 'system');
 
   const activeProfileName = useMemo(() => {
@@ -122,13 +118,13 @@ const App: React.FC = () => {
     if (!activeProfileId) return;
     const profileIdentifier = activeProfileName ? activeProfileName.replace(/\s+/g, '_') : 'perfil_desconhecido';
     const dataToExport = {
-      profileName: activeProfileName || 'N/A', 
+      profileName: activeProfileName || 'N/A',
       exportedAt: new Date().toISOString(),
       transactions, accounts, categories, creditCards, installmentPurchases,
-      moneyBoxes, moneyBoxTransactions, futurePurchases, tags, 
-      recurringTransactions, loans, loanRepayments, 
-      aiConfig: {isEnabled: aiConfig.isEnabled, monthlyIncome: aiConfig.monthlyIncome, autoBackupToFileEnabled: aiConfig.autoBackupToFileEnabled }, 
-      aiInsights, theme, 
+      moneyBoxes, moneyBoxTransactions, futurePurchases, tags,
+      recurringTransactions, loans, loanRepayments,
+      aiConfig: {isEnabled: aiConfig.isEnabled, monthlyIncome: aiConfig.monthlyIncome, autoBackupToFileEnabled: aiConfig.autoBackupToFileEnabled },
+      aiInsights, theme,
     };
     const jsonString = JSON.stringify(dataToExport, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
@@ -142,8 +138,8 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     console.log("Automatic backup to file triggered for profile:", activeProfileName);
   }, [
-    activeProfileId, activeProfileName, transactions, accounts, categories, creditCards, 
-    installmentPurchases, moneyBoxes, moneyBoxTransactions, futurePurchases, tags, 
+    activeProfileId, activeProfileName, transactions, accounts, categories, creditCards,
+    installmentPurchases, moneyBoxes, moneyBoxTransactions, futurePurchases, tags,
     recurringTransactions, loans, loanRepayments, aiConfig, aiInsights, theme
   ]);
 
@@ -152,7 +148,6 @@ const App: React.FC = () => {
       handleExportDataToFile();
     }
   }, [aiConfig.autoBackupToFileEnabled, handleExportDataToFile]);
-
 
   // Profile Management Logic
   useEffect(() => {
@@ -165,15 +160,14 @@ const App: React.FC = () => {
       const currentProfileFuturePurchasesKey = getProfileKey('finapp_future_purchases', activeProfileId);
       const currentProfileAiConfigKey = getProfileKey('finapp_aiConfig', activeProfileId);
 
-
       if (localStorage.getItem(currentProfileAccountsKey) === null) {
-          setAccounts(getInitialAccounts());
+        setAccounts(getInitialAccounts());
       }
       if (localStorage.getItem(currentProfileCategoriesKey) === null) {
-          setCategories(getInitialCategories());
+        setCategories(getInitialCategories());
       }
       if (localStorage.getItem(currentProfileFuturePurchasesKey) === null) {
-          setFuturePurchases([]); 
+        setFuturePurchases([]);
       }
       // Ensure aiConfig has the new autoBackupToFileEnabled flag if loading from older storage
       if (localStorage.getItem(currentProfileAiConfigKey)) {
@@ -183,31 +177,29 @@ const App: React.FC = () => {
         }
       }
 
-
       setIsProfileSelectionOpen(false);
       if (activeView === 'PROFILE_SELECTION') setActiveView('DASHBOARD');
     }
   }, [activeProfileId, profiles, setAccounts, setCategories, setFuturePurchases, setAiConfig, activeView]);
 
-
   const handleCreateProfile = (name: string) => {
     const newProfileId = generateId();
     const newProfile: UserProfile = { id: newProfileId, name };
     setProfiles(prev => [...prev, newProfile]);
-    setActiveProfileId(newProfileId); 
-    setActiveView('DASHBOARD'); 
+    setActiveProfileId(newProfileId);
+    setActiveView('DASHBOARD');
     setIsProfileSelectionOpen(false);
   };
 
   const handleSelectProfile = (profileId: string) => {
-    setActiveProfileId(profileId); 
+    setActiveProfileId(profileId);
     setActiveView('DASHBOARD');
     setIsProfileSelectionOpen(false);
   };
-  
+
   const handleSwitchProfileRequest = () => {
     setActiveView('PROFILE_SELECTION');
-    setIsProfileSelectionOpen(true); 
+    setIsProfileSelectionOpen(true);
   };
 
   useEffect(() => {
@@ -223,7 +215,7 @@ const App: React.FC = () => {
         document.documentElement.classList.remove('dark');
       }
     };
-    applyTheme(theme); 
+    applyTheme(theme);
     if (theme === 'system') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handleChange = () => applyTheme('system');
@@ -254,15 +246,15 @@ const App: React.FC = () => {
   }, [moneyBoxTransactions, activeProfileId]);
 
   const generateFinancialContext = useCallback((): FinancialContext => {
-    if (!activeProfileId) { 
-        return { currentDate: getISODateString(), accounts: [], accountBalances: [], categories: [], monthlyIncome: null, theme: 'light' };
+    if (!activeProfileId) {
+      return { currentDate: getISODateString(), accounts: [], accountBalances: [], categories: [], monthlyIncome: null, theme: 'light' };
     }
     return {
       currentDate: getISODateString(),
       accounts: accounts.map(a => ({ name: a.name, id: a.id })),
       accountBalances: accounts.map(a => ({ accountId: a.id, balance: calculateAccountBalance(a.id) })),
       categories: categories.map(c => ({ id: c.id, name: c.name, type: c.type, monthlyBudget: c.monthlyBudget })),
-      recentTransactions: transactions.slice(-10), 
+      recentTransactions: transactions.slice(-10),
       moneyBoxes: moneyBoxes.map(mb => ({ id: mb.id, name: mb.name, goalAmount: mb.goalAmount })),
       moneyBoxBalances: moneyBoxes.map(mb => ({ moneyBoxId: mb.id, balance: calculateMoneyBoxBalance(mb.id) })),
       futurePurchases: futurePurchases.map(fp => ({id: fp.id, name: fp.name, estimatedCost: fp.estimatedCost, priority: fp.priority, status: fp.status })),
@@ -273,10 +265,9 @@ const App: React.FC = () => {
       }),
       recurringTransactions: recurringTransactions.filter(rt => !rt.isPaused).map(rt => ({id: rt.id, description: rt.description, amount: rt.amount, type: rt.type, nextDueDate: rt.nextDueDate })),
       theme: theme === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme,
-      monthlyIncome: aiConfig.monthlyIncome, 
+      monthlyIncome: aiConfig.monthlyIncome,
     };
   }, [accounts, categories, moneyBoxes, futurePurchases, loans, loanRepayments, recurringTransactions, transactions, theme, aiConfig.monthlyIncome, calculateAccountBalance, calculateMoneyBoxBalance, activeProfileId]);
-
 
   const handleFetchGeneralAIAdvice = useCallback(async () => {
     if (!activeProfileId || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
@@ -298,10 +289,10 @@ const App: React.FC = () => {
     if (!activeProfileId || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
     
     const loadingInsight: AIInsight = {
-        id: generateId(), timestamp: new Date().toISOString(), type: 'transaction_comment',
-        content: `Analisando transação: ${transaction.description || transaction.type}...`,
-        relatedTransactionId: transaction.id, isRead: false, isLoading: true,
-      };
+      id: generateId(), timestamp: new Date().toISOString(), type: 'transaction_comment',
+      content: `Analisando transação: ${transaction.description || transaction.type}...`,
+      relatedTransactionId: transaction.id, isRead: false, isLoading: true,
+    };
     setAiInsights(prev => [loadingInsight, ...prev.filter(i => !i.isLoading)]);
 
     const context = generateFinancialContext();
@@ -318,14 +309,14 @@ const App: React.FC = () => {
     currentExpenseBudgets: {name: string, budget?: number}[]
   ): Promise<number | null> => {
     if (!activeProfileId || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available' || !aiConfig.monthlyIncome) {
-        const errorMsg = !aiConfig.monthlyIncome 
-            ? "Por favor, informe sua renda mensal na tela do AI Coach para receber sugestões de orçamento."
-            : "AI Coach desativado ou API indisponível.";
-        setAiInsights(prev => [{
-            id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-            content: errorMsg, isRead: false,
-        }, ...prev.filter(i => !i.isLoading)]);
-        return null;
+      const errorMsg = !aiConfig.monthlyIncome 
+        ? "Por favor, informe sua renda mensal na tela do AI Coach para receber sugestões de orçamento."
+        : "AI Coach desativado ou API indisponível.";
+      setAiInsights(prev => [{
+        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+        content: errorMsg, isRead: false,
+      }, ...prev.filter(i => !i.isLoading)]);
+      return null;
     }
 
     const loadingInsight: AIInsight = {
@@ -340,27 +331,27 @@ const App: React.FC = () => {
     const result = await geminiService.fetchBudgetSuggestion(categoryName, aiConfig.monthlyIncome, currentExpenseBudgets, context);
 
     if (result && 'suggestedBudget' in result && typeof result.suggestedBudget === 'number') {
-        const successInsight: AIInsight = {
-            id: loadingInsight.id, 
-            timestamp: new Date().toISOString(), type: 'budget_recommendation',
-            content: `Com base na sua renda, sugiro um orçamento de ${formatCurrency(result.suggestedBudget)} para ${categoryName}.`,
-            relatedCategoryId: categories.find(c=>c.name === categoryName)?.id,
-            isRead: false, isLoading: false,
-        };
-        setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? successInsight : i));
-        triggerAutoBackupIfEnabled();
-        return result.suggestedBudget;
+      const successInsight: AIInsight = {
+        id: loadingInsight.id, 
+        timestamp: new Date().toISOString(), type: 'budget_recommendation',
+        content: `Com base na sua renda, sugiro um orçamento de ${formatCurrency(result.suggestedBudget)} para ${categoryName}.`,
+        relatedCategoryId: categories.find(c=>c.name === categoryName)?.id,
+        isRead: false, isLoading: false,
+      };
+      setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? successInsight : i));
+      triggerAutoBackupIfEnabled();
+      return result.suggestedBudget;
     } else if (result && 'content' in result) { 
-         setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? {...result, isLoading: false} : i));
+      setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? {...result, isLoading: false} : i));
     } else {
-        const errorInsight: AIInsight = {
-            id: loadingInsight.id, 
-            timestamp: new Date().toISOString(), type: 'error_message',
-            content: `Não foi possível obter uma sugestão de orçamento para ${categoryName} no momento.`,
-            relatedCategoryId: categories.find(c=>c.name === categoryName)?.id,
-            isRead: false, isLoading: false,
-        };
-        setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? errorInsight : i));
+      const errorInsight: AIInsight = {
+        id: loadingInsight.id, 
+        timestamp: new Date().toISOString(), type: 'error_message',
+        content: `Não foi possível obter uma sugestão de orçamento para ${categoryName} no momento.`,
+        relatedCategoryId: categories.find(c=>c.name === categoryName)?.id,
+        isRead: false, isLoading: false,
+      };
+      setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? errorInsight : i));
     }
     return null;
   }, [aiConfig.isEnabled, aiConfig.apiKeyStatus, aiConfig.monthlyIncome, categories, setAiInsights, generateFinancialContext, activeProfileId, triggerAutoBackupIfEnabled]);
@@ -398,20 +389,19 @@ const App: React.FC = () => {
         isLoading: false,
       } : i));
     } else if (analysisResult && 'content' in analysisResult) { // It's an AIInsight error message
-        setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: p.status === 'AI_ANALYZING' ? 'PLANNED' : p.status } : p)); // Revert status
-        setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? { ...analysisResult, isLoading: false, relatedFuturePurchaseId: purchase.id } : i));
+      setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: p.status === 'AI_ANALYZING' ? 'PLANNED' : p.status } : p)); // Revert status
+      setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? { ...analysisResult, isLoading: false, relatedFuturePurchaseId: purchase.id } : i));
     } else {
-         setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: p.status === 'AI_ANALYZING' ? 'PLANNED' : p.status } : p)); // Revert status
-         setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? {
-            ...loadingInsight, 
-            content: `Não foi possível analisar a compra "${purchase.name}" no momento.`, 
-            type: 'error_message', 
-            isLoading: false
-        } : i));
+      setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: p.status === 'AI_ANALYZING' ? 'PLANNED' : p.status } : p)); // Revert status
+      setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? {
+        ...loadingInsight, 
+        content: `Não foi possível analisar a compra "${purchase.name}" no momento.`, 
+        type: 'error_message', 
+        isLoading: false
+      } : i));
     }
     triggerAutoBackupIfEnabled();
   }, [aiConfig.isEnabled, aiConfig.apiKeyStatus, futurePurchases, setFuturePurchases, setAiInsights, generateFinancialContext, activeProfileId, triggerAutoBackupIfEnabled]);
-
 
   const handleAddTransaction = (transaction: Transaction) => {
     if (!activeProfileId) return;
@@ -433,22 +423,22 @@ const App: React.FC = () => {
       const linkedMbTransaction = moneyBoxTransactions.find(mbt => mbt.linkedTransactionId === transactionId);
       if (linkedMbTransaction) {
         setMoneyBoxTransactions(prevMbts => prevMbts.map(mbt => 
-            mbt.id === linkedMbTransaction.id ? { ...mbt, linkedTransactionId: undefined, linkedAccountId: undefined } : mbt
+          mbt.id === linkedMbTransaction.id ? { ...mbt, linkedTransactionId: undefined, linkedAccountId: undefined } : mbt
         ));
       }
       const isLinkedToLoanFunding = loans.some(l => l.linkedExpenseTransactionId === transactionId);
       const isLinkedToLoanRepayment = loanRepayments.some(rp => rp.linkedIncomeTransactionId === transactionId);
       if (isLinkedToLoanFunding) {
-         setLoans(prevLoans => prevLoans.map(l => {
-             if (l.linkedExpenseTransactionId === transactionId) return {...l, linkedExpenseTransactionId: undefined, linkedAccountId: undefined};
-             return l;
-         }));
+        setLoans(prevLoans => prevLoans.map(l => {
+          if (l.linkedExpenseTransactionId === transactionId) return {...l, linkedExpenseTransactionId: undefined, linkedAccountId: undefined};
+          return l;
+        }));
       }
-       if (isLinkedToLoanRepayment) {
-         setLoanRepayments(prevRps => prevRps.map(rp => {
-             if (rp.linkedIncomeTransactionId === transactionId) return {...rp, linkedIncomeTransactionId: 'DELETED_TX_'+transactionId};
-             return rp;
-         }));
+      if (isLinkedToLoanRepayment) {
+        setLoanRepayments(prevRps => prevRps.map(rp => {
+          if (rp.linkedIncomeTransactionId === transactionId) return {...rp, linkedIncomeTransactionId: 'DELETED_TX_'+transactionId};
+          return rp;
+        }));
       }
       setTransactions(prev => prev.filter(t => t.id !== transactionId));
       triggerAutoBackupIfEnabled();
@@ -461,10 +451,10 @@ const App: React.FC = () => {
   const handleUpdateAccount = (updatedAccount: Account) => { if (activeProfileId) setAccounts(prev => prev.map(acc => acc.id === updatedAccount.id ? updatedAccount : acc)); triggerAutoBackupIfEnabled();};
   const handleDeleteAccount = (accountId: string) => {
     if (!activeProfileId) return;
-     if (transactions.some(t => t.accountId === accountId || t.toAccountId === accountId)) { alert("Não é possível excluir contas com transações. Remova ou reatribua as transações primeiro."); return; }
-     if (moneyBoxTransactions.some(mbt => mbt.linkedAccountId === accountId)) { alert("Esta conta está vinculada a transações de caixinhas. Remova esses vínculos primeiro."); return; }
-     if (recurringTransactions.some(rt => rt.accountId === accountId || rt.toAccountId === accountId)) { alert("Esta conta é usada em transações recorrentes. Remova ou edite essas recorrências primeiro."); return; }
-     if (loans.some(l => l.linkedAccountId === accountId || l.repaymentIds.some(rpId => loanRepayments.find(rp => rp.id === rpId)?.creditedAccountId === accountId))) { alert("Esta conta está vinculada a empréstimos (financiamento ou recebimento de pagamentos). Verifique os empréstimos."); return; }
+    if (transactions.some(t => t.accountId === accountId || t.toAccountId === accountId)) { alert("Não é possível excluir contas com transações. Remova ou reatribua as transações primeiro."); return; }
+    if (moneyBoxTransactions.some(mbt => mbt.linkedAccountId === accountId)) { alert("Esta conta está vinculada a transações de caixinhas. Remova esses vínculos primeiro."); return; }
+    if (recurringTransactions.some(rt => rt.accountId === accountId || rt.toAccountId === accountId)) { alert("Esta conta é usada em transações recorrentes. Remova ou edite essas recorrências primeiro."); return; }
+    if (loans.some(l => l.linkedAccountId === accountId || l.repaymentIds.some(rpId => loanRepayments.find(rp => rp.id === rpId)?.creditedAccountId === accountId))) { alert("Esta conta está vinculada a empréstimos (financiamento ou recebimento de pagamentos). Verifique os empréstimos."); return; }
     if (window.confirm('Excluir esta conta?')) {setAccounts(prev => prev.filter(acc => acc.id !== accountId)); triggerAutoBackupIfEnabled();}
   };
 
@@ -510,7 +500,7 @@ const App: React.FC = () => {
       const newMainTransaction: Transaction = { id: mainTxId, type: mainTxType, amount: mbt.amount, date: mbt.date, accountId: linkedAccId, description: mainTxDescription };
       setTransactions(prev => [...prev, newMainTransaction]);
       finalMbt = { ...finalMbt, linkedTransactionId: mainTxId, linkedAccountId: linkedAccId };
-       handleGenerateCommentForTransaction(newMainTransaction); // AI comment will trigger its own backup
+      handleGenerateCommentForTransaction(newMainTransaction); // AI comment will trigger its own backup
     }
     setMoneyBoxTransactions(prev => [...prev, finalMbt]);
     if (!createLinkedTransaction) triggerAutoBackupIfEnabled(); // Only trigger if no main transaction was created (which would trigger its own)
@@ -520,7 +510,6 @@ const App: React.FC = () => {
     setMoneyBoxTransactions(prev => prev.filter(t => t.id !== mbtId));
     triggerAutoBackupIfEnabled();
   };
-
 
   const handleAddTag = (tag: Tag) => { if (activeProfileId) setTags(prev => [...prev, tag]); triggerAutoBackupIfEnabled();};
   const handleUpdateTag = (updatedTag: Tag) => { if (activeProfileId) setTags(prev => prev.map(t => t.id === updatedTag.id ? updatedTag : t)); triggerAutoBackupIfEnabled();};
@@ -554,7 +543,6 @@ const App: React.FC = () => {
     }
   };
 
-
   const handleAddRecurringTransaction = (rt: RecurringTransaction) => { if (activeProfileId) setRecurringTransactions(prev => [...prev, rt]); triggerAutoBackupIfEnabled();};
   const handleUpdateRecurringTransaction = (updatedRT: RecurringTransaction) => { if (activeProfileId) setRecurringTransactions(prev => prev.map(rt => rt.id === updatedRT.id ? updatedRT : rt)); triggerAutoBackupIfEnabled();};
   const handleDeleteRecurringTransaction = (rtId: string) => { if (activeProfileId && window.confirm('Excluir esta transação recorrente?')) {setRecurringTransactions(prev => prev.filter(rt => rt.id !== rtId)); triggerAutoBackupIfEnabled(); }};
@@ -563,52 +551,52 @@ const App: React.FC = () => {
     const currentDueDate = new Date(currentDueDateStr + 'T00:00:00'); 
     let nextDue = new Date(currentDueDate);
     switch (frequency) {
-        case 'daily': nextDue.setDate(currentDueDate.getDate() + 1); break;
-        case 'weekly': nextDue.setDate(currentDueDate.getDate() + 7); break;
-        case 'monthly': nextDue.setMonth(currentDueDate.getMonth() + 1); break;
-        case 'yearly': nextDue.setFullYear(currentDueDate.getFullYear() + 1); break;
-        case 'custom_days': nextDue.setDate(currentDueDate.getDate() + (customInterval || 1)); break;
+      case 'daily': nextDue.setDate(currentDueDate.getDate() + 1); break;
+      case 'weekly': nextDue.setDate(currentDueDate.getDate() + 7); break;
+      case 'monthly': nextDue.setMonth(currentDueDate.getMonth() + 1); break;
+      case 'yearly': nextDue.setFullYear(currentDueDate.getFullYear() + 1); break;
+      case 'custom_days': nextDue.setDate(currentDueDate.getDate() + (customInterval || 1)); break;
     }
     return getISODateString(nextDue);
   };
   const handleProcessRecurringTransactions = async (): Promise<{ count: number; errors: string[] }> => {
     if (!activeProfileId) return { count: 0, errors: ["Nenhum perfil ativo."] };
     return new Promise(resolve => {
-        const today = getISODateString();
-        let postedCount = 0;
-        const errors: string[] = [];
-        const updatedRTs: RecurringTransaction[] = [];
-        const newTransactionsToPost: Transaction[] = [];
+      const today = getISODateString();
+      let postedCount = 0;
+      const errors: string[] = [];
+      const updatedRTs: RecurringTransaction[] = [];
+      const newTransactionsToPost: Transaction[] = [];
 
-        recurringTransactions.forEach(rt => {
-            let currentRt = { ...rt };
-            let shouldPost = !currentRt.isPaused && currentRt.nextDueDate <= today;
-            
-            if (shouldPost && currentRt.endDate && currentRt.nextDueDate > currentRt.endDate) shouldPost = false; 
-            if (shouldPost && currentRt.remainingOccurrences !== undefined && currentRt.remainingOccurrences <= 0) shouldPost = false; 
+      recurringTransactions.forEach(rt => {
+        let currentRt = { ...rt };
+        let shouldPost = !currentRt.isPaused && currentRt.nextDueDate <= today;
+        
+        if (shouldPost && currentRt.endDate && currentRt.nextDueDate > currentRt.endDate) shouldPost = false; 
+        if (shouldPost && currentRt.remainingOccurrences !== undefined && currentRt.remainingOccurrences <= 0) shouldPost = false; 
 
-            if (shouldPost) {
-                const newTx: Transaction = {
-                    id: generateId(), type: currentRt.type, amount: currentRt.amount, categoryId: currentRt.categoryId,
-                    description: currentRt.description, date: currentRt.nextDueDate, accountId: currentRt.accountId,
-                    toAccountId: currentRt.toAccountId,
-                };
-                newTransactionsToPost.push(newTx);
-                postedCount++;
-                currentRt.lastPostedDate = currentRt.nextDueDate;
-                currentRt.nextDueDate = calculateNextDueDate(currentRt.nextDueDate, currentRt.frequency, currentRt.customIntervalDays);
-                if (currentRt.remainingOccurrences !== undefined) currentRt.remainingOccurrences--;
-            }
-            updatedRTs.push(currentRt); 
-        });
-
-        if (newTransactionsToPost.length > 0) {
-            setTransactions(prev => [...prev, ...newTransactionsToPost]);
-            newTransactionsToPost.forEach(tx => handleGenerateCommentForTransaction(tx)); // AI comment will trigger its own backup
+        if (shouldPost) {
+          const newTx: Transaction = {
+            id: generateId(), type: currentRt.type, amount: currentRt.amount, categoryId: currentRt.categoryId,
+            description: currentRt.description, date: currentRt.nextDueDate, accountId: currentRt.accountId,
+            toAccountId: currentRt.toAccountId,
+          };
+          newTransactionsToPost.push(newTx);
+          postedCount++;
+          currentRt.lastPostedDate = currentRt.nextDueDate;
+          currentRt.nextDueDate = calculateNextDueDate(currentRt.nextDueDate, currentRt.frequency, currentRt.customIntervalDays);
+          if (currentRt.remainingOccurrences !== undefined) currentRt.remainingOccurrences--;
         }
-        setRecurringTransactions(updatedRTs); 
-        if (newTransactionsToPost.length === 0) triggerAutoBackupIfEnabled(); // Trigger if no AI comments were generated
-        resolve({ count: postedCount, errors });
+        updatedRTs.push(currentRt); 
+      });
+
+      if (newTransactionsToPost.length > 0) {
+        setTransactions(prev => [...prev, ...newTransactionsToPost]);
+        newTransactionsToPost.forEach(tx => handleGenerateCommentForTransaction(tx)); // AI comment will trigger its own backup
+      }
+      setRecurringTransactions(updatedRTs); 
+      if (newTransactionsToPost.length === 0) triggerAutoBackupIfEnabled(); // Trigger if no AI comments were generated
+      resolve({ count: postedCount, errors });
     });
   };
 
@@ -639,8 +627,8 @@ const App: React.FC = () => {
 
     setLoans(prev => [...prev, newLoan]);
     if (newLinkedTransaction) {
-        setTransactions(prev => [...prev, newLinkedTransaction]);
-        handleGenerateCommentForTransaction(newLinkedTransaction); // AI comment triggers backup
+      setTransactions(prev => [...prev, newLinkedTransaction]);
+      handleGenerateCommentForTransaction(newLinkedTransaction); // AI comment triggers backup
     }
     if (newInstallmentPurchase) {
       setInstallmentPurchases(prev => [...prev, newInstallmentPurchase]);
@@ -689,8 +677,8 @@ const App: React.FC = () => {
 
   const enrichedHandleImportData = (data: any) => {
     if (!activeProfileId) {
-        alert("Nenhum perfil ativo. Selecione ou crie um perfil antes de importar dados.");
-        return;
+      alert("Nenhum perfil ativo. Selecione ou crie um perfil antes de importar dados.");
+      return;
     }
     setTransactions(data.transactions || []);
     setAccounts(data.accounts || getInitialAccounts()); 
@@ -705,10 +693,10 @@ const App: React.FC = () => {
     setLoans(data.loans || []); 
     setLoanRepayments(data.loanRepayments || []); 
     setAiConfig(prev => ({ 
-        ...prev, 
-        isEnabled: data.aiConfig?.isEnabled || false,
-        monthlyIncome: data.aiConfig?.monthlyIncome || null, 
-        autoBackupToFileEnabled: data.aiConfig?.autoBackupToFileEnabled || false,
+      ...prev, 
+      isEnabled: data.aiConfig?.isEnabled || false,
+      monthlyIncome: data.aiConfig?.monthlyIncome || null, 
+      autoBackupToFileEnabled: data.aiConfig?.autoBackupToFileEnabled || false,
     }));
     setAiInsights(data.aiInsights || []);
     setTheme(data.theme || 'system'); 
@@ -716,7 +704,6 @@ const App: React.FC = () => {
     setIsProfileSelectionOpen(false); 
   };
   
-
   const navItems = [
     { view: 'DASHBOARD' as AppView, label: 'Painel', icon: <ChartPieIcon /> },
     { view: 'TRANSACTIONS' as AppView, label: 'Transações', icon: <ListBulletIcon /> },
@@ -768,19 +755,19 @@ const App: React.FC = () => {
         return <AICoachView aiConfig={aiConfig} setAiConfig={setAiConfig} insights={aiInsights} onFetchGeneralAdvice={handleFetchGeneralAIAdvice} />;
       case 'DATA_MANAGEMENT':
         return <DataManagementView 
-                  transactions={transactions} accounts={accounts} categories={categories} 
-                  creditCards={creditCards} installmentPurchases={installmentPurchases} 
-                  moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions}
-                  futurePurchases={futurePurchases} 
-                  tags={tags} recurringTransactions={recurringTransactions} 
-                  loans={loans} loanRepayments={loanRepayments} 
-                  onImportData={enrichedHandleImportData} 
-                  aiConfigToExport={{isEnabled: aiConfig.isEnabled, monthlyIncome: aiConfig.monthlyIncome, autoBackupToFileEnabled: aiConfig.autoBackupToFileEnabled}}
-                  aiInsightsToExport={aiInsights}
-                  activeProfileName={activeProfileName} 
-                  themeToExport={theme} 
-                  setAiConfig={setAiConfig} // Pass setAiConfig
-                />;
+          transactions={transactions} accounts={accounts} categories={categories} 
+          creditCards={creditCards} installmentPurchases={installmentPurchases} 
+          moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions}
+          futurePurchases={futurePurchases} 
+          tags={tags} recurringTransactions={recurringTransactions} 
+          loans={loans} loanRepayments={loanRepayments} 
+          onImportData={enrichedHandleImportData} 
+          aiConfigToExport={{isEnabled: aiConfig.isEnabled, monthlyIncome: aiConfig.monthlyIncome, autoBackupToFileEnabled: aiConfig.autoBackupToFileEnabled}}
+          aiInsightsToExport={aiInsights}
+          activeProfileName={activeProfileName} 
+          themeToExport={theme} 
+          setAiConfig={setAiConfig} // Pass setAiConfig
+        />;
       case 'PROFILE_SELECTION': 
         return <ProfileSelectionView profiles={profiles} onSelectProfile={handleSelectProfile} onCreateProfile={handleCreateProfile} />;
       default:
@@ -791,7 +778,6 @@ const App: React.FC = () => {
   const mobileNavItems = navItems.filter(item => 
     ['DASHBOARD', 'TRANSACTIONS', 'AI_COACH', 'FUTURE_PURCHASES', 'ACCOUNTS'].includes(item.view) 
   ).slice(0,5);
-
 
   return (
     <div className="min-h-screen bg-background text-textBase dark:bg-backgroundDark dark:text-textBaseDark flex flex-col md:flex-row transition-colors duration-300">
@@ -804,42 +790,42 @@ const App: React.FC = () => {
           </div>
         </div>
         <div className="flex-grow space-y-1">
-            {navItems.map(item => {
-              if (item.view === 'AI_COACH' && aiConfig.apiKeyStatus === 'unavailable') {
-                return null; 
-              }
-              return (
-                <Button
-                    key={item.view}
-                    variant="ghost"
-                    onClick={() => setActiveView(item.view)}
-                    className={`w-full flex items-center justify-start px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                                ${activeView === item.view 
-                                ? '!bg-primary/10 !text-primary dark:!bg-primaryDark/20 dark:!text-primaryDark' 
-                                : '!text-textMuted dark:!text-textMutedDark hover:!bg-neutral/5 dark:hover:!bg-neutralDark/10 hover:!text-textBase dark:hover:!text-textBaseDark'
-                                }`}
-                    aria-current={activeView === item.view ? 'page' : undefined}
-                >
-                    {React.cloneElement(item.icon, { className: "w-5 h-5 mr-3 flex-shrink-0" })} 
-                    <span className="flex-1 truncate">{item.label}</span> 
-                     {item.view === 'AI_COACH' && aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available' && (
-                        <span className="w-2 h-2 bg-green-500 rounded-full" title="AI Coach Ativado"></span>
-                    )}
-                </Button>
-              );
-            })}
+          {navItems.map(item => {
+            if (item.view === 'AI_COACH' && aiConfig.apiKeyStatus === 'unavailable') {
+              return null; 
+            }
+            return (
+              <Button
+                key={item.view}
+                variant="ghost"
+                onClick={() => setActiveView(item.view)}
+                className={`w-full flex items-center justify-start px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+                            ${activeView === item.view 
+                            ? '!bg-primary/10 !text-primary dark:!bg-primaryDark/20 dark:!text-primaryDark' 
+                            : '!text-textMuted dark:!text-textMutedDark hover:!bg-neutral/5 dark:hover:!bg-neutralDark/10 hover:!text-textBase dark:hover:!text-textBaseDark'
+                            }`}
+                aria-current={activeView === item.view ? 'page' : undefined}
+              >
+                {React.cloneElement(item.icon, { className: "w-5 h-5 mr-3 flex-shrink-0" })} 
+                <span className="flex-1 truncate">{item.label}</span> 
+                {item.view === 'AI_COACH' && aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available' && (
+                  <span className="w-2 h-2 bg-green-500 rounded-full" title="AI Coach Ativado"></span>
+                )}
+              </Button>
+            );
+          })}
         </div>
         <div className="mt-auto pt-2 space-y-2">
-            <Button
-                variant="ghost"
-                onClick={handleSwitchProfileRequest}
-                className="w-full flex items-center justify-start px-3 py-2.5 rounded-lg text-sm font-medium text-textMuted dark:text-textMutedDark hover:bg-neutral/5 dark:hover:bg-neutralDark/10 hover:text-textBase dark:hover:text-textBaseDark"
-                title="Mudar Perfil"
-            >
-                <UserCircleIcon className="w-5 h-5 mr-3 flex-shrink-0" /> 
-                <span className="flex-1 truncate">Mudar Perfil</span> 
-            </Button>
-            <ThemeSwitcher theme={theme} setTheme={setTheme} />
+          <Button
+            variant="ghost"
+            onClick={handleSwitchProfileRequest}
+            className="w-full flex items-center justify-start px-3 py-2.5 rounded-lg text-sm font-medium text-textMuted dark:text-textMutedDark hover:bg-neutral/5 dark:hover:bg-neutralDark/10 hover:text-textBase dark:hover:text-textBaseDark"
+            title="Mudar Perfil"
+          >
+            <UserCircleIcon className="w-5 h-5 mr-3 flex-shrink-0" /> 
+            <span className="flex-1 truncate">Mudar Perfil</span> 
+          </Button>
+          <ThemeSwitcher theme={theme} setTheme={setTheme} />
         </div>
       </nav>
       
@@ -877,7 +863,7 @@ const App: React.FC = () => {
               {React.cloneElement(item.icon, { className: "w-5 h-5 mb-0.5" })}
               <span className="text-[10px] leading-tight text-center">{item.label}</span>
               {item.view === 'AI_COACH' && aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available' && (
-                  <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-green-500 rounded-full"></span>
               )}
             </Button>
           );
@@ -914,38 +900,37 @@ const App: React.FC = () => {
 };
 
 declare module './components/DataManagementView' {
-    interface DataManagementViewProps {
-        futurePurchases?: FuturePurchase[]; 
-        aiConfigToExport?: { isEnabled: boolean, monthlyIncome?: number | null, autoBackupToFileEnabled?: boolean };
-        aiInsightsToExport?: AIInsight[];
-        activeProfileName?: string; 
-        themeToExport?: Theme; 
-        setAiConfig?: React.Dispatch<React.SetStateAction<AIConfig>>; // Added for auto backup toggle
-    }
+  interface DataManagementViewProps {
+    futurePurchases?: FuturePurchase[]; 
+    aiConfigToExport?: { isEnabled: boolean, monthlyIncome?: number | null, autoBackupToFileEnabled?: boolean };
+    aiInsightsToExport?: AIInsight[];
+    activeProfileName?: string; 
+    themeToExport?: Theme; 
+    setAiConfig?: React.Dispatch<React.SetStateAction<AIConfig>>; // Added for auto backup toggle
+  }
 }
 
 declare module './App' { 
-    interface DataManagementViewProps { 
-         onImportData: (data: { 
-            transactions: Transaction[]; 
-            accounts: Account[]; 
-            categories: Category[];
-            creditCards: CreditCard[];
-            installmentPurchases: InstallmentPurchase[];
-            moneyBoxes: MoneyBox[];
-            moneyBoxTransactions: MoneyBoxTransaction[];
-            futurePurchases?: FuturePurchase[]; 
-            tags: Tag[]; 
-            recurringTransactions: RecurringTransaction[];
-            loans: Loan[]; 
-            loanRepayments: LoanRepayment[]; 
-            aiConfig?: { isEnabled: boolean; monthlyIncome?: number | null; autoBackupToFileEnabled?: boolean; }; 
-            aiInsights?: AIInsight[];
-            theme?: Theme; 
-        }) => void;
-        setAiConfig?: React.Dispatch<React.SetStateAction<AIConfig>>; // Make sure it's here too
-    }
+  interface DataManagementViewProps { 
+    onImportData: (data: { 
+      transactions: Transaction[]; 
+      accounts: Account[]; 
+      categories: Category[];
+      creditCards: CreditCard[];
+      installmentPurchases: InstallmentPurchase[];
+      moneyBoxes: MoneyBox[];
+      moneyBoxTransactions: MoneyBoxTransaction[];
+      futurePurchases?: FuturePurchase[]; 
+      tags: Tag[]; 
+      recurringTransactions: RecurringTransaction[];
+      loans: Loan[]; 
+      loanRepayments: LoanRepayment[]; 
+      aiConfig?: { isEnabled: boolean; monthlyIncome?: number | null; autoBackupToFileEnabled?: boolean; }; 
+      aiInsights?: AIInsight[];
+      theme?: Theme; 
+    }) => void;
+    setAiConfig?: React.Dispatch<React.SetStateAction<AIConfig>>; // Make sure it's here too
+  }
 }
-
 
 export default App;

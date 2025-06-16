@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { useEffect } from 'react';
-import { RecurringTransaction, Account, Category } from '../types';
+import { 
+  RecurringTransaction, 
+  TransactionType, 
+  Account, 
+  Category, 
+  RecurringTransactionFrequency 
+} from '../types';
+import { TRANSACTION_TYPE_OPTIONS } from '../constants';
 import { generateId, getISODateString } from '../utils/helpers';
 import Button from './Button';
 import Input from './Input';
