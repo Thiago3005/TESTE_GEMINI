@@ -173,7 +173,7 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<AII
   }
   const prompt = constructPromptForGeneralAdvice(context);
   try {
-    const model = ai.getGenerativeModel({ model: "gemini-pro" });
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
@@ -224,7 +224,7 @@ export const fetchCommentForTransaction = async (transaction: Transaction, conte
   }
   const prompt = constructPromptForTransactionComment(transaction, context, categoryName, accountName);
   try {
-    const model = ai.getGenerativeModel({ model: "gemini-pro" });
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
@@ -293,7 +293,7 @@ export const fetchBudgetSuggestion = async (
 
     const prompt = constructPromptForBudgetSuggestion(categoryName, monthlyIncome, existingBudgets, context);
     try {
-        const model = ai.getGenerativeModel({ model: "gemini-pro" });
+        const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
@@ -347,7 +347,7 @@ export const fetchFuturePurchaseAnalysis = async (
 
   const prompt = constructPromptForFuturePurchaseAnalysis(purchase, context);
   try {
-    const model = ai.getGenerativeModel({ model: "gemini-pro" });
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
