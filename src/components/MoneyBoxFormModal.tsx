@@ -1,6 +1,6 @@
-import React from 'react';
-import { useState, useEffect } from 'react';
-import { MoneyBox } from '../types';
+import React, { useState } from 'react';
+import { useEffect } from 'react';
+import { MoneyBox } from '../../types';
 import Modal from './Modal';
 import Input from './Input';
 import Button from './Button';

@@ -1,5 +1,5 @@
-import React from 'react';
-import { useState, useEffect, ChangeEvent } from 'react';
+import React, { useState } from 'react';
+import { useEffect, ChangeEvent } from 'react';
 import { 
     RecurringTransaction, TransactionType, Account, Category, RecurringTransactionFrequency 
 } from '../types';

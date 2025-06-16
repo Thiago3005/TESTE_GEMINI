@@ -1,5 +1,5 @@
-import React from 'react';
-import { useState, useMemo } from 'react';
+import React, { useState } from 'react';
+import { useMemo } from 'react';
 import { RecurringTransaction, Account, Category, Transaction } from '../types';
 import RecurringTransactionItem from './RecurringTransactionItem';
 import RecurringTransactionFormModal from './RecurringTransactionFormModal';
@@ -102,7 +102,14 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
               <h2 className="text-lg font-semibold text-destructive dark:text-destructiveDark mb-2">Pendentes / Atrasadas ({pastDueRTs.length})</h2>
               <ul className="space-y-3">
                 {pastDueRTs.map(rt => (
-                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} />
+                  <RecurringTransactionItem
+                    key={rt.id}
+                    transaction={rt}
+                    accounts={accounts}
+                    categories={categories}
+                    onEdit={openModalForEdit}
+                    onDelete={onDeleteRecurringTransaction}
+                  />
                 ))}
               </ul>
             </div>
@@ -113,7 +120,14 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
               <h2 className="text-lg font-semibold text-textBase dark:text-textBaseDark mt-6 mb-2">Próximas ({upcomingRTs.length})</h2>
               <ul className="space-y-3">
                 {upcomingRTs.map(rt => (
-                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} />
+                  <RecurringTransactionItem
+                    key={rt.id}
+                    transaction={rt}
+                    accounts={accounts}
+                    categories={categories}
+                    onEdit={openModalForEdit}
+                    onDelete={onDeleteRecurringTransaction}
+                  />
                 ))}
               </ul>
             </div>
@@ -124,7 +138,14 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
               <h2 className="text-lg font-semibold text-textMuted dark:text-textMutedDark mt-6 mb-2">Pausadas ({pausedRTs.length})</h2>
               <ul className="space-y-3">
                 {pausedRTs.map(rt => (
-                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} />
+                  <RecurringTransactionItem
+                    key={rt.id}
+                    transaction={rt}
+                    accounts={accounts}
+                    categories={categories}
+                    onEdit={openModalForEdit}
+                    onDelete={onDeleteRecurringTransaction}
+                  />
                 ))}
               </ul>
             </div>

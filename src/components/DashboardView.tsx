@@ -1,4 +1,3 @@
-
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
 import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment } from '../types'; // Added Loan, LoanRepayment

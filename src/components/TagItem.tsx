@@ -3,15 +3,15 @@ import { Tag } from '../types';
 import Button from './Button';
 import EditIcon from './icons/EditIcon';
 import TrashIcon from './icons/TrashIcon';
+import TagIcon from './icons/TagIcon';
 
 interface TagItemProps {
   tag: Tag;
-  transactionCount: number;
   onEdit: (tag: Tag) => void;
-  onDelete: (tagId: string) => void;
+  onDelete: (id: string) => void;
 }
 
-const TagItem: React.FC<TagItemProps> = ({ tag, transactionCount, onEdit, onDelete }) => {
+const TagItem: React.FC<TagItemProps> = ({ tag, onEdit, onDelete }) => {
   const tagStyle: React.CSSProperties = tag.color
     ? { backgroundColor: tag.color, color: '#fff', borderColor: tag.color } // Assuming light text on colored background
     : { backgroundColor: 'transparent' }; // Default Tailwind styling will apply for text
@@ -36,36 +36,25 @@ const TagItem: React.FC<TagItemProps> = ({ tag, transactionCount, onEdit, onDele
 
 
   return (
-    <li className="bg-surface dark:bg-surfaceDark p-3 rounded-lg shadow hover:shadow-md dark:shadow-neutralDark/30 dark:hover:shadow-neutralDark/50 transition-shadow duration-150 flex justify-between items-center">
-      <div className="flex items-center">
-        <span 
-            className={`text-xs font-semibold mr-3 px-2.5 py-1 rounded-full inline-block border
-                        ${tag.color ? '' : 'bg-neutral/10 dark:bg-neutralDark/20 border-neutral/30 dark:border-neutralDark/40'}`}
-            style={tag.color ? { backgroundColor: tag.color, borderColor: tag.color } : {}}
-        >
-            <span className={tag.color ? dynamicTextColorClass : 'text-textBase dark:text-textBaseDark'}>
-                {tag.name}
-            </span>
-        </span>
-      </div>
-      <div className="flex items-center space-x-1">
-        {transactionCount > 0 && (
-          <span className="text-xs text-textMuted dark:text-textMutedDark mr-2">({transactionCount} trans.)</span>
-        )}
-        <Button variant="ghost" size="sm" onClick={() => onEdit(tag)} aria-label="Editar Tag" className="!p-1.5">
-          <EditIcon className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onDelete(tag.id)}
-          aria-label="Excluir Tag"
-          className="!p-1.5"
-          disabled={transactionCount > 0}
-          title={transactionCount > 0 ? "Não é possível excluir tags em uso" : "Excluir Tag"}
-        >
-          <TrashIcon className={`w-4 h-4 ${transactionCount > 0 ? 'text-neutral/50 dark:text-neutralDark/50' : 'text-destructive dark:text-destructiveDark'}`} />
-        </Button>
+    <li className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow hover:shadow-md dark:shadow-neutralDark/30 dark:hover:shadow-neutralDark/50 transition-shadow duration-150">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0">
+        <div className="flex-grow">
+          <div className="flex items-center space-x-3 mb-1">
+            <TagIcon className="w-5 h-5 text-primary dark:text-primaryDark" />
+            <h3 className="text-md font-medium text-textBase dark:text-textBaseDark">{tag.name}</h3>
+          </div>
+          {tag.description && (
+            <p className="text-sm text-textMuted dark:text-textMutedDark ml-8">{tag.description}</p>
+          )}
+        </div>
+        <div className="flex space-x-2 self-end sm:self-center">
+          <Button variant="ghost" size="sm" onClick={() => onEdit(tag)} aria-label="Editar Tag">
+            <EditIcon className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => onDelete(tag.id)} aria-label="Excluir Tag">
+            <TrashIcon className="w-4 h-4 text-destructive dark:text-destructiveDark" />
+          </Button>
+        </div>
       </div>
     </li>
   );

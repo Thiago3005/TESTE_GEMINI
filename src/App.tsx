@@ -1,12 +1,27 @@
 import React from 'react';
 import { useState, useEffect, useCallback, useMemo }from 'react'; 
 import { 
-  Transaction, Account, Category, TransactionType, AppView, CreditCard, InstallmentPurchase,
-  MoneyBox, MoneyBoxTransaction, MoneyBoxTransactionType, Theme,
-  Tag, RecurringTransaction, RecurringTransactionFrequency,
-  Loan, LoanRepayment,
-  AIConfig, AIInsight, UserProfile,
-  FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority // Added FuturePurchase types
+  TransactionType, 
+  Transaction, 
+  Account, 
+  Category, 
+  CreditCard, 
+  MoneyBox, 
+  FuturePurchase, 
+  Tag, 
+  RecurringTransaction, 
+  Loan, 
+  Profile,
+  AppView,
+  MoneyBoxTransaction,
+  MoneyBoxTransactionType,
+  Theme,
+  RecurringTransactionFrequency,
+  LoanRepayment,
+  AIConfig,
+  AIInsight,
+  UserProfile,
+  InstallmentPurchase
 } from './types';
 import { APP_NAME, getInitialCategories, getInitialAccounts } from './constants';
 import { generateId, getISODateString, formatDate, formatCurrency } from './utils/helpers'; 
