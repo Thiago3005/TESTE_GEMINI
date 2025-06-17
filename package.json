@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "homepage": "https://YOUR_GITHUB_USERNAME.github.io/YOUR_REPOSITORY_NAME/",
+  "homepage": "https://thiagocruz.github.io/TESTE_GEMINI/",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

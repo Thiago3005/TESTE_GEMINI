@@ -299,10 +299,10 @@ export const fetchBudgetSuggestion = async (
         const text = response.text();
         
         let jsonStr = text || '';
-        const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+        const fenceRegex = /```(?:json)?\s*([\s\S]*?)```/;
         const match = jsonStr.match(fenceRegex);
-        if (match && match[2]) {
-            jsonStr = match[2].trim();
+        if (match && match[1]) {
+            jsonStr = match[1].trim();
         }
         
         const parsed = JSON.parse(jsonStr);
@@ -353,27 +353,42 @@ export const fetchFuturePurchaseAnalysis = async (
     const text = response.text();
 
     let jsonStr = text || '';
-    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+    const fenceRegex = /```(?:json)?\s*([\s\S]*?)```/;
     const match = jsonStr.match(fenceRegex);
-    if (match && match[2]) {
-        jsonStr = match[2].trim();
+    if (match && match[1]) {
+        jsonStr = match[1].trim();
     }
     
-    const parsed = JSON.parse(jsonStr);
+    try {
+        const parsed = JSON.parse(jsonStr);
 
-    if (parsed && typeof parsed.analysisText === 'string' && 
-        typeof parsed.recommendedStatus === 'string' &&
-        ['ACHIEVABLE_SOON', 'NOT_RECOMMENDED_NOW', 'PLANNED'].includes(parsed.recommendedStatus)) {
-      return { 
-        analysisText: parsed.analysisText, 
-        recommendedStatus: parsed.recommendedStatus as FuturePurchaseStatus 
-      };
+        if (parsed && typeof parsed.analysisText === 'string' && 
+            typeof parsed.recommendedStatus === 'string' &&
+            ['ACHIEVABLE_SOON', 'NOT_RECOMMENDED_NOW', 'PLANNED'].includes(parsed.recommendedStatus)) {
+            return { 
+                analysisText: parsed.analysisText, 
+                recommendedStatus: parsed.recommendedStatus as FuturePurchaseStatus 
+            };
+        }
+        return {
+            id: generateId(), 
+            timestamp: new Date().toISOString(), 
+            type: 'error_message',
+            content: "Não foi possível obter uma análise válida da IA para esta compra (resposta inválida).",
+            relatedFuturePurchaseId: purchase.id, 
+            isRead: false,
+        };
+    } catch (error) {
+        console.error("Error parsing Gemini response:", error);
+        return {
+            id: generateId(), 
+            timestamp: new Date().toISOString(), 
+            type: 'error_message',
+            content: `Desculpe, não consegui analisar esta compra futura no momento. Detalhe: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+            relatedFuturePurchaseId: purchase.id, 
+            isRead: false,
+        };
     }
-    return {
-        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-        content: "Não foi possível obter uma análise válida da IA para esta compra (resposta inválida).",
-        relatedFuturePurchaseId: purchase.id, isRead: false,
-    };
   } catch (error) {
     console.error("Error fetching future purchase analysis from Gemini:", error);
     let errorMessage = "Desculpe, não consegui analisar esta compra futura no momento.";
