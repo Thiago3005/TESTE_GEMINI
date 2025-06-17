@@ -1,7 +1,7 @@
 
 import React from 'react'; 
 import { useState, useMemo, useCallback, ChangeEvent }from 'react'; 
-import { Transaction, Account, Category, TransactionType, Tag } from '../types';
+import { Transaction, Account, Category, TransactionType, Tag, InstallmentPurchase } from '../types';
 import { PERIOD_FILTER_OPTIONS, TRANSACTION_TYPE_OPTIONS } from '../constants';
 import { getISODateString } from '../utils/helpers';
 import TransactionItem from './TransactionItem';
@@ -15,6 +15,7 @@ interface TransactionsViewProps {
   accounts: Account[];
   categories: Category[];
   tags: Tag[]; 
+  installmentPurchases: InstallmentPurchase[]; // Added for traceability
   onAddTransaction: () => void;
   onEditTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
@@ -27,6 +28,7 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
   accounts,
   categories,
   tags, 
+  installmentPurchases,
   onAddTransaction,
   onEditTransaction,
   onDeleteTransaction,
@@ -156,6 +158,7 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
               accounts={accounts}
               categories={categories}
               tags={tags} 
+              installmentPurchases={installmentPurchases} // Pass for traceability
               onEdit={onEditTransaction}
               onDelete={onDeleteTransaction}
               isPrivacyModeEnabled={isPrivacyModeEnabled}

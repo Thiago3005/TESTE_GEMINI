@@ -13,7 +13,7 @@ import {
   FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile
 } from './types';
 import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts } from './constants';
-import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency } from './utils/helpers';
+import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency, getEligibleInstallmentsForBillingCycle } from './utils/helpers';
 // useLocalStorage is no longer used for primary data
 // import useLocalStorage from './hooks/useLocalStorage';
 
@@ -592,6 +592,62 @@ const AppContent: React.FC = () => {
       await handleUpdateInstallmentPurchase(updatedPurchase); // This will show its own toast
     }
   };
+
+  const handlePayMonthlyInstallments = async (cardId: string): Promise<void> => {
+    if (!user) return;
+    const card = creditCards.find(c => c.id === cardId);
+    if (!card) {
+      addToast("Cartão não encontrado.", 'error');
+      return;
+    }
+    const eligible = getEligibleInstallmentsForBillingCycle(installmentPurchases, card, new Date());
+    if (eligible.length === 0) {
+      addToast("Nenhuma parcela elegível para pagamento neste ciclo.", 'info');
+      return;
+    }
+
+    const updates = eligible.map(p => {
+      const updatedPurchase = { ...p, installments_paid: p.installments_paid + 1 };
+      return supabase
+        .from('installment_purchases')
+        .update({ installments_paid: updatedPurchase.installments_paid, updated_at: new Date().toISOString() })
+        .eq('id', p.id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+    });
+
+    try {
+      const results = await Promise.all(updates);
+      const updatedIPs: InstallmentPurchase[] = [];
+      let errors = 0;
+      results.forEach(res => {
+        if (res.error) {
+          errors++;
+          console.error("Error updating installment:", res.error);
+        } else if (res.data) {
+          updatedIPs.push(res.data as InstallmentPurchase);
+        }
+      });
+
+      if (updatedIPs.length > 0) {
+        setInstallmentPurchases(prev =>
+          prev.map(ip => {
+            const updatedVersion = updatedIPs.find(uip => uip.id === ip.id);
+            return updatedVersion || ip;
+          }).sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())
+        );
+        addToast(`${updatedIPs.length} parcela(s) da fatura marcada(s) como paga(s)!`, 'success');
+      }
+      if (errors > 0) {
+        addToast(`Falha ao pagar ${errors} parcela(s).`, 'error');
+      }
+    } catch (error: any) {
+      addToast(`Erro ao processar pagamento das parcelas: ${error.message}`, 'error');
+    }
+  };
+
+
   // ... (rest of the CRUD functions for MoneyBoxes, Tags, Recurring, Loans, FuturePurchases, AIInsights remain largely the same)
   // MoneyBoxes & MoneyBoxTransactions
   const handleAddMoneyBox = async (moneyBox: Omit<MoneyBox, 'id'|'user_id'|'created_at'|'updated_at'>) => {
@@ -763,9 +819,6 @@ const AppContent: React.FC = () => {
         // We need the ID of the created installment purchase.
         // For simplicity, let's assume it's the last one added for now, or modify handleAddInstallmentPurchase to return the created object.
         // A more robust way would be to make handleAddInstallmentPurchase return the created object.
-        // For now, this might lead to linkedInstallmentPurchaseId being undefined if state update isn't immediate.
-        // Let's assume it will be updated by the time we fetch it, or modify handleAddIP to return it.
-        // To be robust, we should make handleAddInstallmentPurchase return the created item.
         // Since I can't modify its signature right now, I'll proceed knowing this is a simplification.
         // The most recently added IP to that card *should* be it.
         const newIp = installmentPurchases.find(ip => 
@@ -1082,11 +1135,23 @@ const AppContent: React.FC = () => {
       case 'DASHBOARD':
         return <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={openTransactionModalForNew} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={handleViewRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
       case 'TRANSACTIONS':
-        return <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} onAddTransaction={openTransactionModalForNew} onEditTransaction={openTransactionModalForEdit} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
+        return <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={openTransactionModalForNew} onEditTransaction={openTransactionModalForEdit} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
       case 'ACCOUNTS':
         return <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
       case 'CREDIT_CARDS':
-        return <CreditCardsView creditCards={creditCards} installmentPurchases={installmentPurchases} aiConfig={aiConfig} onAddCreditCard={handleAddCreditCard} onUpdateCreditCard={handleUpdateCreditCard} onDeleteCreditCard={handleDeleteCreditCard} onAddInstallmentPurchase={handleAddInstallmentPurchase} onUpdateInstallmentPurchase={handleUpdateInstallmentPurchase} onDeleteInstallmentPurchase={handleDeleteInstallmentPurchase} onMarkInstallmentPaid={handleMarkInstallmentPaid} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
+        return <CreditCardsView
+          creditCards={creditCards}
+          installmentPurchases={installmentPurchases}
+          aiConfig={aiConfig}
+          onAddCreditCard={handleAddCreditCard}
+          onUpdateCreditCard={handleUpdateCreditCard}
+          onDeleteCreditCard={handleDeleteCreditCard}
+          onAddInstallmentPurchase={handleAddInstallmentPurchase}
+          onUpdateInstallmentPurchase={handleUpdateInstallmentPurchase}
+          onDeleteInstallmentPurchase={handleDeleteInstallmentPurchase}
+          onMarkInstallmentPaid={handleMarkInstallmentPaid}
+          onPayMonthlyInstallments={handlePayMonthlyInstallments}
+          isPrivacyModeEnabled={isPrivacyModeEnabled} />;
       case 'CATEGORIES':
         return <CategoriesView categories={categories} transactions={transactions} aiConfig={aiConfig} onAddCategory={handleAddCategory} onUpdateCategory={handleUpdateCategory} onDeleteCategory={handleDeleteCategory} onSuggestBudget={handleSuggestCategoryBudget} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
       case 'MONEY_BOXES':
@@ -1266,16 +1331,24 @@ declare module './components/DashboardView' {
     interface DashboardViewProps { isPrivacyModeEnabled?: boolean; }
 }
 declare module './components/TransactionsView' {
-    interface TransactionsViewProps { isLoading?: boolean; isPrivacyModeEnabled?: boolean; }
+    interface TransactionsViewProps { isLoading?: boolean; isPrivacyModeEnabled?: boolean; installmentPurchases: InstallmentPurchase[];}
 }
 declare module './components/AccountsView' {
     interface AccountsViewProps { isPrivacyModeEnabled?: boolean; }
 }
 declare module './components/CreditCardsView' {
-    interface CreditCardsViewProps { isPrivacyModeEnabled?: boolean; aiConfig: AIConfig; }
+    interface CreditCardsViewProps { 
+        isPrivacyModeEnabled?: boolean; 
+        aiConfig: AIConfig; 
+        onPayMonthlyInstallments: (cardId: string) => Promise<void>; 
+    }
 }
 declare module './components/CreditCardItem' {
-    interface CreditCardItemProps { onGetBestPurchaseDay: (cardId: string) => void; isAIFeatureEnabled: boolean; }
+    interface CreditCardItemProps { 
+        onGetBestPurchaseDay: (cardId: string) => void; 
+        isAIFeatureEnabled: boolean; 
+        onPayMonthlyInstallments: (cardId: string) => Promise<void>;
+    }
 }
 declare module './components/CategoriesView' {
     interface CategoriesViewProps { isPrivacyModeEnabled?: boolean; }

@@ -2,7 +2,7 @@
 import React from 'react';
 import { useState } from 'react';
 import { CreditCard, InstallmentPurchase } from '../types';
-import { formatCurrency, getISODateString, formatDate } from '../utils/helpers';
+import { formatCurrency, getISODateString, formatDate, calculateInstallmentDueDate, getEligibleInstallmentsForBillingCycle } from '../utils/helpers';
 import Button from './Button';
 import EditIcon from './icons/EditIcon';
 import TrashIcon from './icons/TrashIcon';
@@ -21,9 +21,9 @@ interface CreditCardItemProps {
   onDeleteInstallmentPurchase: (purchaseId: string) => void;
   onMarkInstallmentPaid: (purchaseId: string) => void;
   onGetBestPurchaseDay: (cardId: string) => void;
+  onPayMonthlyInstallments: (cardId: string) => void; 
   isAIFeatureEnabled: boolean;
   isPrivacyModeEnabled?: boolean; 
-  // TODO: Add onPayMonthlyInstallments prop later
 }
 
 const CreditCardItem: React.FC<CreditCardItemProps> = ({
@@ -36,6 +36,7 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
   onDeleteInstallmentPurchase,
   onMarkInstallmentPaid,
   onGetBestPurchaseDay, 
+  onPayMonthlyInstallments,
   isAIFeatureEnabled,
   isPrivacyModeEnabled,
 }) => {
@@ -51,25 +52,9 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
   }, 0);
   const availableLimit = card.card_limit - totalOutstandingDebt;
 
-  // Placeholder for eligible installments logic
-  const getEligibleInstallmentsForPayment = () => {
-    // This logic will be fully developed later. For now, just a placeholder.
-    // It should identify which installments are due in the current/next billing cycle.
-    return cardInstallments.filter(p => p.installments_paid < p.number_of_installments); // Simple filter for now
-  };
-  const eligibleInstallments = getEligibleInstallmentsForPayment();
-
-
-  const calculateNextDueDateForInstallment = (purchase: InstallmentPurchase): string => {
-    const purchaseDateObj = new Date(purchase.purchase_date + 'T00:00:00'); 
-    let dueMonth = purchaseDateObj.getMonth() + purchase.installments_paid + 1; 
-    let dueYear = purchaseDateObj.getFullYear();
-    if (dueMonth > 11) { 
-        dueYear += Math.floor(dueMonth / 12);
-        dueMonth = dueMonth % 12;
-    }
-    return formatDate(getISODateString(new Date(dueYear, dueMonth, card.due_day)));
-  };
+  const eligibleInstallmentsForPayment = React.useMemo(() => {
+    return getEligibleInstallmentsForBillingCycle(cardInstallments, card, new Date());
+  }, [cardInstallments, card]);
 
 
   return (
@@ -124,15 +109,14 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
          </Button>
         )}
         
-        {/* Botão Pagar Parcelas da Fatura (Estrutura Inicial) */}
-        {eligibleInstallments.length > 0 && (
+        {eligibleInstallmentsForPayment.length > 0 && (
           <Button
             variant="primary"
             size="sm"
-            onClick={() => alert(`Funcionalidade "Pagar Parcelas da Fatura" para ${eligibleInstallments.length} item(ns) a ser implementada.`)} // Placeholder action
+            onClick={() => onPayMonthlyInstallments(card.id)}
             className="w-full !text-xs"
           >
-            Pagar Parcelas da Fatura ({eligibleInstallments.length})
+            Pagar Parcelas da Fatura ({eligibleInstallmentsForPayment.length})
           </Button>
         )}
       </div>
@@ -152,9 +136,9 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
             {cardInstallments.map(p => {
               const amountPerInstallment = p.total_amount / p.number_of_installments;
               const isFullyPaid = p.installments_paid >= p.number_of_installments;
-              // Placeholder: Assume a parcel is "paid this cycle" if installments_paid was incremented recently.
-              // This needs better logic related to actual payment cycle.
-              const isPaidThisCycle = false; 
+              const nextInstallmentNumber = p.installments_paid + 1;
+              const nextInstallmentDueDate = !isFullyPaid ? calculateInstallmentDueDate(p.purchase_date, nextInstallmentNumber, card.due_day) : null;
+              const isEligibleForCurrentPayment = eligibleInstallmentsForPayment.some(eligibleP => eligibleP.id === p.id);
 
               return (
                 <li key={p.id} className={`p-3 rounded-md ${isFullyPaid ? 'bg-green-500/10 dark:bg-green-500/20 opacity-70' : 'bg-surface dark:bg-surfaceDark shadow-sm border border-borderBase dark:border-borderBaseDark'}`}>
@@ -178,9 +162,9 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
                     <p className="text-xs text-textMuted dark:text-textMutedDark">
                       Total: {formatCurrency(p.total_amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)} | Compra: {formatDate(p.purchase_date)}
                     </p>
-                    {!isFullyPaid && (
-                      <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                        Próx. Venc. Parcela: ~{calculateNextDueDateForInstallment(p)}
+                    {nextInstallmentDueDate && !isFullyPaid && (
+                      <p className={`text-xs font-medium ${isEligibleForCurrentPayment ? 'text-red-600 dark:text-red-400' : 'text-textMuted dark:text-textMutedDark'}`}>
+                        Próx. Venc. Parcela: {formatDate(getISODateString(nextInstallmentDueDate))}
                       </p>
                     )}
                   </div>
@@ -188,13 +172,12 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
                   {!isFullyPaid && (
                      <Button 
                         size="sm" 
-                        variant="primary" 
+                        variant={isEligibleForCurrentPayment ? "primary" : "ghost"}
                         onClick={() => onMarkInstallmentPaid(p.id)} 
-                        className="text-xs py-1 px-2 mt-2.5 w-full sm:w-auto"
-                        disabled={isPaidThisCycle} // Placeholder
+                        className={`text-xs py-1 px-2 mt-2.5 w-full sm:w-auto ${isEligibleForCurrentPayment ? '' : 'border border-borderBase dark:border-borderBaseDark'}`}
                       >
-                        {isPaidThisCycle ? <CheckCircleIcon className="w-4 h-4 mr-1"/> : null}
-                        {isPaidThisCycle ? 'Parcela Paga (Ciclo Atual)' : 'Pagar Parcela Atual'}
+                        {isEligibleForCurrentPayment ? <CheckCircleIcon className="w-4 h-4 mr-1"/> : null}
+                        Pagar Parcela ({nextInstallmentNumber})
                     </Button>
                   )}
                    {isFullyPaid && (

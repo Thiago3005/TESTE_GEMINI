@@ -1,23 +1,25 @@
 
 import React from 'react';
-import { Transaction, TransactionType, Account, Category, Tag } from '../types'; 
+import { Transaction, TransactionType, Account, Category, Tag, InstallmentPurchase } from '../types'; 
 import { formatDate, formatCurrency } from '../utils/helpers';
 import TrashIcon from './icons/TrashIcon';
 import EditIcon from './icons/EditIcon';
 import Button from './Button';
+import CreditCardIcon from './icons/CreditCardIcon'; // For linked card debit indicator
 
 interface TransactionItemProps {
   transaction: Transaction;
   accounts: Account[];
   categories: Category[];
   tags: Tag[]; 
+  installmentPurchases: InstallmentPurchase[]; // Added for traceability
   onEdit: (transaction: Transaction) => void;
   onDelete: (transactionId: string) => void;
   isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ 
-  transaction, accounts, categories, tags, onEdit, onDelete, isPrivacyModeEnabled 
+  transaction, accounts, categories, tags, installmentPurchases, onEdit, onDelete, isPrivacyModeEnabled 
 }) => {
   const { type, amount, category_id, description, date, account_id, to_account_id, tag_ids } = transaction;
 
@@ -56,6 +58,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     } catch (e) { return 'text-white'; } 
   };
 
+  const isDirectCardDebit = installmentPurchases.some(
+    ip => ip.linked_transaction_id === transaction.id && ip.number_of_installments === 1
+  );
+
 
   return (
     <li className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow hover:shadow-md dark:shadow-neutralDark/30 dark:hover:shadow-neutralDark/50 transition-shadow duration-150 flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
@@ -63,6 +69,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         <div className="flex items-center space-x-3">
            <span className={`font-semibold text-lg ${amountColor}`}>{sign}{formatCurrency(amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
            <h3 className="text-md font-medium text-textBase dark:text-textBaseDark">{title}</h3>
+           {isDirectCardDebit && (
+            <span title="Débito em fatura de cartão" className="ml-1 text-xs bg-blue-100 text-blue-700 dark:bg-blue-700/30 dark:text-blue-300 px-1.5 py-0.5 rounded-full inline-flex items-center">
+                <CreditCardIcon className="w-3 h-3 mr-1" /> Cartão
+            </span>
+           )}
         </div>
         <p className="text-sm text-textMuted dark:text-textMutedDark">
           {formatDate(date)} <span className="mx-1">&bull;</span> {subTitleParts.join(' ')}

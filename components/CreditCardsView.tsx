@@ -16,7 +16,7 @@ import { getISODateString } from '../utils/helpers';
 interface CreditCardsViewProps {
   creditCards: CreditCard[];
   installmentPurchases: InstallmentPurchase[];
-  aiConfig: AIConfig; // Added aiConfig
+  aiConfig: AIConfig; 
   onAddCreditCard: (card: Omit<CreditCard, 'user_id' | 'created_at' | 'updated_at'>) => void;
   onUpdateCreditCard: (card: CreditCard) => void;
   onDeleteCreditCard: (cardId: string) => void;
@@ -24,13 +24,14 @@ interface CreditCardsViewProps {
   onUpdateInstallmentPurchase: (purchase: InstallmentPurchase) => void;
   onDeleteInstallmentPurchase: (purchaseId: string) => void;
   onMarkInstallmentPaid: (purchaseId: string) => void;
+  onPayMonthlyInstallments: (cardId: string) => Promise<void>;
   isPrivacyModeEnabled?: boolean; 
 }
 
 const CreditCardsView: React.FC<CreditCardsViewProps> = ({
   creditCards,
   installmentPurchases,
-  aiConfig, // Use aiConfig
+  aiConfig, 
   onAddCreditCard,
   onUpdateCreditCard,
   onDeleteCreditCard,
@@ -38,6 +39,7 @@ const CreditCardsView: React.FC<CreditCardsViewProps> = ({
   onUpdateInstallmentPurchase,
   onDeleteInstallmentPurchase,
   onMarkInstallmentPaid,
+  onPayMonthlyInstallments,
   isPrivacyModeEnabled,
 }) => {
   const { addToast } = useToasts();
@@ -144,6 +146,7 @@ const CreditCardsView: React.FC<CreditCardsViewProps> = ({
               onDeleteInstallmentPurchase={onDeleteInstallmentPurchase}
               onMarkInstallmentPaid={onMarkInstallmentPaid}
               onGetBestPurchaseDay={handleGetBestPurchaseDay} 
+              onPayMonthlyInstallments={onPayMonthlyInstallments}
               isAIFeatureEnabled={aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available'}
               isPrivacyModeEnabled={isPrivacyModeEnabled}
             />
