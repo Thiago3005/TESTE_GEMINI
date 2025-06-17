@@ -19,6 +19,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce',
     redirectTo: isDevelopment 
       ? window.location.origin 
-      : 'https://thiago3005.github.io/controle-financeiro/'
+      : 'https://thiago3005.github.io/'
   }
 });

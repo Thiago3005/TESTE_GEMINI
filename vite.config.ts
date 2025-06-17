@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       plugins: [react()],
-      base: '/controle-financeiro/',
+      base: '/TESTE_GEMINI/',
       build: {
         outDir: 'dist',
         assetsDir: 'assets',
