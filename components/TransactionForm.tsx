@@ -1,46 +1,47 @@
+
 import React from 'react'; 
 import { useState, useEffect, ChangeEvent }from 'react'; 
 import { Transaction, TransactionType, Account, Category, Tag } from '../types'; // Added Tag
 import { TRANSACTION_TYPE_OPTIONS } from '../constants';
-import { generateId, getISODateString } from '../utils/helpers';
+import { generateId, getISODateString, formatCurrency } from '../utils/helpers';
 import Input from './Input';
 import Select from './Select';
 import Button from './Button';
 
 interface TransactionFormProps {
-  onSubmit: (transaction: Transaction) => void;
+  onSubmit: (transaction: Transaction | Omit<Transaction, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => void;
   onCancel: () => void;
   accounts: Account[];
   categories: Category[];
-  tags: Tag[]; // New: All available tags
+  tags: Tag[]; 
   initialTransaction?: Transaction | null;
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const TransactionForm: React.FC<TransactionFormProps> = ({ 
-  onSubmit, onCancel, accounts, categories, tags, initialTransaction 
+  onSubmit, onCancel, accounts, categories, tags, initialTransaction, isPrivacyModeEnabled 
 }) => {
   const [type, setType] = useState<TransactionType>(initialTransaction?.type || TransactionType.EXPENSE);
   const [amount, setAmount] = useState<string>(initialTransaction?.amount.toString() || '');
-  const [categoryId, setCategoryId] = useState<string>(initialTransaction?.categoryId || '');
+  const [categoryId, setCategoryId] = useState<string>(initialTransaction?.category_id || '');
   const [description, setDescription] = useState<string>(initialTransaction?.description || '');
   const [date, setDate] = useState<string>(initialTransaction?.date || getISODateString());
-  const [accountId, setAccountId] = useState<string>(initialTransaction?.accountId || (accounts.length > 0 ? accounts[0].id : ''));
-  const [toAccountId, setToAccountId] = useState<string>(initialTransaction?.toAccountId || (accounts.length > 1 ? accounts[1].id : ''));
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialTransaction?.tagIds || []); // New: State for selected tags
+  const [accountId, setAccountId] = useState<string>(initialTransaction?.account_id || (accounts.length > 0 ? accounts[0].id : ''));
+  const [toAccountId, setToAccountId] = useState<string>(initialTransaction?.to_account_id || (accounts.length > 1 ? accounts[1].id : ''));
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialTransaction?.tag_ids || []);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (initialTransaction) {
       setType(initialTransaction.type);
       setAmount(initialTransaction.amount.toString());
-      setCategoryId(initialTransaction.categoryId || '');
+      setCategoryId(initialTransaction.category_id || '');
       setDescription(initialTransaction.description || '');
       setDate(initialTransaction.date);
-      setAccountId(initialTransaction.accountId);
-      setToAccountId(initialTransaction.toAccountId || '');
-      setSelectedTagIds(initialTransaction.tagIds || []); // New
+      setAccountId(initialTransaction.account_id);
+      setToAccountId(initialTransaction.to_account_id || '');
+      setSelectedTagIds(initialTransaction.tag_ids || []);
     } else {
-      // Reset form for new transaction
       setType(TransactionType.EXPENSE);
       setAmount('');
       setCategoryId(categories.filter(c => c.type === TransactionType.EXPENSE)[0]?.id || '');
@@ -48,7 +49,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setDate(getISODateString());
       setAccountId(accounts[0]?.id || '');
       setToAccountId(accounts[1]?.id || accounts[0]?.id || '');
-      setSelectedTagIds([]); // New
+      setSelectedTagIds([]);
     }
   }, [initialTransaction, accounts, categories]);
   
@@ -79,18 +80,20 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     e.preventDefault();
     if (!validate()) return;
 
-    const transactionData: Transaction = {
-      id: initialTransaction?.id || generateId(),
+    const transactionData = {
+      ...(initialTransaction ? { id: initialTransaction.id } : {}), 
       type,
       amount: parseFloat(amount),
-      categoryId: type === TransactionType.TRANSFER ? undefined : categoryId,
+      category_id: type === TransactionType.TRANSFER ? undefined : categoryId,
       description,
       date,
-      accountId,
-      toAccountId: type === TransactionType.TRANSFER ? toAccountId : undefined,
-      tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined, // New
+      account_id: accountId,
+      to_account_id: type === TransactionType.TRANSFER ? toAccountId : undefined,
+      tag_ids: selectedTagIds.length > 0 ? selectedTagIds : undefined,
     };
-    onSubmit(transactionData);
+    // Casting to any to satisfy the complex conditional type for onSubmit
+    // Supabase will handle user_id, created_at, updated_at
+    onSubmit(transactionData as any); 
   };
 
   const handleTagChange = (e: ChangeEvent<HTMLSelectElement>) => {
@@ -124,6 +127,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
         error={errors.amount}
+        placeholder={isPrivacyModeEnabled ? formatCurrency(0, 'BRL', 'pt-BR', true).replace('0,00', 'Ex: 123.45') : "Ex: 123.45"}
         required
       />
       {type !== TransactionType.TRANSFER && (
@@ -176,17 +180,16 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           disabled={accounts.length === 0}
         />
       )}
-      {/* New: Tag Selection */}
       {tags.length > 0 && (
         <Select
             label="Tags (Opcional, segure Ctrl/Cmd para selecionar várias)"
             id="tags"
-            multiple // Allows multiple selections
+            multiple 
             options={tagOptions}
-            value={selectedTagIds} // Bind to state
-            onChange={handleTagChange} // Custom handler for multi-select
-            containerClassName="h-auto" // Adjust height if needed for multi-select
-            className="h-24" // Example height for multi-select, adjust as needed
+            value={selectedTagIds}
+            onChange={handleTagChange} 
+            containerClassName="h-auto"
+            className="h-24" 
         />
       )}
 

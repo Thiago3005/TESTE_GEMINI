@@ -12,7 +12,7 @@ import { generateId, getISODateString } from '../utils/helpers';
 interface LoanRepaymentFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (repayment: Omit<LoanRepayment, 'id' | 'loanId' | 'linkedIncomeTransactionId'>, loanId: string) => void;
+  onSave: (repayment: Omit<LoanRepayment, 'id' | 'loan_id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_income_transaction_id'>, loanId: string) => void;
   loan: Loan;
   accounts: Account[];
 }
@@ -60,18 +60,18 @@ const LoanRepaymentFormModal: React.FC<LoanRepaymentFormModalProps> = ({
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const repaymentData: Omit<LoanRepayment, 'id' | 'loanId' | 'linkedIncomeTransactionId'> = {
-      repaymentDate,
-      amountPaid: parseFloat(amountPaid),
+    const repaymentData: Omit<LoanRepayment, 'id' | 'loan_id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_income_transaction_id'> = {
+      repayment_date: repaymentDate,
+      amount_paid: parseFloat(amountPaid),
       notes: notes.trim() || undefined,
-      creditedAccountId,
+      credited_account_id: creditedAccountId,
     };
     onSave(repaymentData, loan.id);
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Registrar Pagamento: ${loan.personName}`}>
+    <Modal isOpen={isOpen} onClose={onClose} title={`Registrar Pagamento: ${loan.person_name}`}>
       <div className="space-y-4">
         <Input
           label="Valor Recebido (R$)"

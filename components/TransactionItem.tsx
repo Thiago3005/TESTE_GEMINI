@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { Transaction, TransactionType, Account, Category, Tag } from '../types'; // Added Tag
+import { Transaction, TransactionType, Account, Category, Tag } from '../types'; 
 import { formatDate, formatCurrency } from '../utils/helpers';
 import TrashIcon from './icons/TrashIcon';
 import EditIcon from './icons/EditIcon';
@@ -9,18 +10,21 @@ interface TransactionItemProps {
   transaction: Transaction;
   accounts: Account[];
   categories: Category[];
-  tags: Tag[]; // New: All available tags
+  tags: Tag[]; 
   onEdit: (transaction: Transaction) => void;
   onDelete: (transactionId: string) => void;
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
-const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, accounts, categories, tags, onEdit, onDelete }) => {
-  const { type, amount, categoryId, description, date, accountId, toAccountId, tagIds } = transaction;
+const TransactionItem: React.FC<TransactionItemProps> = ({ 
+  transaction, accounts, categories, tags, onEdit, onDelete, isPrivacyModeEnabled 
+}) => {
+  const { type, amount, category_id, description, date, account_id, to_account_id, tag_ids } = transaction;
 
-  const account = accounts.find(a => a.id === accountId);
-  const toAccount = toAccountId ? accounts.find(a => a.id === toAccountId) : null;
-  const category = categoryId ? categories.find(c => c.id === categoryId) : null;
-  const transactionTags = tagIds ? tags.filter(t => tagIds.includes(t.id)) : [];
+  const account = accounts.find(a => a.id === account_id);
+  const toAccount = to_account_id ? accounts.find(a => a.id === to_account_id) : null;
+  const category = category_id ? categories.find(c => c.id === category_id) : null;
+  const transactionTags = tag_ids ? tags.filter(t => tag_ids.includes(t.id)) : [];
 
   let amountColor = 'text-textBase dark:text-textBaseDark';
   let sign = '';
@@ -41,16 +45,15 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, accounts
      subTitleParts.push(category.name);
   }
 
-  // Helper function to get contrast text color (copied from TagItem for consistency)
   const getContrastTextColor = (hexColor?: string): string => {
-    if (!hexColor) return 'text-textBase dark:text-textBaseDark'; // Default case, should not happen if color is set
+    if (!hexColor) return 'text-textBase dark:text-textBaseDark'; 
     try {
         const r = parseInt(hexColor.slice(1, 3), 16);
         const g = parseInt(hexColor.slice(3, 5), 16);
         const b = parseInt(hexColor.slice(5, 7), 16);
         const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
         return luminance > 0.5 ? 'text-neutral-800' : 'text-white';
-    } catch (e) { return 'text-white'; } // fallback
+    } catch (e) { return 'text-white'; } 
   };
 
 
@@ -58,7 +61,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, accounts
     <li className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow hover:shadow-md dark:shadow-neutralDark/30 dark:hover:shadow-neutralDark/50 transition-shadow duration-150 flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
       <div className="flex-grow">
         <div className="flex items-center space-x-3">
-           <span className={`font-semibold text-lg ${amountColor}`}>{sign}{formatCurrency(amount)}</span>
+           <span className={`font-semibold text-lg ${amountColor}`}>{sign}{formatCurrency(amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
            <h3 className="text-md font-medium text-textBase dark:text-textBaseDark">{title}</h3>
         </div>
         <p className="text-sm text-textMuted dark:text-textMutedDark">
@@ -66,7 +69,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, accounts
         </p>
         {description && category && type !== TransactionType.TRANSFER && <p className="text-xs text-neutral/70 dark:text-neutralDark/70 italic mt-1">{description}</p>}
         
-        {/* Display Tags */}
         {transactionTags.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {transactionTags.map(tag => (

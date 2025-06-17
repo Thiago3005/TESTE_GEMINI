@@ -1,7 +1,8 @@
+
 import React from 'react'; 
 import { useState }from 'react'; 
 import { Account, Transaction } from '../types';
-import { generateId } from '../utils/helpers';
+import { generateId, formatCurrency } from '../utils/helpers';
 import AccountItem from './AccountItem';
 import Modal from './Modal';
 import Input from './Input';
@@ -11,10 +12,11 @@ import PlusIcon from './icons/PlusIcon';
 interface AccountsViewProps {
   accounts: Account[];
   transactions: Transaction[];
-  onAddAccount: (account: Account) => void;
+  onAddAccount: (account: Omit<Account, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => void;
   onUpdateAccount: (account: Account) => void;
   onDeleteAccount: (accountId: string) => void;
   calculateAccountBalance: (accountId: string) => number;
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const AccountsView: React.FC<AccountsViewProps> = ({
@@ -24,6 +26,7 @@ const AccountsView: React.FC<AccountsViewProps> = ({
   onUpdateAccount,
   onDeleteAccount,
   calculateAccountBalance,
+  isPrivacyModeEnabled,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -42,7 +45,7 @@ const AccountsView: React.FC<AccountsViewProps> = ({
   const openModalForEdit = (account: Account) => {
     setEditingAccount(account);
     setAccountName(account.name);
-    setInitialBalance(account.initialBalance.toString());
+    setInitialBalance(account.initial_balance.toString());
     setFormError('');
     setIsModalOpen(true);
   };
@@ -66,15 +69,16 @@ const AccountsView: React.FC<AccountsViewProps> = ({
     setFormError('');
 
     if (editingAccount) {
-      onUpdateAccount({ ...editingAccount, name: accountName, initialBalance: balanceValue });
+      onUpdateAccount({ ...editingAccount, name: accountName, initial_balance: balanceValue });
     } else {
-      onAddAccount({ id: generateId(), name: accountName, initialBalance: balanceValue });
+      // Supabase handles id, user_id, created_at, updated_at
+      onAddAccount({ name: accountName, initial_balance: balanceValue } as Omit<Account, 'id' | 'user_id' | 'created_at' | 'updated_at'>);
     }
     closeModal();
   };
   
   const getTransactionCountForAccount = (accountId: string): number => {
-    return transactions.filter(t => t.accountId === accountId || t.toAccountId === accountId).length;
+    return transactions.filter(t => t.account_id === accountId || t.to_account_id === accountId).length;
   };
 
 
@@ -98,6 +102,7 @@ const AccountsView: React.FC<AccountsViewProps> = ({
               onEdit={openModalForEdit}
               onDelete={onDeleteAccount}
               transactionCount={getTransactionCountForAccount(account.id)}
+              isPrivacyModeEnabled={isPrivacyModeEnabled}
             />
           ))}
         </ul>
@@ -123,6 +128,7 @@ const AccountsView: React.FC<AccountsViewProps> = ({
             step="0.01"
             value={initialBalance}
             onChange={(e) => setInitialBalance(e.target.value)}
+            placeholder={isPrivacyModeEnabled ? formatCurrency(0, 'BRL', 'pt-BR', true).replace('0,00', 'Ex: 1000.00') : "Ex: 1000.00"}
             required
           />
           {formError && <p className="text-sm text-destructive dark:text-destructiveDark/90">{formError}</p>}

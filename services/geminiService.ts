@@ -1,21 +1,22 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus } from '../types';
-import { generateId, getISODateString, formatCurrency } from '../utils/helpers';
+
+import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
+import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency } from '../types';
+import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
 // --- API Key Configuration ---
-const GEMINI_API_KEY_FROM_ENV = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY;
 
-let ai: GoogleGenerativeAI | null = null;
+let ai: GoogleGenAI | null = null;
 
 if (GEMINI_API_KEY_FROM_ENV) {
   try {
-    ai = new GoogleGenerativeAI(GEMINI_API_KEY_FROM_ENV);
+    ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY_FROM_ENV }); 
   } catch (error) {
-    console.error("Failed to initialize GoogleGenerativeAI:", error);
-    ai = null;
+    console.error("Failed to initialize GoogleGenAI:", error);
+    ai = null; 
   }
 } else {
-  console.warn("Gemini API Key (VITE_GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
+  console.warn("Gemini API Key (process.env.GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
 }
 
 export const isGeminiApiKeyAvailable = (): boolean => {
@@ -28,14 +29,14 @@ export interface FinancialContext {
   currentDate: string;
   accounts: Pick<Account, 'name' | 'id'>[];
   accountBalances: { accountId: string, balance: number }[];
-  categories: Pick<Category, 'id' | 'name' | 'type' | 'monthlyBudget'>[];
+  categories: Pick<Category, 'id' | 'name' | 'type' | 'monthly_budget'>[];
   recentTransactions?: Transaction[]; 
-  moneyBoxes?: Pick<MoneyBox, 'id' | 'name' | 'goalAmount'>[];
+  moneyBoxes?: Pick<MoneyBox, 'id' | 'name' | 'goal_amount'>[];
   moneyBoxBalances?: { moneyBoxId: string, balance: number }[];
-  loans?: Pick<Loan, 'id' | 'personName' | 'totalAmountToReimburse'>[]; 
+  loans?: Pick<Loan, 'id' | 'person_name' | 'total_amount_to_reimburse'>[]; 
   outstandingLoanBalances?: { loanId: string, outstanding: number }[];
-  recurringTransactions?: Pick<RecurringTransaction, 'id' | 'description' | 'amount' | 'type' | 'nextDueDate'>[];
-  futurePurchases?: Pick<FuturePurchase, 'id' | 'name' | 'estimatedCost' | 'priority' | 'status'>[]; // Added
+  recurringTransactions?: Pick<RecurringTransaction, 'id' | 'description' | 'amount' | 'type' | 'next_due_date'>[];
+  futurePurchases?: Pick<FuturePurchase, 'id' | 'name' | 'estimated_cost' | 'priority' | 'status'>[];
   theme?: 'light' | 'dark';
   monthlyIncome?: number | null; 
 }
@@ -56,14 +57,14 @@ ${context.accounts.map(acc => {
 Caixinhas de Dinheiro (Metas):
 ${context.moneyBoxes && context.moneyBoxes.length > 0 ? context.moneyBoxes.map(mb => {
   const balanceInfo = context.moneyBoxBalances?.find(b => b.moneyBoxId === mb.id);
-  return `- ${mb.name}: ${balanceInfo ? formatCurrency(balanceInfo.balance) : formatCurrency(0)} ${mb.goalAmount ? `(Meta: ${formatCurrency(mb.goalAmount)})` : ''}`;
+  return `- ${mb.name}: ${balanceInfo ? formatCurrency(balanceInfo.balance) : formatCurrency(0)} ${mb.goal_amount ? `(Meta: ${formatCurrency(mb.goal_amount)})` : ''}`;
 }).join('\n') : 'Nenhuma caixinha configurada.'}
 
 Orçamentos (Despesas):
-${context.categories.filter(c => c.type === 'EXPENSE' && c.monthlyBudget).map(c => `- ${c.name}: Orçamento ${formatCurrency(c.monthlyBudget || 0)}`).join('\n') || 'Nenhum orçamento de despesa configurado.'}
+${context.categories.filter(c => c.type === 'EXPENSE' && c.monthly_budget).map(c => `- ${c.name}: Orçamento ${formatCurrency(c.monthly_budget || 0)}`).join('\n') || 'Nenhum orçamento de despesa configurado.'}
 
 Compras Futuras Planejadas:
-${context.futurePurchases && context.futurePurchases.length > 0 ? context.futurePurchases.map(fp => `- ${fp.name} (Custo: ${formatCurrency(fp.estimatedCost)}, Prioridade: ${fp.priority}, Status: ${fp.status})`).join('\n') : 'Nenhuma compra futura planejada.'}
+${context.futurePurchases && context.futurePurchases.length > 0 ? context.futurePurchases.map(fp => `- ${fp.name} (Custo: ${formatCurrency(fp.estimated_cost)}, Prioridade: ${fp.priority}, Status: ${fp.status})`).join('\n') : 'Nenhuma compra futura planejada.'}
 
 
 Com base neste resumo, forneça uma dica financeira principal, observação ou sugestão para o usuário hoje.
@@ -74,7 +75,7 @@ Dica:`;
 };
 
 const constructPromptForTransactionComment = (transaction: Transaction, context: FinancialContext, categoryName?: string, accountName?: string): string => {
-  const accBalanceInfo = context.accountBalances.find(b => b.accountId === transaction.accountId);
+  const accBalanceInfo = context.accountBalances.find(b => b.accountId === transaction.account_id);
   const accountBalance = accBalanceInfo ? formatCurrency(accBalanceInfo.balance) : 'N/A';
 
   let prompt = `Você é um assistente financeiro. O usuário acabou de registrar uma ${transaction.type === 'INCOME' ? 'receita' : transaction.type === 'EXPENSE' ? 'despesa' : 'transferência'}.
@@ -85,8 +86,8 @@ Saldo atual da conta "${accountName || 'N/A'}": ${accountBalance}.
 
   if (transaction.type === 'EXPENSE' && categoryName) {
     const cat = context.categories.find(c => c.name === categoryName && c.type === 'EXPENSE');
-    if (cat?.monthlyBudget) {
-      prompt += `Orçamento para "${categoryName}": ${formatCurrency(cat.monthlyBudget)}. `;
+    if (cat?.monthly_budget) {
+      prompt += `Orçamento para "${categoryName}": ${formatCurrency(cat.monthly_budget)}. `;
     }
   }
   
@@ -97,7 +98,7 @@ Saldo atual da conta "${accountName || 'N/A'}": ${accountBalance}.
 
   if (relevantMoneyBox) {
     const mbBalanceInfo = context.moneyBoxBalances?.find(b => b.moneyBoxId === relevantMoneyBox.id);
-    prompt += `Lembre-se da sua caixinha "${relevantMoneyBox.name}" (Saldo: ${mbBalanceInfo ? formatCurrency(mbBalanceInfo.balance) : formatCurrency(0)}${relevantMoneyBox.goalAmount ? `, Meta: ${formatCurrency(relevantMoneyBox.goalAmount)}` : ''}). `;
+    prompt += `Lembre-se da sua caixinha "${relevantMoneyBox.name}" (Saldo: ${mbBalanceInfo ? formatCurrency(mbBalanceInfo.balance) : formatCurrency(0)}${relevantMoneyBox.goal_amount ? `, Meta: ${formatCurrency(relevantMoneyBox.goal_amount)}` : ''}). `;
   }
 
   prompt += `Forneça um breve comentário ou sugestão (máx 1 frase). Não use markdown. Não faça perguntas.
@@ -133,17 +134,17 @@ const constructPromptForFuturePurchaseAnalysis = (purchase: FuturePurchase, cont
   const totalBalance = context.accountBalances.reduce((sum, acc) => sum + acc.balance, 0);
   const totalSavings = context.moneyBoxBalances?.reduce((sum, mb) => sum + mb.balance, 0) || 0;
   
-  let prompt = `Você é um assistente financeiro. O usuário deseja comprar "${purchase.name}", que custa aproximadamente ${formatCurrency(purchase.estimatedCost)}. A prioridade é ${purchase.priority}.
+  let prompt = `Você é um assistente financeiro. O usuário deseja comprar "${purchase.name}", que custa aproximadamente ${formatCurrency(purchase.estimated_cost)}. A prioridade é ${purchase.priority}.
 Data Atual: ${context.currentDate}.
 Renda Mensal: ${context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada'}.
 Saldo Total em Contas: ${formatCurrency(totalBalance)}.
 Total Guardado em Caixinhas/Metas: ${formatCurrency(totalSavings)}.
 
 Orçamentos de Despesa Mensais:
-${context.categories.filter(c => c.type === TransactionType.EXPENSE && c.monthlyBudget).map(c => `- ${c.name}: ${formatCurrency(c.monthlyBudget || 0)}`).join('\n') || 'Nenhum.'}
+${context.categories.filter(c => c.type === TransactionType.EXPENSE && c.monthly_budget).map(c => `- ${c.name}: ${formatCurrency(c.monthly_budget || 0)}`).join('\n') || 'Nenhum.'}
 
 Outras Compras Futuras Planejadas:
-${context.futurePurchases?.filter(fp => fp.id !== purchase.id).map(fp => `- ${fp.name} (Custo: ${formatCurrency(fp.estimatedCost)}, Prioridade: ${fp.priority})`).join('\n') || 'Nenhuma outra.'}
+${context.futurePurchases?.filter(fp => fp.id !== purchase.id).map(fp => `- ${fp.name} (Custo: ${formatCurrency(fp.estimated_cost)}, Prioridade: ${fp.priority})`).join('\n') || 'Nenhuma outra.'}
 
 Analise a viabilidade desta compra ("${purchase.name}").
 Considere se o usuário tem fundos suficientes, se a compra impactaria significativamente seus orçamentos ou outras metas.
@@ -157,26 +158,64 @@ Análise:`;
   return prompt;
 };
 
+const constructPromptForBestPurchaseDay = (card: Pick<CreditCard, 'name' | 'closing_day' | 'due_day'>, currentDateISO: string): string => {
+  return `Você é um especialista em finanças e cartões de crédito.
+O usuário quer saber o melhor dia para fazer uma compra com o cartão de crédito para maximizar o período sem juros e ter o maior prazo para pagar.
+
+Dados do Cartão de Crédito:
+- Dia de Fechamento da Fatura: ${card.closing_day} (Ex: 20, significa dia 20 de cada mês)
+- Dia de Vencimento da Fatura: ${card.due_day} (Ex: 05, significa dia 05 de cada mês, geralmente no mês seguinte ao fechamento)
+
+Data Atual: ${currentDateISO} (Formato: YYYY-MM-DD)
+
+Instruções:
+1.  Identifique o próximo ciclo de fatura. O melhor dia para comprar é geralmente o dia imediatamente após o fechamento da fatura atual (se a data atual for ANTES ou NO DIA do fechamento do mês corrente) ou o dia após o fechamento da fatura do próximo mês (se a data atual for APÓS o fechamento do mês corrente).
+2.  Determine a data exata (DD de MMMM de YYYY) para este "melhor dia para comprar".
+3.  Determine a data exata (DD de MMMM de YYYY) em que o pagamento da fatura (contendo essa compra) seria devido.
+4.  Forneça uma explicação clara e concisa (1-2 frases) do porquê esta data é vantajosa, mencionando o prazo estendido.
+
+Responda APENAS com um objeto JSON com as seguintes chaves:
+- "bestPurchaseDay": "string" (Data formatada como "DD de MMMM de YYYY", ex: "21 de Julho de 2024")
+- "paymentDueDate": "string" (Data formatada como "DD de MMMM de YYYY", ex: "05 de Setembro de 2024")
+- "explanation": "string" (Explicação concisa)
+- "error": "string" (Opcional: preencha apenas se não puder calcular ou se os dados forem inválidos/inconsistentes)
+
+Exemplo de Cálculo (Data Atual: 2024-07-18, Fechamento: dia 20, Vencimento: dia 05):
+- A fatura atual fecha em 20 de Julho de 2024.
+- O melhor dia para comprar é 21 de Julho de 2024.
+- Essa compra entraria na fatura que fecha em 20 de Agosto de 2024.
+- O pagamento dessa fatura seria em 05 de Setembro de 2024.
+
+Exemplo de Cálculo (Data Atual: 2024-07-25, Fechamento: dia 20, Vencimento: dia 05):
+- A fatura de Julho já fechou (em 20 de Julho).
+- O próximo fechamento é 20 de Agosto.
+- O melhor dia para comprar é 21 de Agosto de 2024.
+- Essa compra entraria na fatura que fecha em 20 de Setembro de 2024.
+- O pagamento dessa fatura seria em 05 de Outubro de 2024.`;
+};
+
 
 // --- API Call Functions ---
 
-export const fetchGeneralAdvice = async (context: FinancialContext): Promise<AIInsight | null> => {
+export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
   if (!ai || !isGeminiApiKeyAvailable()) {
     console.warn("Gemini API not available for fetchGeneralAdvice.");
     return {
         id: generateId(),
         timestamp: new Date().toISOString(),
         type: 'error_message',
-        content: "AI Coach desativado ou API Key (VITE_GEMINI_API_KEY) não configurada.",
-        isRead: false,
+        content: "AI Coach desativado ou API Key (GEMINI_API_KEY) não configurada.",
+        is_read: false,
       };
   }
   const prompt = constructPromptForGeneralAdvice(context);
   try {
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-04-17",
+        contents: prompt,
+    });
+    
+    const text = response.text?.trim(); 
 
     if (text) {
       return {
@@ -184,7 +223,7 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<AII
         timestamp: new Date().toISOString(), 
         type: 'general_advice',
         content: text,
-        isRead: false,
+        is_read: false,
       };
     }
     return { 
@@ -192,7 +231,7 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<AII
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: "Não foi possível obter um conselho geral no momento (resposta vazia).",
-        isRead: false,
+        is_read: false,
       };
   } catch (error) {
     console.error("Error fetching general advice from Gemini:", error);
@@ -205,29 +244,31 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<AII
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: errorMessage,
-        isRead: false,
+        is_read: false,
       };
   }
 };
 
-export const fetchCommentForTransaction = async (transaction: Transaction, context: FinancialContext, categoryName?: string, accountName?: string): Promise<AIInsight | null> => {
+export const fetchCommentForTransaction = async (transaction: Transaction, context: FinancialContext, categoryName?: string, accountName?: string): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
   if (!ai || !isGeminiApiKeyAvailable()) {
     console.warn("Gemini API not available for fetchCommentForTransaction.");
      return { 
         id: generateId(),
         timestamp: new Date().toISOString(),
         type: 'error_message',
-        content: "AI Coach desativado ou API Key (VITE_GEMINI_API_KEY) não configurada para comentar transação.",
-        relatedTransactionId: transaction.id,
-        isRead: false,
+        content: "AI Coach desativado ou API Key (GEMINI_API_KEY) não configurada para comentar transação.",
+        related_transaction_id: transaction.id,
+        is_read: false,
       };
   }
   const prompt = constructPromptForTransactionComment(transaction, context, categoryName, accountName);
   try {
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-04-17",
+        contents: prompt,
+    });
+    
+    const text = response.text?.trim();
     
     if (text) {
       return {
@@ -235,8 +276,8 @@ export const fetchCommentForTransaction = async (transaction: Transaction, conte
         timestamp: new Date().toISOString(), 
         type: 'transaction_comment',
         content: text,
-        relatedTransactionId: transaction.id,
-        isRead: false,
+        related_transaction_id: transaction.id,
+        is_read: false,
       };
     }
     return { 
@@ -244,8 +285,8 @@ export const fetchCommentForTransaction = async (transaction: Transaction, conte
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: "Não foi possível gerar um comentário para esta transação (resposta vazia).",
-        relatedTransactionId: transaction.id,
-        isRead: false,
+        related_transaction_id: transaction.id,
+        is_read: false,
       };
   } catch (error) {
     console.error("Error fetching transaction comment from Gemini:", error);
@@ -258,8 +299,8 @@ export const fetchCommentForTransaction = async (transaction: Transaction, conte
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: errorMessage,
-        relatedTransactionId: transaction.id,
-        isRead: false,
+        related_transaction_id: transaction.id,
+        is_read: false,
       };
   }
 };
@@ -270,15 +311,15 @@ export const fetchBudgetSuggestion = async (
     monthlyIncome: number,
     existingBudgets: {name: string, budget?: number}[],
     context: FinancialContext
-): Promise<{ suggestedBudget: number } | AIInsight | null> => {
+): Promise<{ suggestedBudget: number } | Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
     if (!ai || !isGeminiApiKeyAvailable()) {
         console.warn("Gemini API not available for fetchBudgetSuggestion.");
         return {
             id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'error_message',
-            content: "AI Coach desativado ou API Key (VITE_GEMINI_API_KEY) não configurada para sugerir orçamentos.",
-            isRead: false,
+            content: "AI Coach desativado ou API Key (GEMINI_API_KEY) não configurada para sugerir orçamentos.",
+            is_read: false,
         };
     }
     if (!monthlyIncome || monthlyIncome <= 0) {
@@ -287,51 +328,36 @@ export const fetchBudgetSuggestion = async (
             timestamp: new Date().toISOString(),
             type: 'error_message',
             content: "Por favor, informe sua renda mensal na tela do AI Coach para receber sugestões de orçamento.",
-            isRead: false,
+            is_read: false,
         };
     }
 
     const prompt = constructPromptForBudgetSuggestion(categoryName, monthlyIncome, existingBudgets, context);
     try {
-        const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-04-17",
+            contents: prompt,
+            config: { responseMimeType: "application/json" }
+        });
         
-        // Melhor tratamento da resposta JSON
-        let jsonStr = text || '';
-        
-        // Remove formatação markdown se existir
-        const markdownRegex = /```(?:json)?\s*([\s\S]*?)```/;
-        const markdownMatch = jsonStr.match(markdownRegex);
-        if (markdownMatch && markdownMatch[1]) {
-            jsonStr = markdownMatch[1].trim();
+        let jsonStr = response.text?.trim() || '';
+        const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+        const match = jsonStr.match(fenceRegex);
+        if (match && match[2]) {
+            jsonStr = match[2].trim();
         }
         
-        // Tenta encontrar um objeto JSON válido na string
-        const jsonRegex = /\{[\s\S]*\}/;
-        const jsonMatch = jsonStr.match(jsonRegex);
-        if (jsonMatch) {
-            jsonStr = jsonMatch[0];
-        }
-        
-        try {
-            const parsed = JSON.parse(jsonStr);
+        const parsed = JSON.parse(jsonStr);
 
-            if (parsed && typeof parsed.suggestedBudget === 'number' && parsed.suggestedBudget >= 0) { // Allow 0 budget
-                return { suggestedBudget: parsed.suggestedBudget };
-            }
-        } catch (parseError) {
-            console.error("Error parsing JSON response:", parseError);
-            console.log("Raw response:", text);
+        if (parsed && typeof parsed.suggestedBudget === 'number' && parsed.suggestedBudget >= 0) { // Allow 0 budget
+            return { suggestedBudget: parsed.suggestedBudget };
         }
-        
         return { 
             id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'error_message',
             content: "Não foi possível obter uma sugestão de orçamento válida no momento (resposta inválida da IA).",
-            isRead: false,
+            is_read: false,
         };
     } catch (error) {
         console.error("Error fetching budget suggestion from Gemini:", error);
@@ -344,7 +370,7 @@ export const fetchBudgetSuggestion = async (
             timestamp: new Date().toISOString(),
             type: 'error_message',
             content: errorMessage,
-            isRead: false,
+            is_read: false,
         };
     }
 };
@@ -352,70 +378,138 @@ export const fetchBudgetSuggestion = async (
 export const fetchFuturePurchaseAnalysis = async (
   purchase: FuturePurchase,
   context: FinancialContext
-): Promise<{ analysisText: string; recommendedStatus: FuturePurchaseStatus } | AIInsight | null> => {
+): Promise<{ analysisText: string; recommendedStatus: FuturePurchaseStatus } | Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
   if (!ai || !isGeminiApiKeyAvailable()) {
     return {
       id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-      content: "AI Coach desativado ou API Key (VITE_GEMINI_API_KEY) não configurada para analisar compra futura.",
-      relatedFuturePurchaseId: purchase.id, isRead: false,
+      content: "AI Coach desativado ou API Key não configurada para analisar compra futura.",
+      related_future_purchase_id: purchase.id, is_read: false,
     };
   }
 
   const prompt = constructPromptForFuturePurchaseAnalysis(purchase, context);
   try {
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-04-17",
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+    });
 
-    // Melhor tratamento da resposta JSON
-    let jsonStr = text || '';
-    
-    // Remove formatação markdown se existir
-    const markdownRegex = /```(?:json)?\s*([\s\S]*?)```/;
-    const markdownMatch = jsonStr.match(markdownRegex);
-    if (markdownMatch && markdownMatch[1]) {
-      jsonStr = markdownMatch[1].trim();
+    let jsonStr = response.text?.trim() || '';
+    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+    const match = jsonStr.match(fenceRegex);
+    if (match && match[2]) {
+        jsonStr = match[2].trim();
     }
     
-    // Tenta encontrar um objeto JSON válido na string
-    const jsonRegex = /\{[\s\S]*\}/;
-    const jsonMatch = jsonStr.match(jsonRegex);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[0];
-    }
-    
-    try {
-      const parsed = JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr);
 
-      if (parsed && typeof parsed.analysisText === 'string' && 
-          typeof parsed.recommendedStatus === 'string' &&
-          ['ACHIEVABLE_SOON', 'NOT_RECOMMENDED_NOW', 'PLANNED'].includes(parsed.recommendedStatus)) {
-        return { 
-          analysisText: parsed.analysisText, 
-          recommendedStatus: parsed.recommendedStatus as FuturePurchaseStatus 
-        };
-      }
-    } catch (parseError) {
-      console.error("Error parsing JSON response:", parseError);
-      console.log("Raw response:", text);
+    if (parsed && typeof parsed.analysisText === 'string' && 
+        typeof parsed.recommendedStatus === 'string' &&
+        ['ACHIEVABLE_SOON', 'NOT_RECOMMENDED_NOW', 'PLANNED'].includes(parsed.recommendedStatus)) {
+      return { 
+        analysisText: parsed.analysisText, 
+        recommendedStatus: parsed.recommendedStatus as FuturePurchaseStatus 
+      };
     }
-    
     return {
-      id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-      content: "Não foi possível obter uma análise válida da IA para esta compra (resposta inválida).",
-      relatedFuturePurchaseId: purchase.id, isRead: false,
+        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+        content: "Não foi possível obter uma análise válida da IA para esta compra (resposta inválida).",
+        related_future_purchase_id: purchase.id, is_read: false,
     };
   } catch (error) {
     console.error("Error fetching future purchase analysis from Gemini:", error);
-    let errorMessage = "Desculpe, não consegui analisar esta compra futura.";
-    if (error instanceof Error) {
-      errorMessage += ` Detalhe: ${error.message}`;
-    }
+    let errorMessage = "Desculpe, não consegui analisar esta compra futura no momento.";
+    if (error instanceof Error) errorMessage += ` Detalhe: ${error.message}`;
     return {
-      id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-      content: errorMessage,
-      relatedFuturePurchaseId: purchase.id, isRead: false,
+        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+        content: errorMessage, related_future_purchase_id: purchase.id, is_read: false,
     };
   }
+};
+
+export const fetchBestPurchaseDayAdvice = async (
+  card: Pick<CreditCard, 'name' | 'closing_day' | 'due_day'>,
+  currentDateISO: string
+): Promise<BestPurchaseDayInfo | null> => {
+  if (!ai || !isGeminiApiKeyAvailable()) {
+    console.warn("Gemini API not available for fetchBestPurchaseDayAdvice.");
+    return { 
+      bestPurchaseDay: "", 
+      paymentDueDate: "", 
+      explanation: "AI Coach desativado ou API Key não configurada.",
+      error: "AI Coach desativado ou API Key não configurada."
+    };
+  }
+
+  const prompt = constructPromptForBestPurchaseDay(card, currentDateISO);
+  try {
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-04-17",
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+    });
+
+    let jsonStr = response.text?.trim() || '';
+    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s; // Regex to remove markdown fences if present
+    const match = jsonStr.match(fenceRegex);
+    if (match && match[2]) {
+        jsonStr = match[2].trim();
+    }
+    
+    const parsedResult = JSON.parse(jsonStr) as BestPurchaseDayInfo;
+
+    if (parsedResult.error) {
+        console.warn("Gemini returned an error for best purchase day:", parsedResult.error);
+        return { ...parsedResult, explanation: parsedResult.error }; // Use error as explanation if present
+    }
+    if (parsedResult.bestPurchaseDay && parsedResult.paymentDueDate && parsedResult.explanation) {
+        return parsedResult;
+    }
+    
+    return { 
+        bestPurchaseDay: "", 
+        paymentDueDate: "", 
+        explanation: "Não foi possível determinar o melhor dia para compra (resposta inválida da IA).",
+        error: "Resposta inválida da IA."
+    };
+
+  } catch (error) {
+    console.error("Error fetching best purchase day advice from Gemini:", error);
+    let errorMessage = "Desculpe, não consegui determinar o melhor dia para compra no momento.";
+    if (error instanceof Error) {
+        errorMessage += ` Detalhe: ${error.message}`;
+    }
+    return { 
+        bestPurchaseDay: "", 
+        paymentDueDate: "", 
+        explanation: errorMessage,
+        error: errorMessage
+    };
+  }
+};
+
+export const calculateNextDueDate = (currentDueDate: string, frequency: RecurringTransactionFrequency, customIntervalDays?: number): string => {
+  const date = new Date(currentDueDate + 'T00:00:00'); // Ensure local date interpretation
+  switch (frequency) {
+    case 'daily':
+      date.setDate(date.getDate() + 1);
+      break;
+    case 'weekly':
+      date.setDate(date.getDate() + 7);
+      break;
+    case 'monthly':
+      date.setMonth(date.getMonth() + 1);
+      break;
+    case 'yearly':
+      date.setFullYear(date.getFullYear() + 1);
+      break;
+    case 'custom_days':
+      date.setDate(date.getDate() + (customIntervalDays || 1));
+      break;
+    default:
+      // Should not happen with valid frequency
+      break; 
+  }
+  return getISODateString(date);
 };

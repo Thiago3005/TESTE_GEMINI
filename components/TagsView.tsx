@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState }from 'react';
 import { Tag, Transaction } from '../types';
@@ -9,7 +10,7 @@ import PlusIcon from './icons/PlusIcon';
 interface TagsViewProps {
   tags: Tag[];
   transactions: Transaction[];
-  onAddTag: (tag: Tag) => void;
+  onAddTag: (tag: Omit<Tag, 'user_id' | 'created_at' | 'updated_at'>) => void;
   onUpdateTag: (tag: Tag) => void;
   onDeleteTag: (tagId: string) => void;
 }
@@ -29,7 +30,7 @@ const TagsView: React.FC<TagsViewProps> = ({ tags, transactions, onAddTag, onUpd
   };
 
   const getTransactionCountForTag = (tagId: string): number => {
-    return transactions.filter(t => t.tagIds?.includes(tagId)).length;
+    return transactions.filter(t => t.tag_ids?.includes(tagId)).length;
   };
   
   const allTagNames = tags.map(t => t.name);

@@ -9,14 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
+    "@google/genai": "latest",
     "react": "^19.1.0",
+    "react-dom/client": "19.1.0",
+    "recharts": "^2.15.3",
     "react-dom": "^19.1.0",
-    "recharts": "^2.15.3"
+    "@supabase/supabase-js": "2",
+    "@google/generative-ai": "^0.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^4.2.1",
     "typescript": "~5.7.2",
     "vite": "^6.2.0"
   }

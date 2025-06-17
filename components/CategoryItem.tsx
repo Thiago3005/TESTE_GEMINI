@@ -1,37 +1,41 @@
+
 import React from 'react';
-import { Category, TransactionType, Transaction } from '../types'; // Added Transaction
+import { Category, TransactionType, Transaction } from '../types'; 
 import TrashIcon from './icons/TrashIcon';
 import EditIcon from './icons/EditIcon';
 import Button from './Button';
 import TagIcon from './icons/TagIcon';
-import { formatCurrency, getISODateString } from '../utils/helpers'; // Added getISODateString
+import { formatCurrency, getISODateString } from '../utils/helpers'; 
 
 interface CategoryItemProps {
   category: Category;
-  transactions: Transaction[]; // New: for calculating spending
+  transactions: Transaction[]; 
   onEdit: (category: Category) => void;
   onDelete: (categoryId: string) => void;
   transactionCount: number;
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
-const CategoryItem: React.FC<CategoryItemProps> = ({ category, transactions, onEdit, onDelete, transactionCount }) => {
+const CategoryItem: React.FC<CategoryItemProps> = ({ 
+  category, transactions, onEdit, onDelete, transactionCount, isPrivacyModeEnabled 
+}) => {
   const typeColor = category.type === TransactionType.INCOME 
     ? 'text-secondary dark:text-secondaryDark' 
     : 'text-destructive dark:text-destructiveDark';
   const typeLabel = category.type === TransactionType.INCOME ? 'Receita' : 'Despesa';
 
   const currentMonthYYYYMM = getISODateString().substring(0, 7);
-  const monthlySpending = category.type === TransactionType.EXPENSE && category.monthlyBudget
+  const monthlySpending = category.type === TransactionType.EXPENSE && category.monthly_budget
     ? transactions
-        .filter(t => t.categoryId === category.id && t.date.startsWith(currentMonthYYYYMM) && t.type === TransactionType.EXPENSE)
+        .filter(t => t.category_id === category.id && t.date.startsWith(currentMonthYYYYMM) && t.type === TransactionType.EXPENSE)
         .reduce((sum, t) => sum + t.amount, 0)
     : 0;
   
-  const budgetProgress = category.monthlyBudget && category.monthlyBudget > 0
-    ? Math.min((monthlySpending / category.monthlyBudget) * 100, 100)
+  const budgetProgress = category.monthly_budget && category.monthly_budget > 0
+    ? Math.min((monthlySpending / category.monthly_budget) * 100, 100)
     : 0;
   
-  const isOverBudget = category.monthlyBudget && monthlySpending > category.monthlyBudget;
+  const isOverBudget = category.monthly_budget && monthlySpending > category.monthly_budget;
 
   return (
     <li className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow hover:shadow-md dark:shadow-neutralDark/30 dark:hover:shadow-neutralDark/50 transition-shadow duration-150 flex flex-col">
@@ -66,13 +70,14 @@ const CategoryItem: React.FC<CategoryItemProps> = ({ category, transactions, onE
         </div>
       </div>
       
-      {/* Budget Info for Expense Categories */}
-      {category.type === TransactionType.EXPENSE && category.monthlyBudget && category.monthlyBudget > 0 && (
+      {category.type === TransactionType.EXPENSE && category.monthly_budget && category.monthly_budget > 0 && (
         <div className="mt-3 pt-2 border-t border-borderBase/20 dark:border-borderBaseDark/30">
           <div className="flex justify-between text-xs mb-1">
-            <span className="text-textMuted dark:text-textMutedDark">Orçamento Mensal: {formatCurrency(category.monthlyBudget)}</span>
+            <span className="text-textMuted dark:text-textMutedDark">
+              Orçamento Mensal: {formatCurrency(category.monthly_budget, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+            </span>
             <span className={`font-medium ${isOverBudget ? 'text-destructive dark:text-destructiveDark' : 'text-secondary dark:text-secondaryDark'}`}>
-              Gasto: {formatCurrency(monthlySpending)}
+              Gasto: {formatCurrency(monthlySpending, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
             </span>
           </div>
           <div className="w-full progress-bar-bg rounded-full h-2 dark:progress-bar-bg">

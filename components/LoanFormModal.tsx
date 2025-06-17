@@ -12,7 +12,7 @@ import { generateId, getISODateString, formatCurrency } from '../utils/helpers';
 interface LoanFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (loan: Omit<Loan, 'repaymentIds' | 'status'>) => void; // App.tsx will handle repaymentIds and status
+  onSave: (loan: Omit<Loan, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id' | 'linked_installment_purchase_id'>, ccInstallments?: number) => void;
   accounts: Account[];
   creditCards: CreditCard[];
   existingLoan?: Loan | null;
@@ -48,27 +48,28 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (existingLoan) {
-        setPersonName(existingLoan.personName);
-        setLoanDate(existingLoan.loanDate);
+        setPersonName(existingLoan.person_name);
+        setLoanDate(existingLoan.loan_date);
         setDescription(existingLoan.description || '');
-        setTotalAmountToReimburse(existingLoan.totalAmountToReimburse.toString());
-        setFundingSource(existingLoan.fundingSource);
+        setTotalAmountToReimburse(existingLoan.total_amount_to_reimburse.toString());
+        setFundingSource(existingLoan.funding_source);
 
-        if (existingLoan.fundingSource === 'account') {
-          setAmountDeliveredFromAccount(existingLoan.amountDeliveredFromAccount?.toString() || '');
-          setLinkedAccountId(existingLoan.linkedAccountId || '');
+        if (existingLoan.funding_source === 'account') {
+          setAmountDeliveredFromAccount(existingLoan.amount_delivered_from_account?.toString() || '');
+          setLinkedAccountId(existingLoan.linked_account_id || '');
         } else {
           setAmountDeliveredFromAccount('');
           setLinkedAccountId('');
         }
 
-        if (existingLoan.fundingSource === 'creditCard') {
-          setAmountDeliveredFromCredit(existingLoan.amountDeliveredFromCredit?.toString() || '');
-          setCostOnCreditCard(existingLoan.costOnCreditCard?.toString() || '');
-          setLinkedCreditCardId(existingLoan.linkedCreditCardId || '');
-          // Note: numberOfInstallments is not stored in Loan, it's for the InstallmentPurchase.
-          // If editing, this field might need to be sourced differently or not editable if purchase already created.
-          // For simplicity, we'll allow setting it, assuming if the linked purchase needs update, App.tsx handles it.
+        if (existingLoan.funding_source === 'creditCard') {
+          setAmountDeliveredFromCredit(existingLoan.amount_delivered_from_credit?.toString() || '');
+          setCostOnCreditCard(existingLoan.cost_on_credit_card?.toString() || '');
+          setLinkedCreditCardId(existingLoan.linked_credit_card_id || '');
+          // Note: numberOfInstallments is not stored in Loan.
+          // If editing a loan that created an InstallmentPurchase, this modal doesn't directly edit that InstallmentPurchase's installments count.
+          // This field here is primarily for creating a *new* InstallmentPurchase if a new loan via CC is made.
+          // For existing CC loans, if the linked InstallmentPurchase needs changing, it's a separate operation.
         } else {
           setAmountDeliveredFromCredit('');
           setCostOnCreditCard('');
@@ -112,8 +113,8 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
       if (numAmountDeliveredCC > numCostOnCC) newErrors.amountDeliveredFromCredit = 'Valor entregue não pode ser maior que o custo no cartão.';
       const numInstallments = parseInt(numberOfInstallments, 10);
       if (isNaN(numInstallments) || numInstallments <= 0) newErrors.numberOfInstallments = 'Número de parcelas deve ser positivo.';
-      if (numCostOnCC !== numTotalReimburse && !existingLoan) newErrors.totalAmountToReimburse = 'Para empréstimos via cartão, o valor a reembolsar deve ser igual ao custo no cartão.';
-
+      // Relaxing this constraint as editing might involve different reimbursement amounts than original cost.
+      // if (numCostOnCC !== numTotalReimburse && !existingLoan) newErrors.totalAmountToReimburse = 'Para empréstimos via cartão, o valor a reembolsar deve ser igual ao custo no cartão.';
     }
     
     setErrors(newErrors);
@@ -124,38 +125,35 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
     if (!validate()) return;
 
     const baseLoanData = {
-      id: existingLoan?.id || generateId(),
-      personName: personName.trim(),
-      loanDate,
+      // id will be handled by App.tsx
+      person_name: personName.trim(),
+      loan_date: loanDate,
       description: description.trim() || undefined,
-      totalAmountToReimburse: parseFloat(totalAmountToReimburse),
-      fundingSource,
+      total_amount_to_reimburse: parseFloat(totalAmountToReimburse),
+      funding_source: fundingSource,
     };
 
-    let fullLoanData: Omit<Loan, 'repaymentIds' | 'status'>;
+    let fullLoanData: Omit<Loan, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id' | 'linked_installment_purchase_id'>;
 
     if (fundingSource === 'account') {
       fullLoanData = {
         ...baseLoanData,
-        amountDeliveredFromAccount: parseFloat(amountDeliveredFromAccount),
-        linkedAccountId: linkedAccountId,
+        amount_delivered_from_account: parseFloat(amountDeliveredFromAccount),
+        linked_account_id: linkedAccountId,
       };
     } else { // creditCard
       fullLoanData = {
         ...baseLoanData,
-        amountDeliveredFromCredit: parseFloat(amountDeliveredFromCredit),
-        costOnCreditCard: parseFloat(costOnCreditCard),
-        linkedCreditCardId: linkedCreditCardId,
-        // numberOfInstallments is not part of Loan, App.tsx will use it to create InstallmentPurchase
+        amount_delivered_from_credit: parseFloat(amountDeliveredFromCredit),
+        cost_on_credit_card: parseFloat(costOnCreditCard),
+        linked_credit_card_id: linkedCreditCardId,
       };
     }
-    // Pass numberOfInstallments as a separate argument or part of a different structure if needed by onSave in App.tsx
-    // For now, onSave in App.tsx will need to know about it if it's a new credit card loan.
-    // Let's refine onSave to accept an optional third param for CC installments.
-    // For this component, we directly pass what App.tsx's handleAddLoan will need.
-    // The onSave prop for this modal is simplified for now. App.tsx will handle the creation of linked expense/installment.
+    
+    // Pass existingLoan.id if editing, otherwise it's a new loan
+    const loanToSave = existingLoan ? { ...fullLoanData, id: existingLoan.id } : fullLoanData;
 
-    onSave(fullLoanData); // App.tsx will handle the creation of linked expense/installment
+    onSave(loanToSave, fundingSource === 'creditCard' ? parseInt(numberOfInstallments) : undefined);
     onClose();
   };
   
@@ -272,6 +270,8 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
               onChange={(e) => setNumberOfInstallments(e.target.value)}
               error={errors.numberOfInstallments}
               required
+              disabled={!!existingLoan && !!existingLoan.linked_installment_purchase_id}
+              title={!!existingLoan && !!existingLoan.linked_installment_purchase_id ? "Número de parcelas não pode ser alterado após a criação da compra vinculada." : ""}
             />
           </div>
         )}

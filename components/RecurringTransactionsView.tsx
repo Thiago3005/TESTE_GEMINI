@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useMemo } from 'react';
 import { RecurringTransaction, Account, Category, Transaction } from '../types';
@@ -11,10 +12,11 @@ interface RecurringTransactionsViewProps {
   recurringTransactions: RecurringTransaction[];
   accounts: Account[];
   categories: Category[];
-  onAddRecurringTransaction: (rt: RecurringTransaction) => void;
+  onAddRecurringTransaction: (rt: Omit<RecurringTransaction, 'user_id' | 'created_at' | 'updated_at'>) => void;
   onUpdateRecurringTransaction: (rt: RecurringTransaction) => void;
   onDeleteRecurringTransaction: (rtId: string) => void;
-  onProcessRecurringTransactions: () => Promise<{ count: number; errors: string[] }>; // Returns count of posted and any errors
+  onProcessRecurringTransactions: () => Promise<{ count: number; errors: string[] }>; 
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
@@ -25,6 +27,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
   onUpdateRecurringTransaction,
   onDeleteRecurringTransaction,
   onProcessRecurringTransactions,
+  isPrivacyModeEnabled,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRT, setEditingRT] = useState<RecurringTransaction | null>(null);
@@ -58,18 +61,17 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
       console.error(error);
     }
     setIsProcessing(false);
-    // Auto-clear message after a few seconds
     setTimeout(() => setProcessingMessage(null), 7000);
   };
   
   const sortedRTs = useMemo(() => {
-    return [...recurringTransactions].sort((a,b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime());
+    return [...recurringTransactions].sort((a,b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
   }, [recurringTransactions]);
 
   const today = getISODateString();
-  const upcomingRTs = sortedRTs.filter(rt => !rt.isPaused && rt.nextDueDate >= today);
-  const pastDueRTs = sortedRTs.filter(rt => !rt.isPaused && rt.nextDueDate < today);
-  const pausedRTs = sortedRTs.filter(rt => rt.isPaused);
+  const upcomingRTs = sortedRTs.filter(rt => !rt.is_paused && rt.next_due_date >= today);
+  const pastDueRTs = sortedRTs.filter(rt => !rt.is_paused && rt.next_due_date < today);
+  const pausedRTs = sortedRTs.filter(rt => rt.is_paused);
 
 
   return (
@@ -102,7 +104,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
               <h2 className="text-lg font-semibold text-destructive dark:text-destructiveDark mb-2">Pendentes / Atrasadas ({pastDueRTs.length})</h2>
               <ul className="space-y-3">
                 {pastDueRTs.map(rt => (
-                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} />
+                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />
                 ))}
               </ul>
             </div>
@@ -113,7 +115,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
               <h2 className="text-lg font-semibold text-textBase dark:text-textBaseDark mt-6 mb-2">Próximas ({upcomingRTs.length})</h2>
               <ul className="space-y-3">
                 {upcomingRTs.map(rt => (
-                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} />
+                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />
                 ))}
               </ul>
             </div>
@@ -124,7 +126,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
               <h2 className="text-lg font-semibold text-textMuted dark:text-textMutedDark mt-6 mb-2">Pausadas ({pausedRTs.length})</h2>
               <ul className="space-y-3">
                 {pausedRTs.map(rt => (
-                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} />
+                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />
                 ))}
               </ul>
             </div>
@@ -132,6 +134,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
         </>
       )}
 
+      {/* Pass isPrivacyModeEnabled to modal if it shows currency */}
       <RecurringTransactionFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -139,6 +142,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
         accounts={accounts}
         categories={categories}
         existingRT={editingRT}
+        // isPrivacyModeEnabled={isPrivacyModeEnabled} // Pass if needed for amount placeholder
       />
     </div>
   );

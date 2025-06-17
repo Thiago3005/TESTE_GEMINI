@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useMemo } from 'react';
 import { FuturePurchase, FuturePurchasePriority, FuturePurchaseStatus } from '../types';
@@ -6,14 +7,15 @@ import FuturePurchaseFormModal from './FuturePurchaseFormModal';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import ShoppingCartIcon from './icons/ShoppingCartIcon';
-import Select from './Select'; // For filtering
+import Select from './Select'; 
 
 interface FuturePurchasesViewProps {
   futurePurchases: FuturePurchase[];
-  onAddFuturePurchase: (purchase: Omit<FuturePurchase, 'status' | 'aiAnalysis' | 'aiAnalyzedAt'>) => void;
-  onUpdateFuturePurchase: (purchase: Omit<FuturePurchase, 'status' | 'aiAnalysis' | 'aiAnalyzedAt'>) => void;
+  onAddFuturePurchase: (purchase: Omit<FuturePurchase, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'>) => void;
+  onUpdateFuturePurchase: (purchase: Omit<FuturePurchase, 'user_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'>) => void;
   onDeleteFuturePurchase: (purchaseId: string) => void;
   onAnalyzeFuturePurchase: (purchaseId: string) => void;
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const priorityFilterOptions: { value: string; label: string }[] = [
@@ -39,6 +41,7 @@ const FuturePurchasesView: React.FC<FuturePurchasesViewProps> = ({
   onUpdateFuturePurchase,
   onDeleteFuturePurchase,
   onAnalyzeFuturePurchase,
+  isPrivacyModeEnabled,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<FuturePurchase | null>(null);
@@ -68,12 +71,12 @@ const FuturePurchasesView: React.FC<FuturePurchasesViewProps> = ({
 
     items.sort((a, b) => {
       switch (sortOrder) {
-        case 'cost_desc': return b.estimatedCost - a.estimatedCost;
-        case 'cost_asc': return a.estimatedCost - b.estimatedCost;
-        case 'date_asc': return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        case 'cost_desc': return b.estimated_cost - a.estimated_cost;
+        case 'cost_asc': return a.estimated_cost - b.estimated_cost;
+        case 'date_asc': return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         case 'date_desc':
         default:
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       }
     });
     return items;
@@ -93,7 +96,6 @@ const FuturePurchasesView: React.FC<FuturePurchasesViewProps> = ({
         </Button>
       </div>
       
-      {/* Filters and Sort */}
       {futurePurchases.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-surface dark:bg-surfaceDark rounded-lg shadow dark:shadow-neutralDark/30">
           <Select label="Filtrar por Prioridade" options={priorityFilterOptions} value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} />
@@ -122,6 +124,7 @@ const FuturePurchasesView: React.FC<FuturePurchasesViewProps> = ({
               onEdit={openModalForEdit}
               onDelete={onDeleteFuturePurchase}
               onAnalyze={onAnalyzeFuturePurchase}
+              isPrivacyModeEnabled={isPrivacyModeEnabled}
             />
           ))}
         </ul>
@@ -131,11 +134,13 @@ const FuturePurchasesView: React.FC<FuturePurchasesViewProps> = ({
         </p>
       )}
 
+      {/* Pass isPrivacyModeEnabled if modal shows currency */}
       <FuturePurchaseFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSave={editingPurchase ? onUpdateFuturePurchase : onAddFuturePurchase}
+        onSave={editingPurchase ? (data) => onUpdateFuturePurchase({...data, id: editingPurchase.id }) : onAddFuturePurchase}
         existingPurchase={editingPurchase}
+        // isPrivacyModeEnabled={isPrivacyModeEnabled} // Pass if needed for cost placeholder
       />
     </div>
   );

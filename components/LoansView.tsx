@@ -11,13 +11,14 @@ import { formatCurrency } from '../utils/helpers';
 
 interface LoansViewProps {
   loans: Loan[];
-  loanRepayments: LoanRepayment[]; // All repayments from App state
+  loanRepayments: LoanRepayment[]; 
   accounts: Account[];
   creditCards: CreditCard[];
-  onAddLoan: (loanData: Omit<Loan, 'repaymentIds' | 'status'>, ccInstallments?: number) => void; // ccInstallments for new CC loans
-  onUpdateLoan: (loanData: Omit<Loan, 'repaymentIds' | 'status'>) => void;
+  onAddLoan: (loanData: Omit<Loan, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id' | 'linked_installment_purchase_id'>, ccInstallments?: number) => void; 
+  onUpdateLoan: (loanData: Loan) => void; // Update to expect full Loan object
   onDeleteLoan: (loanId: string) => void;
-  onAddLoanRepayment: (repaymentData: Omit<LoanRepayment, 'id' | 'loanId' | 'linkedIncomeTransactionId'>, loanId: string) => void;
+  onAddLoanRepayment: (repaymentData: Omit<LoanRepayment, 'id' | 'loan_id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_income_transaction_id'>, loanId: string) => void;
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const LoansView: React.FC<LoansViewProps> = ({
@@ -29,6 +30,7 @@ const LoansView: React.FC<LoansViewProps> = ({
   onUpdateLoan,
   onDeleteLoan,
   onAddLoanRepayment,
+  isPrivacyModeEnabled,
 }) => {
   const [isLoanFormModalOpen, setIsLoanFormModalOpen] = useState(false);
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
@@ -46,30 +48,13 @@ const LoansView: React.FC<LoansViewProps> = ({
     setIsLoanFormModalOpen(true);
   };
   
-  const handleSaveLoan = (loanData: Omit<Loan, 'repaymentIds' | 'status'>) => {
-    // This is tricky because the LoanFormModal doesn't know about ccInstallments directly.
-    // The onSave in LoanFormModal should probably be adapted or App.tsx's onAddLoan should infer.
-    // For now, assume onAddLoan in App.tsx might need more info if it's a new CC loan.
-    // The current signature of onAddLoan in LoansViewProps already takes ccInstallments.
-    // The LoanFormModal's onSave needs to be more flexible to pass this or App.tsx should handle it.
-
-    // Let's simplify: LoanFormModal's onSave returns the raw form data.
-    // The onAddLoan in App.tsx (which this calls) will parse out numberOfInstallments from loanData if it's a credit card type.
-    // This requires LoanFormModal to potentially pass more data than strictly in the Loan type.
-    // Or, we can keep ccInstallments as a separate parameter for onAddLoan.
-
-    // Sticking to current onAddLoan signature: ccInstallments needs to be passed if it's a new CC loan.
-    // The LoanFormModal would need to supply this. For now, let's assume it's part of `loanData` somehow
-    // and `onAddLoan` in `App.tsx` extracts it. The `Omit<Loan,...>` type is the primary structure.
-    
-    if (editingLoan) {
-      onUpdateLoan(loanData);
+  const handleSaveLoan = (loanData: Omit<Loan, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id' | 'linked_installment_purchase_id'> & {id?: string}, ccInstallments?: number) => {
+    if (editingLoan && loanData.id) { // Ensure id is present for updates
+        // For updates, we pass the full existing loan object merged with changes
+        // The form only provides a subset of fields, so merge with existingLoan
+        onUpdateLoan({ ...editingLoan, ...loanData } as Loan);
     } else {
-      // For a new loan, if it's from credit card, we need `numberOfInstallments`.
-      // This info is collected in LoanFormModal but not part of the `Loan` type itself.
-      // This is a bit of a mismatch. We'll pass it as an optional property on loanData for now if new.
-      const loanWithPotentialCCInstallments = loanData as any; // Cast to access potential extra prop
-      onAddLoan(loanData, loanWithPotentialCCInstallments.numberOfInstallments);
+      onAddLoan(loanData, ccInstallments);
     }
   };
 
@@ -82,14 +67,14 @@ const LoansView: React.FC<LoansViewProps> = ({
   const totalOutstandingLoanAmount = useMemo(() => {
     return loans.reduce((total, loan) => {
       const paidForThisLoan = loanRepayments
-        .filter(rp => loan.repaymentIds.includes(rp.id))
-        .reduce((sum, rp) => sum + rp.amountPaid, 0);
-      return total + (loan.totalAmountToReimburse - paidForThisLoan);
+        .filter(rp => rp.loan_id === loan.id)
+        .reduce((sum, rp) => sum + rp.amount_paid, 0);
+      return total + (loan.total_amount_to_reimburse - paidForThisLoan);
     }, 0);
   }, [loans, loanRepayments]);
   
   const sortedLoans = useMemo(() => {
-    return [...loans].sort((a,b) => new Date(b.loanDate).getTime() - new Date(a.loanDate).getTime());
+    return [...loans].sort((a,b) => new Date(b.loan_date).getTime() - new Date(a.loan_date).getTime());
   }, [loans]);
 
   return (
@@ -99,7 +84,7 @@ const LoansView: React.FC<LoansViewProps> = ({
             <h1 className="text-2xl font-bold text-textBase dark:text-textBaseDark">Empréstimos Concedidos</h1>
             {loans.length > 0 && (
                 <p className="text-sm text-textMuted dark:text-textMutedDark">
-                    Total a receber: <span className="font-semibold text-primary dark:text-primaryDark">{formatCurrency(totalOutstandingLoanAmount)}</span>
+                    Total a receber: <span className="font-semibold text-primary dark:text-primaryDark">{formatCurrency(totalOutstandingLoanAmount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
                 </p>
             )}
         </div>
@@ -115,12 +100,13 @@ const LoansView: React.FC<LoansViewProps> = ({
             <LoanItem
               key={loan.id}
               loan={loan}
-              repayments={loanRepayments.filter(rp => loan.repaymentIds.includes(rp.id))}
+              repayments={loanRepayments.filter(rp => rp.loan_id === loan.id)}
               accounts={accounts}
               creditCards={creditCards}
               onEdit={openLoanFormModalForEdit}
               onDelete={onDeleteLoan}
               onRegisterRepayment={openRepaymentModal}
+              isPrivacyModeEnabled={isPrivacyModeEnabled}
             />
           ))}
         </ul>
@@ -130,6 +116,7 @@ const LoansView: React.FC<LoansViewProps> = ({
         </p>
       )}
 
+      {/* Pass isPrivacyModeEnabled to modals if they display currency */}
       {isLoanFormModalOpen && (
         <LoanFormModal
           isOpen={isLoanFormModalOpen}
@@ -138,6 +125,7 @@ const LoansView: React.FC<LoansViewProps> = ({
           accounts={accounts}
           creditCards={creditCards}
           existingLoan={editingLoan}
+          // isPrivacyModeEnabled={isPrivacyModeEnabled} // Pass if needed for amount placeholders
         />
       )}
 
@@ -148,6 +136,7 @@ const LoansView: React.FC<LoansViewProps> = ({
           onSave={onAddLoanRepayment}
           loan={selectedLoanForRepayment}
           accounts={accounts}
+          // isPrivacyModeEnabled={isPrivacyModeEnabled} // Pass if needed for amount placeholders
         />
       )}
     </div>

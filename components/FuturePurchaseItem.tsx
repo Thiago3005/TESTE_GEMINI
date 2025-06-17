@@ -1,10 +1,11 @@
+
 import React from 'react';
 import { FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
 import Button from './Button';
 import EditIcon from './icons/EditIcon';
 import TrashIcon from './icons/TrashIcon';
-import LightBulbIcon from './icons/LightBulbIcon'; // For AI analysis button
+import LightBulbIcon from './icons/LightBulbIcon'; 
 import ShoppingCartIcon from './icons/ShoppingCartIcon';
 
 interface FuturePurchaseItemProps {
@@ -12,6 +13,7 @@ interface FuturePurchaseItemProps {
   onEdit: (purchase: FuturePurchase) => void;
   onDelete: (purchaseId: string) => void;
   onAnalyze: (purchaseId: string) => void;
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const getStatusInfo = (status: FuturePurchaseStatus): { text: string; colorClasses: string; icon?: JSX.Element } => {
@@ -37,8 +39,10 @@ const priorityText: Record<FuturePurchasePriority, string> = {
   high: 'Alta',
 };
 
-const FuturePurchaseItem: React.FC<FuturePurchaseItemProps> = ({ purchase, onEdit, onDelete, onAnalyze }) => {
-  const { name, estimatedCost, priority, notes, status, createdAt, aiAnalysis, aiAnalyzedAt } = purchase;
+const FuturePurchaseItem: React.FC<FuturePurchaseItemProps> = ({ 
+  purchase, onEdit, onDelete, onAnalyze, isPrivacyModeEnabled 
+}) => {
+  const { name, estimated_cost, priority, notes, status, created_at, ai_analysis, ai_analyzed_at } = purchase;
   const statusInfo = getStatusInfo(status);
 
   return (
@@ -49,11 +53,13 @@ const FuturePurchaseItem: React.FC<FuturePurchaseItemProps> = ({ purchase, onEdi
             <ShoppingCartIcon className="w-5 h-5 text-primary dark:text-primaryDark flex-shrink-0" />
             <h3 className="text-lg font-semibold text-textBase dark:text-textBaseDark">{name}</h3>
           </div>
-          <p className="text-xl font-bold text-primary dark:text-primaryDark">{formatCurrency(estimatedCost)}</p>
+          <p className="text-xl font-bold text-primary dark:text-primaryDark">
+            {formatCurrency(estimated_cost, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </p>
           <div className="flex items-center space-x-2 text-xs text-textMuted dark:text-textMutedDark mt-0.5">
             <span>Prioridade: {priorityText[priority]}</span>
             <span>&bull;</span>
-            <span>Criado em: {formatDate(createdAt)}</span>
+            <span>Criado em: {formatDate(created_at)}</span>
           </div>
         </div>
         <div className="flex flex-col items-end space-y-1">
@@ -77,10 +83,10 @@ const FuturePurchaseItem: React.FC<FuturePurchaseItemProps> = ({ purchase, onEdi
         </p>
       )}
 
-      {aiAnalysis && (
+      {ai_analysis && (
         <div className="bg-primary/5 dark:bg-primaryDark/10 p-3 rounded-md mt-2 border-l-4 border-primary dark:border-primaryDark">
-          <p className="text-sm font-semibold text-primary dark:text-primaryDark mb-1">Análise da IA ({aiAnalyzedAt ? formatDate(aiAnalyzedAt, 'pt-BR', {day: '2-digit', month:'short', hour:'2-digit', minute:'2-digit'}) : 'Recente'}):</p>
-          <p className="text-sm text-textBase dark:text-textBaseDark">{aiAnalysis}</p>
+          <p className="text-sm font-semibold text-primary dark:text-primaryDark mb-1">Análise da IA ({ai_analyzed_at ? formatDate(ai_analyzed_at, 'pt-BR', {day: '2-digit', month:'short', hour:'2-digit', minute:'2-digit'}) : 'Recente'}):</p>
+          <p className="text-sm text-textBase dark:text-textBaseDark">{ai_analysis}</p>
         </div>
       )}
       

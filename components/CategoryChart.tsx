@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Legend, Tooltip } from 'recharts';
 import { Transaction, Category, TransactionType, ChartData } from '../types';
@@ -33,13 +34,13 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ transactions, categories,
     const relevantTransactions = transactions.filter(t => 
       t.type === type && 
       t.date.startsWith(month) &&
-      t.categoryId 
+      t.category_id 
     );
 
     const groupedData: { [key: string]: number } = {};
     relevantTransactions.forEach(t => {
-      if (t.categoryId) { // Ensure categoryId exists
-        groupedData[t.categoryId] = (groupedData[t.categoryId] || 0) + t.amount;
+      if (t.category_id) { // Ensure category_id exists
+        groupedData[t.category_id] = (groupedData[t.category_id] || 0) + t.amount;
       }
     });
 

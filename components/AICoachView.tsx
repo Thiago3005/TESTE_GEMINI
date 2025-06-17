@@ -1,42 +1,44 @@
 
 import React from 'react';
-import { useState } from 'react'; // Added useState
+import { useState } from 'react';
 import { AIConfig, AIInsight, AIInsightType } from '../types';
 import Button from './Button';
-import Input from './Input'; // Added Input
+import Input from './Input';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import ChatBubbleLeftRightIcon from './icons/ChatBubbleLeftRightIcon';
-import LightBulbIcon from './icons/LightBulbIcon'; // Icon for budget suggestions
+import LightBulbIcon from './icons/LightBulbIcon';
 
 interface AICoachViewProps {
   aiConfig: AIConfig;
-  setAiConfig: React.Dispatch<React.SetStateAction<AIConfig>>;
+  setAiConfig: (configUpdater: Partial<Omit<AIConfig, 'apiKeyStatus'>>) => void;
   insights: AIInsight[];
   onFetchGeneralAdvice: () => void;
-  // onMarkInsightAsRead: (insightId: string) => void; 
+  onUpdateInsight: (insight: AIInsight) => void; // For marking as read
+  isPrivacyModeEnabled?: boolean;
 }
 
-const AICoachView: React.FC<AICoachViewProps> = ({ 
-  aiConfig, 
-  setAiConfig, 
+const AICoachView: React.FC<AICoachViewProps> = ({
+  aiConfig,
+  setAiConfig,
   insights,
   onFetchGeneralAdvice,
-  // onMarkInsightAsRead 
+  onUpdateInsight,
+  isPrivacyModeEnabled,
 }) => {
   const [monthlyIncomeInput, setMonthlyIncomeInput] = useState<string>(aiConfig.monthlyIncome?.toString() || '');
   const [incomeEditMode, setIncomeEditMode] = useState(false);
 
   const handleToggleAICoach = () => {
-    setAiConfig(prev => ({ ...prev, isEnabled: !prev.isEnabled }));
+    setAiConfig({ isEnabled: !aiConfig.isEnabled });
   };
 
   const handleSaveMonthlyIncome = () => {
     const income = parseFloat(monthlyIncomeInput);
     if (!isNaN(income) && income > 0) {
-      setAiConfig(prev => ({ ...prev, monthlyIncome: income }));
+      setAiConfig({ monthlyIncome: income });
       setIncomeEditMode(false);
-    } else if (monthlyIncomeInput === '') { // Allow clearing income
-      setAiConfig(prev => ({ ...prev, monthlyIncome: null }));
+    } else if (monthlyIncomeInput === '') {
+      setAiConfig({ monthlyIncome: null });
       setIncomeEditMode(false);
     } else {
       alert("Por favor, insira um valor de renda válido ou deixe em branco.");
@@ -53,7 +55,7 @@ const AICoachView: React.FC<AICoachViewProps> = ({
   const renderInsightContent = (insight: AIInsight) => {
     return <p className="text-textBase dark:text-textBaseDark whitespace-pre-wrap">{insight.content}</p>;
   };
-  
+
   const getInsightIcon = (type: AIInsightType) => {
     switch(type) {
       case 'budget_recommendation':
@@ -64,6 +66,12 @@ const AICoachView: React.FC<AICoachViewProps> = ({
         return <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2 text-primary dark:text-primaryDark flex-shrink-0" />;
       default:
         return <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2 text-textMuted dark:text-textMutedDark flex-shrink-0" />;
+    }
+  }
+  
+  const handleMarkAsRead = (insight: AIInsight) => {
+    if (!insight.is_read) {
+        onUpdateInsight({...insight, is_read: true});
     }
   }
 
@@ -100,7 +108,7 @@ const AICoachView: React.FC<AICoachViewProps> = ({
           <span className="block sm:inline">A funcionalidade do AI Coach está desativada. A chave da API Gemini (process.env.GEMINI_API_KEY) não foi configurada no ambiente. Sem ela, o AI Coach não pode operar.</span>
         </div>
       )}
-      
+
       {aiConfig.apiKeyStatus === 'error' && (
         <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg relative" role="alert">
           <strong className="font-bold">Erro na API! </strong>
@@ -108,13 +116,17 @@ const AICoachView: React.FC<AICoachViewProps> = ({
         </div>
       )}
 
-      {/* Monthly Income Section */}
       {aiConfig.apiKeyStatus === 'available' && (
         <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
           <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-3">Renda Mensal (para Sugestões)</h2>
           {aiConfig.monthlyIncome && !incomeEditMode ? (
             <div className="flex items-center justify-between">
-              <p className="text-textBase dark:text-textBaseDark">Sua renda mensal salva: <span className="font-bold text-lg text-primary dark:text-primaryDark">{formatCurrency(aiConfig.monthlyIncome)}</span></p>
+              <p className="text-textBase dark:text-textBaseDark">
+                Sua renda mensal salva:
+                <span className="font-bold text-lg text-primary dark:text-primaryDark ml-2">
+                  {formatCurrency(aiConfig.monthlyIncome, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+                </span>
+              </p>
               <Button variant="ghost" size="sm" onClick={() => setIncomeEditMode(true)}>Editar Renda</Button>
             </div>
           ) : (
@@ -123,7 +135,7 @@ const AICoachView: React.FC<AICoachViewProps> = ({
                 label="Informe sua renda mensal estimada"
                 id="monthlyIncome"
                 type="number"
-                placeholder="Ex: 3500.00"
+                placeholder={isPrivacyModeEnabled ? formatCurrency(0, 'BRL', 'pt-BR', true).replace('0,00', 'Ex: 3500.00') : "Ex: 3500.00"}
                 value={monthlyIncomeInput}
                 onChange={(e) => setMonthlyIncomeInput(e.target.value)}
                 containerClassName="max-w-xs"
@@ -148,7 +160,7 @@ const AICoachView: React.FC<AICoachViewProps> = ({
                     Novo Conselho Geral
                 </Button>
             </div>
-            
+
             {sortedInsights.length === 0 ? (
               <p className="text-center text-textMuted dark:text-textMutedDark py-8">
                 Nenhum conselho ou comentário do AI Coach ainda. Interaja com o app ou peça um novo conselho!
@@ -156,16 +168,21 @@ const AICoachView: React.FC<AICoachViewProps> = ({
             ) : (
               <ul className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                 {sortedInsights.map(insight => (
-                  <li 
-                    key={insight.id} 
-                    className={`p-4 rounded-lg shadow-sm 
+                  <li
+                    key={insight.id}
+                    className={`p-4 rounded-lg shadow-sm
                                 ${insight.isLoading ? 'opacity-60 animate-pulse' : ''}
-                                ${insight.type === 'error_message' 
-                                    ? 'bg-destructive/10 dark:bg-destructiveDark/15 border-l-4 border-destructive dark:border-destructiveDark' 
+                                ${insight.type === 'error_message'
+                                    ? 'bg-destructive/10 dark:bg-destructiveDark/15 border-l-4 border-destructive dark:border-destructiveDark'
                                     : insight.type === 'budget_recommendation'
                                     ? 'bg-yellow-400/10 dark:bg-yellow-400/15 border-l-4 border-yellow-500 dark:border-yellow-400'
                                     : 'bg-primary/5 dark:bg-primaryDark/10 border-l-4 border-primary dark:border-primaryDark'
-                                }`}
+                                } ${!insight.is_read && !insight.isLoading ? 'cursor-pointer hover:shadow-md' : ''}`}
+                     onClick={() => handleMarkAsRead(insight)}
+                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleMarkAsRead(insight);}}
+                     tabIndex={!insight.is_read && !insight.isLoading ? 0 : undefined}
+                     role={!insight.is_read && !insight.isLoading ? "button" : undefined}
+                     aria-label={!insight.is_read && !insight.isLoading ? "Marcar como lido" : undefined}
                   >
                     <div className="flex items-start">
                       {getInsightIcon(insight.type)}
@@ -173,8 +190,9 @@ const AICoachView: React.FC<AICoachViewProps> = ({
                         {renderInsightContent(insight)}
                         <p className="text-xs text-textMuted dark:text-textMutedDark mt-1.5">
                           {formatDate(insight.timestamp, 'pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
-                          {insight.relatedTransactionId && <span className="ml-2"> (Ref. Transação)</span>} 
-                          {insight.relatedCategoryId && insight.type === 'budget_recommendation' && <span className="ml-2"> (Ref. Categoria)</span>}
+                          {insight.related_transaction_id && <span className="ml-2"> (Ref. Transação)</span>}
+                          {insight.related_category_id && insight.type === 'budget_recommendation' && <span className="ml-2"> (Ref. Categoria)</span>}
+                           {!insight.is_read && !insight.isLoading && <span className="ml-2 px-1.5 py-0.5 text-xs bg-blue-500 text-white rounded-full">Novo</span>}
                         </p>
                       </div>
                     </div>
@@ -185,7 +203,7 @@ const AICoachView: React.FC<AICoachViewProps> = ({
           </div>
         </>
       )}
-      
+
       {!aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available' && (
          <div className="bg-yellow-100 dark:bg-yellow-700/20 border border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-300 px-4 py-3 rounded-lg" role="alert">
           <p>O AI Coach está atualmente desativado. Ative-o acima para receber dicas e comentários personalizados.</p>

@@ -1,5 +1,5 @@
 
-export const generateId = (): string => {
+export const generateId = (): string => { // Keep for client-side only IDs, e.g., toast messages
   return crypto.randomUUID();
 };
 
@@ -17,7 +17,11 @@ export const formatDate = (dateString: string, locale: string = 'pt-BR', options
   return date.toLocaleDateString(locale, finalOptions);
 };
 
-export const formatCurrency = (amount: number, currency: string = 'BRL', locale: string = 'pt-BR'): string => {
+export const formatCurrency = (amount: number, currency: string = 'BRL', locale: string = 'pt-BR', isPrivacyMode: boolean = false): string => {
+  if (isPrivacyMode) {
+    const currencySymbol = new Intl.NumberFormat(locale, { style: 'currency', currency: currency }).formatToParts(0).find(part => part.type === 'currency')?.value || '$';
+    return `${currencySymbol} ****,**`;
+  }
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency,
@@ -27,3 +31,6 @@ export const formatCurrency = (amount: number, currency: string = 'BRL', locale:
 export const getISODateString = (date: Date = new Date()): string => {
   return date.toISOString().split('T')[0];
 };
+
+// getUserDataKey is removed as it's not needed for Supabase.
+// Data is now fetched with user_id filters directly from Supabase.

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useMemo } from 'react';
 import { MoneyBox, Account, MoneyBoxTransaction, MoneyBoxTransactionType } from '../types';
@@ -8,16 +9,20 @@ import MoneyBoxHistoryModal from './MoneyBoxHistoryModal';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import { formatCurrency } from '../utils/helpers';
+import TrashIcon from './icons/TrashIcon'; // Import TrashIcon
+
 
 interface MoneyBoxesViewProps {
   moneyBoxes: MoneyBox[];
   moneyBoxTransactions: MoneyBoxTransaction[];
   accounts: Account[];
-  onAddMoneyBox: (moneyBox: MoneyBox) => void;
+  onAddMoneyBox: (moneyBox: Omit<MoneyBox, 'id'|'user_id'|'created_at'|'updated_at'>) => void;
   onUpdateMoneyBox: (moneyBox: MoneyBox) => void;
-  onAddMoneyBoxTransaction: (transaction: MoneyBoxTransaction, createLinkedTransaction: boolean, linkedAccountId?: string) => void;
-  onDeleteMoneyBoxTransaction: (transactionId: string, linkedTransactionId?: string) => void; // For history modal
+  onDeleteMoneyBox: (moneyBoxId: string) => void; // New prop for deleting money box itself
+  onAddMoneyBoxTransaction: (transaction: Omit<MoneyBoxTransaction, 'id'|'user_id'|'created_at'|'updated_at'|'linked_transaction_id'>, createLinkedTransaction: boolean, linkedAccountId?: string) => void;
+  onDeleteMoneyBoxTransaction: (transactionId: string, linkedTransactionId?: string) => void;
   calculateMoneyBoxBalance: (moneyBoxId: string) => number;
+  isPrivacyModeEnabled?: boolean;
 }
 
 const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
@@ -26,9 +31,11 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
   accounts,
   onAddMoneyBox,
   onUpdateMoneyBox,
+  onDeleteMoneyBox, // Use new prop
   onAddMoneyBoxTransaction,
   onDeleteMoneyBoxTransaction,
   calculateMoneyBoxBalance,
+  isPrivacyModeEnabled,
 }) => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingMoneyBox, setEditingMoneyBox] = useState<MoneyBox | null>(null);
@@ -36,7 +43,7 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [selectedMoneyBoxForTransaction, setSelectedMoneyBoxForTransaction] = useState<MoneyBox | null>(null);
   const [currentTransactionType, setCurrentTransactionType] = useState<MoneyBoxTransactionType>(MoneyBoxTransactionType.DEPOSIT);
-  
+
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [selectedMoneyBoxForHistory, setSelectedMoneyBoxForHistory] = useState<MoneyBox | null>(null);
 
@@ -56,10 +63,15 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
     setCurrentTransactionType(type);
     setIsTransactionModalOpen(true);
   };
-  
+
   const openHistoryModal = (moneyBox: MoneyBox) => {
     setSelectedMoneyBoxForHistory(moneyBox);
     setIsHistoryModalOpen(true);
+  };
+  
+  const handleDeleteMoneyBoxClick = (moneyBoxId: string) => {
+    // Confirmation and actual deletion logic is handled by onDeletMoneyBox in App.tsx
+    onDeleteMoneyBox(moneyBoxId);
   };
 
   const totalSavedInMoneyBoxes = useMemo(() => {
@@ -73,7 +85,7 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
           <h1 className="text-2xl font-bold text-textBase dark:text-textBaseDark">Minhas Caixinhas</h1>
           {moneyBoxes.length > 0 && (
              <p className="text-sm text-textMuted dark:text-textMutedDark">
-                Total guardado: <span className="font-semibold text-secondary dark:text-secondaryDark">{formatCurrency(totalSavedInMoneyBoxes)}</span>
+                Total guardado: <span className="font-semibold text-secondary dark:text-secondaryDark">{formatCurrency(totalSavedInMoneyBoxes, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
             </p>
           )}
         </div>
@@ -91,8 +103,11 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
               moneyBox={mb}
               balance={calculateMoneyBoxBalance(mb.id)}
               onEdit={openFormModalForEdit}
+              onDelete={handleDeleteMoneyBoxClick} // Updated prop name
               onOpenTransactionModal={openTransactionModal}
               onOpenHistoryModal={openHistoryModal}
+              isPrivacyModeEnabled={isPrivacyModeEnabled}
+              hasTransactions={moneyBoxTransactions.some(mbt => mbt.money_box_id === mb.id)}
             />
           ))}
         </ul>
@@ -117,15 +132,15 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
           transactionType={currentTransactionType}
         />
       )}
-      
+
       {selectedMoneyBoxForHistory && (
         <MoneyBoxHistoryModal
           isOpen={isHistoryModalOpen}
           onClose={() => setIsHistoryModalOpen(false)}
           moneyBox={selectedMoneyBoxForHistory}
           transactions={moneyBoxTransactions}
-          accounts={accounts}
           onDeleteTransaction={onDeleteMoneyBoxTransaction}
+          isPrivacyModeEnabled={isPrivacyModeEnabled}
         />
       )}
     </div>

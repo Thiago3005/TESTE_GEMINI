@@ -4,31 +4,33 @@ import { Loan, LoanRepayment, LoanStatus, Account, CreditCard } from '../types';
 import { formatDate, formatCurrency } from '../utils/helpers';
 import Button from './Button';
 import EditIcon from './icons/EditIcon';
-import PlusIcon from './icons/PlusIcon'; // For "Register Repayment"
+import TrashIcon from './icons/TrashIcon'; // Add TrashIcon import
+import PlusIcon from './icons/PlusIcon'; 
 import UsersIcon from './icons/UsersIcon';
 
 interface LoanItemProps {
   loan: Loan;
-  repayments: LoanRepayment[]; // All repayments for this loan
-  accounts: Account[]; // To display account names for funding/repayment
-  creditCards: CreditCard[]; // To display card names for funding
+  repayments: LoanRepayment[]; 
+  accounts: Account[]; 
+  creditCards: CreditCard[]; 
   onEdit: (loan: Loan) => void;
   onDelete: (loanId: string) => void;
   onRegisterRepayment: (loan: Loan) => void;
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const LoanItem: React.FC<LoanItemProps> = ({ 
-    loan, repayments, accounts, creditCards, onEdit, onDelete, onRegisterRepayment 
+    loan, repayments, accounts, creditCards, onEdit, onDelete, onRegisterRepayment, isPrivacyModeEnabled
 }) => {
-  const totalPaid = repayments.reduce((sum, rp) => sum + rp.amountPaid, 0);
-  const outstandingBalance = loan.totalAmountToReimburse - totalPaid;
+  const totalPaid = repayments.reduce((sum, rp) => sum + rp.amount_paid, 0);
+  const outstandingBalance = loan.total_amount_to_reimburse - totalPaid;
   
   let status: LoanStatus = 'PENDING';
   let statusColor = 'text-amber-600 dark:text-amber-500';
   let statusBgColor = 'bg-amber-100 dark:bg-amber-500/20';
   let progressColor = 'bg-amber-500';
 
-  if (totalPaid >= loan.totalAmountToReimburse) {
+  if (totalPaid >= loan.total_amount_to_reimburse) {
     status = 'PAID';
     statusColor = 'text-secondary dark:text-secondaryDark';
     statusBgColor = 'bg-emerald-100 dark:bg-emerald-500/20';
@@ -40,15 +42,15 @@ const LoanItem: React.FC<LoanItemProps> = ({
     progressColor = 'bg-blue-500';
   }
 
-  const progressPercent = loan.totalAmountToReimburse > 0 
-    ? Math.min((totalPaid / loan.totalAmountToReimburse) * 100, 100)
+  const progressPercent = loan.total_amount_to_reimburse > 0 
+    ? Math.min((totalPaid / loan.total_amount_to_reimburse) * 100, 100)
     : 0;
 
-  const fundingAccountName = loan.fundingSource === 'account' && loan.linkedAccountId 
-    ? accounts.find(a => a.id === loan.linkedAccountId)?.name 
+  const fundingAccountName = loan.funding_source === 'account' && loan.linked_account_id 
+    ? accounts.find(a => a.id === loan.linked_account_id)?.name 
     : null;
-  const fundingCreditCardName = loan.fundingSource === 'creditCard' && loan.linkedCreditCardId
-    ? creditCards.find(cc => cc.id === loan.linkedCreditCardId)?.name
+  const fundingCreditCardName = loan.funding_source === 'creditCard' && loan.linked_credit_card_id
+    ? creditCards.find(cc => cc.id === loan.linked_credit_card_id)?.name
     : null;
 
   return (
@@ -57,16 +59,16 @@ const LoanItem: React.FC<LoanItemProps> = ({
         <div>
           <div className="flex items-center space-x-2 mb-1">
             <UsersIcon className="w-5 h-5 text-primary dark:text-primaryDark" />
-            <h3 className="text-lg font-semibold text-textBase dark:text-textBaseDark">{loan.personName}</h3>
+            <h3 className="text-lg font-semibold text-textBase dark:text-textBaseDark">{loan.person_name}</h3>
             <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusBgColor} ${statusColor}`}>
               {status === 'PENDING' ? 'Pendente' : status === 'PARTIALLY_PAID' ? 'Parcialmente Pago' : 'Pago'}
             </span>
           </div>
           <p className="text-sm text-textMuted dark:text-textMutedDark">
-            Emprestado em: {formatDate(loan.loanDate)}
+            Emprestado em: {formatDate(loan.loan_date)}
           </p>
           <p className="text-sm text-textMuted dark:text-textMutedDark">
-            Total a Reembolsar: <span className="font-semibold">{formatCurrency(loan.totalAmountToReimburse)}</span>
+            Total a Reembolsar: <span className="font-semibold">{formatCurrency(loan.total_amount_to_reimburse, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
           </p>
           {loan.description && <p className="text-xs italic text-neutral dark:text-neutralDark mt-1">{loan.description}</p>}
         </div>
@@ -80,19 +82,19 @@ const LoanItem: React.FC<LoanItemProps> = ({
              onClick={() => onDelete(loan.id)} 
              aria-label="Excluir Empréstimo" 
              className="!p-1.5"
-             disabled={totalPaid > 0 && status !== 'PAID'} // Prevent delete if partially paid unless user really wants
+             disabled={totalPaid > 0 && status !== 'PAID'}
              title={totalPaid > 0 && status !== 'PAID' ? "Exclua os pagamentos primeiro ou quite o empréstimo" : "Excluir Empréstimo"}
            >
-             <EditIcon className={`w-4 h-4 ${(totalPaid > 0 && status !== 'PAID') ? 'text-neutral/50 dark:text-neutralDark/50' : 'text-destructive dark:text-destructiveDark'}`} />
+             <TrashIcon className={`w-4 h-4 ${(totalPaid > 0 && status !== 'PAID') ? 'text-neutral/50 dark:text-neutralDark/50' : 'text-destructive dark:text-destructiveDark'}`} />
            </Button>
         </div>
       </div>
 
       <div className="space-y-1">
         <div className="flex justify-between text-sm">
-          <span className="text-textMuted dark:text-textMutedDark">Pago: {formatCurrency(totalPaid)}</span>
+          <span className="text-textMuted dark:text-textMutedDark">Pago: {formatCurrency(totalPaid, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
           <span className={`font-semibold ${outstandingBalance <= 0 ? statusColor : 'text-destructive dark:text-destructiveDark'}`}>
-            Pendente: {formatCurrency(Math.max(0, outstandingBalance))}
+            Pendente: {formatCurrency(Math.max(0, outstandingBalance), 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </span>
         </div>
         <div className="w-full progress-bar-bg rounded-full h-2.5 dark:progress-bar-bg">
@@ -105,17 +107,17 @@ const LoanItem: React.FC<LoanItemProps> = ({
       
       <div className="text-xs text-textMuted dark:text-textMutedDark pt-2 border-t border-borderBase/20 dark:border-borderBaseDark/30">
         <p><strong>Origem do Dinheiro:</strong></p>
-        {loan.fundingSource === 'account' && (
+        {loan.funding_source === 'account' && (
           <>
             <p>Conta: {fundingAccountName || 'N/A'}</p>
-            <p>Valor Entregue da Conta: {formatCurrency(loan.amountDeliveredFromAccount || 0)}</p>
+            <p>Valor Entregue da Conta: {formatCurrency(loan.amount_delivered_from_account || 0, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
           </>
         )}
-        {loan.fundingSource === 'creditCard' && (
+        {loan.funding_source === 'creditCard' && (
           <>
             <p>Cartão de Crédito: {fundingCreditCardName || 'N/A'}</p>
-            <p>Valor Líquido Entregue: {formatCurrency(loan.amountDeliveredFromCredit || 0)}</p>
-            <p>Custo no Cartão (Fatura): {formatCurrency(loan.costOnCreditCard || 0)}</p>
+            <p>Valor Líquido Entregue: {formatCurrency(loan.amount_delivered_from_credit || 0, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+            <p>Custo no Cartão (Fatura): {formatCurrency(loan.cost_on_credit_card || 0, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
           </>
         )}
       </div>

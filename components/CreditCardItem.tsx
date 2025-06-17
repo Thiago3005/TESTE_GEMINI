@@ -1,12 +1,14 @@
+
 import React from 'react';
 import { useState } from 'react';
 import { CreditCard, InstallmentPurchase } from '../types';
-import { formatCurrency, getISODateString } from '../utils/helpers';
+import { formatCurrency, getISODateString, formatDate } from '../utils/helpers';
 import Button from './Button';
 import EditIcon from './icons/EditIcon';
 import TrashIcon from './icons/TrashIcon';
 import PlusIcon from './icons/PlusIcon';
 import CreditCardIcon from './icons/CreditCardIcon'; 
+import SparklesIcon from './icons/SparklesIcon'; // New Icon
 
 interface CreditCardItemProps {
   card: CreditCard;
@@ -17,6 +19,9 @@ interface CreditCardItemProps {
   onEditInstallmentPurchase: (purchase: InstallmentPurchase, card: CreditCard) => void;
   onDeleteInstallmentPurchase: (purchaseId: string) => void;
   onMarkInstallmentPaid: (purchaseId: string) => void;
+  onGetBestPurchaseDay: (cardId: string) => void; // New prop
+  isAIFeatureEnabled: boolean; // New prop to control AI button visibility/state
+  isPrivacyModeEnabled?: boolean; 
 }
 
 const CreditCardItem: React.FC<CreditCardItemProps> = ({
@@ -28,37 +33,41 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
   onEditInstallmentPurchase,
   onDeleteInstallmentPurchase,
   onMarkInstallmentPaid,
+  onGetBestPurchaseDay, 
+  isAIFeatureEnabled,
+  isPrivacyModeEnabled,
 }) => {
   const [showInstallments, setShowInstallments] = useState(false);
 
-  const cardInstallments = installmentPurchases.filter(p => p.creditCardId === card.id);
+  const cardInstallments = installmentPurchases.filter(p => p.credit_card_id === card.id);
 
   const totalOutstandingDebt = cardInstallments.reduce((sum, p) => {
-    const installmentValue = p.totalAmount / p.numberOfInstallments;
-    const remainingInstallments = p.numberOfInstallments - p.installmentsPaid;
+    const installmentValue = p.total_amount / p.number_of_installments;
+    const remainingInstallments = p.number_of_installments - p.installments_paid;
     return sum + (installmentValue * remainingInstallments);
   }, 0);
-  const availableLimit = card.limit - totalOutstandingDebt;
+  const availableLimit = card.card_limit - totalOutstandingDebt;
 
   const upcomingInstallments = cardInstallments
-    .filter(p => p.installmentsPaid < p.numberOfInstallments)
-    .sort((a,b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
+    .filter(p => p.installments_paid < p.number_of_installments)
+    .sort((a,b) => new Date(a.purchase_date).getTime() - new Date(b.purchase_date).getTime());
 
-  const nextPaymentAmount = upcomingInstallments.length > 0 ? (upcomingInstallments[0].totalAmount / upcomingInstallments[0].numberOfInstallments) : 0;
+  const nextPaymentAmount = upcomingInstallments.length > 0 ? (upcomingInstallments[0].total_amount / upcomingInstallments[0].number_of_installments) : 0;
   
    const calculateNextDueDate = (purchase: InstallmentPurchase): string => {
-    const purchaseDateObj = new Date(purchase.purchaseDate + 'T00:00:00'); // Ensure local date
-    const purchaseMonth = purchaseDateObj.getMonth();
-    const purchaseYear = purchaseDateObj.getFullYear();
-    
-    // Calculate month for next payment
-    // JS months are 0-indexed. Add installmentsPaid.
-    let nextPaymentMonth = purchaseMonth + purchase.installmentsPaid;
-    let nextPaymentYear = purchaseYear + Math.floor(nextPaymentMonth / 12);
-    nextPaymentMonth = nextPaymentMonth % 12;
-    
-    const date = new Date(nextPaymentYear, nextPaymentMonth, card.dueDay);
-    return getISODateString(date);
+    const purchaseDateObj = new Date(purchase.purchase_date + 'T00:00:00'); 
+    // This is a simplified calculation and might not be perfectly accurate for all CC billing cycles,
+    // especially around month-end and varying month lengths.
+    // For a more precise calculation, a library or more complex date logic would be needed.
+    // The AI will provide a more robust calculation for the "best day" feature.
+    let dueMonth = purchaseDateObj.getMonth() + purchase.installments_paid + 1; // +1 because first payment is next month
+    let dueYear = purchaseDateObj.getFullYear();
+    if (dueMonth > 11) { // Month is 0-indexed
+        dueYear += Math.floor(dueMonth / 12);
+        dueMonth = dueMonth % 12;
+    }
+    // Using formatDate for consistency, but a specific date construction might be better.
+    return formatDate(getISODateString(new Date(dueYear, dueMonth, card.due_day)));
   };
 
 
@@ -70,11 +79,13 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
             <CreditCardIcon className="w-6 h-6 text-primary dark:text-primaryDark" />
             <h3 className="text-lg font-semibold text-textBase dark:text-textBaseDark">{card.name}</h3>
           </div>
-          <p className="text-sm text-textMuted dark:text-textMutedDark">Limite Total: {formatCurrency(card.limit)}</p>
-          <p className={`text-sm font-medium ${availableLimit >=0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
-            Limite Disponível: {formatCurrency(availableLimit)}
+          <p className="text-sm text-textMuted dark:text-textMutedDark">
+            Limite Total: {formatCurrency(card.card_limit, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
-          <p className="text-xs text-textMuted dark:text-textMutedDark">Fechamento: Dia {card.closingDay} | Vencimento: Dia {card.dueDay}</p>
+          <p className={`text-sm font-medium ${availableLimit >=0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
+            Limite Disponível: {formatCurrency(availableLimit, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </p>
+          <p className="text-xs text-textMuted dark:text-textMutedDark">Fechamento: Dia {card.closing_day} | Vencimento: Dia {card.due_day}</p>
         </div>
         <div className="flex flex-col items-end space-y-1">
           <div className="flex space-x-1">
@@ -97,13 +108,26 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
           </Button>
         </div>
       </div>
+       {isAIFeatureEnabled && (
+         <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => onGetBestPurchaseDay(card.id)} 
+            className="text-primary dark:text-primaryDark hover:underline !justify-start !p-1 w-full text-left"
+            title="Ver melhor dia para compra com IA"
+          >
+           <SparklesIcon className="w-4 h-4 mr-1.5" /> Melhor Dia para Compra (IA)
+         </Button>
+        )}
       
       {cardInstallments.length > 0 && (
         <div>
-            <Button variant="ghost" size="sm" onClick={() => setShowInstallments(!showInstallments)} className="text-sm text-primary dark:text-primaryDark hover:underline">
+            <Button variant="ghost" size="sm" onClick={() => setShowInstallments(!showInstallments)} className="text-sm text-primary dark:text-primaryDark hover:underline !justify-start !p-1 w-full text-left">
                 {showInstallments ? 'Ocultar' : 'Mostrar'} {cardInstallments.length} Compra(s) Parcelada(s)
-                {nextPaymentAmount > 0 && !showInstallments && (
-                    <span className="ml-2 text-xs text-destructive dark:text-destructiveDark">(Próx. Parcela: ~{formatCurrency(nextPaymentAmount)})</span>
+                {nextPaymentAmount > 0 && !showInstallments && !isPrivacyModeEnabled && (
+                    <span className="ml-2 text-xs text-destructive dark:text-destructiveDark">
+                        (Próx. Parcela: ~{formatCurrency(nextPaymentAmount, 'BRL', 'pt-BR', false)})
+                    </span>
                 )}
             </Button>
         </div>
@@ -112,20 +136,22 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
       {showInstallments && cardInstallments.length > 0 && (
         <div className="mt-3 pt-3 border-t border-borderBase/50 dark:border-borderBaseDark/50 space-y-2">
           <h4 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">Compras Parceladas:</h4>
-          <ul className="space-y-2 max-h-60 overflow-y-auto pr-1"> {/* Added scrollbar styling if needed */}
+          <ul className="space-y-2 max-h-60 overflow-y-auto pr-1">
             {cardInstallments.map(p => {
-              const amountPerInstallment = p.totalAmount / p.numberOfInstallments;
-              const isPaid = p.installmentsPaid >= p.numberOfInstallments;
+              const amountPerInstallment = p.total_amount / p.number_of_installments;
+              const isPaid = p.installments_paid >= p.number_of_installments;
               return (
                 <li key={p.id} className={`p-2 rounded ${isPaid ? 'bg-green-500/10 dark:bg-green-500/20' : 'bg-blue-500/10 dark:bg-blue-500/20'}`}>
                   <div className="flex justify-between items-start text-sm">
                     <div>
                       <p className="font-medium text-textBase dark:text-textBaseDark">{p.description}</p>
                       <p className="text-xs text-textMuted dark:text-textMutedDark">
-                        {formatCurrency(amountPerInstallment)} x {p.numberOfInstallments} parcelas 
-                        ({p.installmentsPaid}/{p.numberOfInstallments} pagas)
+                        {formatCurrency(amountPerInstallment, 'BRL', 'pt-BR', isPrivacyModeEnabled)} x {p.number_of_installments} parcelas 
+                        ({p.installments_paid}/{p.number_of_installments} pagas)
                       </p>
-                      <p className="text-xs text-textMuted dark:text-textMutedDark">Total: {formatCurrency(p.totalAmount)} | Compra: {getISODateString(new Date(p.purchaseDate + 'T00:00:00'))}</p>
+                      <p className="text-xs text-textMuted dark:text-textMutedDark">
+                        Total: {formatCurrency(p.total_amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)} | Compra: {formatDate(p.purchase_date)}
+                      </p>
                        {!isPaid && <p className="text-xs text-destructive dark:text-destructiveDark font-semibold">Próximo Venc.: ~{calculateNextDueDate(p)}</p>}
                     </div>
                     <div className="flex flex-col items-end space-y-1">

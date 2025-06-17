@@ -1,6 +1,6 @@
 import React from 'react';
 import { useState } from 'react';
-import { UserProfile } from '../types';
+import { UserProfile } from '../types'; // Corrected import
 import Button from './Button';
 import Input from './Input';
 import { APP_NAME } from '../constants';

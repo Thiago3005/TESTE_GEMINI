@@ -1,10 +1,11 @@
+
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { MoneyBox } from '../types';
 import Modal from './Modal';
 import Input from './Input';
 import Button from './Button';
-import { generateId, getISODateString } from '../utils/helpers';
+import { generateId } from '../utils/helpers'; // getISODateString removed as created_at is Supabase managed
 import PiggyBankIcon from './icons/PiggyBankIcon'; // Default icon
 
 const defaultColors = [
@@ -20,7 +21,7 @@ const defaultColors = [
 interface MoneyBoxFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (moneyBox: MoneyBox) => void;
+  onSave: (moneyBox: Omit<MoneyBox, 'user_id' | 'created_at' | 'updated_at'>) => void;
   existingMoneyBox?: MoneyBox | null;
 }
 
@@ -34,7 +35,7 @@ const MoneyBoxFormModal: React.FC<MoneyBoxFormModalProps> = ({ isOpen, onClose, 
   useEffect(() => {
     if (existingMoneyBox) {
       setName(existingMoneyBox.name);
-      setGoalAmount(existingMoneyBox.goalAmount?.toString() || '');
+      setGoalAmount(existingMoneyBox.goal_amount?.toString() || '');
       setColor(existingMoneyBox.color || defaultColors[0]);
     } else {
       setName('');
@@ -57,11 +58,10 @@ const MoneyBoxFormModal: React.FC<MoneyBoxFormModalProps> = ({ isOpen, onClose, 
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const moneyBoxData: MoneyBox = {
-      id: existingMoneyBox?.id || generateId(),
+    const moneyBoxData: Omit<MoneyBox, 'user_id' | 'created_at' | 'updated_at'> = {
+      id: existingMoneyBox?.id || generateId(), // Client-side ID for new items if not handled by Supabase before insert
       name: name.trim(),
-      goalAmount: goalAmount ? parseFloat(goalAmount) : undefined,
-      createdAt: existingMoneyBox?.createdAt || getISODateString(),
+      goal_amount: goalAmount ? parseFloat(goalAmount) : undefined,
       icon: 'piggy-bank', // Default icon for now
       color: color,
     };

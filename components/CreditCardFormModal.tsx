@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { CreditCard } from '../types';
@@ -9,7 +10,7 @@ import { generateId } from '../utils/helpers';
 interface CreditCardFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (card: CreditCard) => void;
+  onSave: (card: Omit<CreditCard, 'user_id' | 'created_at' | 'updated_at'>) => void;
   existingCard?: CreditCard | null;
 }
 
@@ -23,9 +24,9 @@ const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({ isOpen, onClo
   useEffect(() => {
     if (existingCard) {
       setName(existingCard.name);
-      setLimit(existingCard.limit.toString());
-      setClosingDay(existingCard.closingDay.toString());
-      setDueDay(existingCard.dueDay.toString());
+      setLimit(existingCard.card_limit.toString());
+      setClosingDay(existingCard.closing_day.toString());
+      setDueDay(existingCard.due_day.toString());
     } else {
       setName('');
       setLimit('');
@@ -52,12 +53,12 @@ const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({ isOpen, onClo
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const cardData: CreditCard = {
+    const cardData: Omit<CreditCard, 'user_id' | 'created_at' | 'updated_at'> = {
       id: existingCard?.id || generateId(),
       name: name.trim(),
-      limit: parseFloat(limit),
-      closingDay: parseInt(closingDay, 10),
-      dueDay: parseInt(dueDay, 10),
+      card_limit: parseFloat(limit),
+      closing_day: parseInt(closingDay, 10),
+      due_day: parseInt(dueDay, 10),
     };
     onSave(cardData);
     onClose();

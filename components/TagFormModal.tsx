@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { Tag } from '../types';
@@ -20,7 +21,7 @@ const TAG_COLORS = [
 interface TagFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (tag: Tag) => void;
+  onSave: (tag: Omit<Tag, 'user_id' | 'created_at' | 'updated_at'>) => void;
   existingTag?: Tag | null;
   allTagNames?: string[]; // To check for uniqueness if needed
 }

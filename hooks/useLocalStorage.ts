@@ -1,9 +1,17 @@
+import React from 'react';
+import { useState, useEffect } from 'react';
 
-import React from 'react'; // Named import
-import { useState, useEffect } from 'react'; // Named import
+// This hook is no longer used for primary data storage after Supabase migration.
+// It can be kept if needed for very minor, non-critical UI preferences that
+// do not require database persistence or cross-device syncing.
+// For example, perhaps a purely local UI toggle state that doesn't need to be saved.
 
 function useLocalStorage<T,>(key: string, initialValue: T | (() => T)): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [storedValue, setStoredValue] = useState<T>(() => {
+    // Check if window is defined (for SSR or testing environments)
+    if (typeof window === 'undefined') {
+      return typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue;
+    }
     try {
       const item = window.localStorage.getItem(key);
       return item ? JSON.parse(item) : (typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue);
@@ -14,6 +22,9 @@ function useLocalStorage<T,>(key: string, initialValue: T | (() => T)): [T, Reac
   });
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
     try {
       window.localStorage.setItem(key, JSON.stringify(storedValue));
     } catch (error) {

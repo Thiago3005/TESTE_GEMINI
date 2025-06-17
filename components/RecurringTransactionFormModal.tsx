@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useEffect, ChangeEvent } from 'react';
 import { 
@@ -52,7 +53,7 @@ const calculateNextDueDateInternal = (startDateStr: string, frequency: Recurring
 interface RecurringTransactionFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (rt: RecurringTransaction) => void;
+  onSave: (rt: Omit<RecurringTransaction, 'user_id' | 'created_at' | 'updated_at'>) => void;
   accounts: Account[];
   categories: Category[];
   existingRT?: RecurringTransaction | null;
@@ -84,15 +85,15 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
         setDescription(existingRT.description);
         setAmount(existingRT.amount.toString());
         setType(existingRT.type);
-        setCategoryId(existingRT.categoryId || '');
-        setAccountId(existingRT.accountId);
-        setToAccountId(existingRT.toAccountId || '');
+        setCategoryId(existingRT.category_id || '');
+        setAccountId(existingRT.account_id);
+        setToAccountId(existingRT.to_account_id || '');
         setFrequency(existingRT.frequency);
-        setCustomIntervalDays(existingRT.customIntervalDays?.toString() || '30');
-        setStartDate(existingRT.startDate);
-        setEndDate(existingRT.endDate || '');
+        setCustomIntervalDays(existingRT.custom_interval_days?.toString() || '30');
+        setStartDate(existingRT.start_date);
+        setEndDate(existingRT.end_date || '');
         setOccurrences(existingRT.occurrences?.toString() || '');
-        setIsPaused(existingRT.isPaused || false);
+        setIsPaused(existingRT.is_paused || false);
         setNotes(existingRT.notes || '');
       } else {
         setDescription('');
@@ -136,23 +137,23 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
 
     const numOccurrences = occurrences ? parseInt(occurrences) : undefined;
 
-    const rtData: RecurringTransaction = {
+    const rtData: Omit<RecurringTransaction, 'user_id' | 'created_at' | 'updated_at'> = {
       id: existingRT?.id || generateId(),
       description: description.trim(),
       amount: parseFloat(amount),
       type,
-      categoryId: type === TransactionType.TRANSFER ? undefined : categoryId,
-      accountId,
-      toAccountId: type === TransactionType.TRANSFER ? toAccountId : undefined,
+      category_id: type === TransactionType.TRANSFER ? undefined : categoryId,
+      account_id: accountId,
+      to_account_id: type === TransactionType.TRANSFER ? toAccountId : undefined,
       frequency,
-      customIntervalDays: frequency === 'custom_days' ? parseInt(customIntervalDays) : undefined,
-      startDate,
-      endDate: endDate || undefined,
+      custom_interval_days: frequency === 'custom_days' ? parseInt(customIntervalDays) : undefined,
+      start_date: startDate,
+      end_date: endDate || undefined,
       occurrences: numOccurrences,
-      remainingOccurrences: existingRT?.id ? existingRT.remainingOccurrences : numOccurrences, // Preserve if editing, else set from new occurrences
-      nextDueDate: existingRT?.id ? existingRT.nextDueDate : calculateNextDueDateInternal(startDate, frequency, undefined, frequency === 'custom_days' ? parseInt(customIntervalDays) : undefined), // Recalc only if new
-      lastPostedDate: existingRT?.lastPostedDate,
-      isPaused: isPaused || false,
+      remaining_occurrences: existingRT?.id ? existingRT.remaining_occurrences : numOccurrences,
+      next_due_date: existingRT?.id ? existingRT.next_due_date : calculateNextDueDateInternal(startDate, frequency, undefined, frequency === 'custom_days' ? parseInt(customIntervalDays) : undefined),
+      last_posted_date: existingRT?.last_posted_date,
+      is_paused: isPaused || false,
       notes: notes.trim() || undefined,
     };
     onSave(rtData);

@@ -10,26 +10,29 @@ interface BillsAlertsProps {
   recurringTransactions: RecurringTransaction[];
   accounts: Account[];
   categories: Category[];
-  onViewTransaction?: (transactionId: string) => void; // Optional: for navigating to the transaction
+  onViewTransaction?: (transactionId: string) => void; 
+  isPrivacyModeEnabled?: boolean;
 }
 
-const BillsAlerts: React.FC<BillsAlertsProps> = ({ recurringTransactions, accounts, categories, onViewTransaction }) => {
+const BillsAlerts: React.FC<BillsAlertsProps> = ({ 
+  recurringTransactions, accounts, categories, onViewTransaction, isPrivacyModeEnabled 
+}) => {
   const today = getISODateString(new Date());
   const upcomingLimitDate = getISODateString(new Date(new Date().setDate(new Date().getDate() + 7)));
 
   const activeRTs = recurringTransactions.filter(rt => 
-    !rt.isPaused &&
-    (!rt.endDate || rt.endDate >= today) &&
-    (rt.remainingOccurrences === undefined || rt.remainingOccurrences > 0)
+    !rt.is_paused &&
+    (!rt.end_date || rt.end_date >= today) &&
+    (rt.remaining_occurrences === undefined || rt.remaining_occurrences > 0)
   );
 
   const overdueBills = activeRTs
-    .filter(rt => rt.nextDueDate < today)
-    .sort((a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime());
+    .filter(rt => rt.next_due_date < today)
+    .sort((a, b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
 
   const upcomingBills = activeRTs
-    .filter(rt => rt.nextDueDate >= today && rt.nextDueDate <= upcomingLimitDate)
-    .sort((a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime());
+    .filter(rt => rt.next_due_date >= today && rt.next_due_date <= upcomingLimitDate)
+    .sort((a, b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
 
   if (overdueBills.length === 0 && upcomingBills.length === 0) {
     return (
@@ -44,8 +47,8 @@ const BillsAlerts: React.FC<BillsAlertsProps> = ({ recurringTransactions, accoun
   }
 
   const renderBillItem = (rt: RecurringTransaction, isOverdue: boolean) => {
-    const account = accounts.find(a => a.id === rt.accountId);
-    const category = rt.categoryId ? categories.find(c => c.id === rt.categoryId) : null;
+    const account = accounts.find(a => a.id === rt.account_id);
+    const category = rt.category_id ? categories.find(c => c.id === rt.category_id) : null;
     const amountColor = rt.type === TransactionType.EXPENSE ? 'text-destructive dark:text-destructiveDark' : 'text-secondary dark:text-secondaryDark';
     const sign = rt.type === TransactionType.EXPENSE ? '-' : '+';
 
@@ -53,24 +56,29 @@ const BillsAlerts: React.FC<BillsAlertsProps> = ({ recurringTransactions, accoun
       <li 
         key={rt.id} 
         className={`p-3 rounded-md border-l-4 ${isOverdue ? 'border-destructive dark:border-destructiveDark bg-destructive/5 dark:bg-destructiveDark/10' : 'border-amber-500 dark:border-amber-400 bg-amber-500/5 dark:bg-amber-400/10'} hover:shadow-sm transition-shadow`}
-        onClick={() => onViewTransaction && onViewTransaction(rt.id)} // Placeholder for future navigation
+        onClick={() => onViewTransaction && onViewTransaction(rt.id)} 
         role={onViewTransaction ? "button" : undefined}
         tabIndex={onViewTransaction ? 0 : undefined}
+        aria-label={`Ver detalhes de ${rt.description}`}
       >
         <div className="flex items-center justify-between">
           <div className="flex-grow">
             <div className="flex items-center space-x-2">
-              {isOverdue ? <CalendarAlertIcon className="w-5 h-5 text-destructive dark:text-destructiveDark" /> : <CalendarClockIcon className="w-5 h-5 text-amber-500 dark:text-amber-400" />}
-              <span className="font-medium text-textBase dark:text-textBaseDark">{rt.description}</span>
+              {isOverdue ? 
+                <CalendarAlertIcon className="w-5 h-5 text-destructive dark:text-destructiveDark flex-shrink-0" /> : 
+                <CalendarClockIcon className="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0" />
+              }
+              <span className="font-semibold text-textBase dark:text-textBaseDark">{rt.description}</span>
             </div>
-            <p className={`text-sm ${amountColor} font-semibold`}>{sign}{formatCurrency(rt.amount)}</p>
-            <p className="text-xs text-textMuted dark:text-textMutedDark">
-              Vence em: {formatDate(rt.nextDueDate)}
-              {account && ` • Conta: ${account.name}`}
-              {category && ` • Cat: ${category.name}`}
+            <p className="text-sm text-textMuted dark:text-textMutedDark ml-7">
+              Vence em: {formatDate(rt.next_due_date)}
+              {account && ` (${account.name})`}
+              {category && ` - ${category.name}`}
             </p>
           </div>
-          {/* Add a button or link to view/pay if needed */}
+          <span className={`text-md font-bold ${amountColor}`}>
+            {sign}{formatCurrency(rt.amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </span>
         </div>
       </li>
     );
@@ -85,8 +93,8 @@ const BillsAlerts: React.FC<BillsAlertsProps> = ({ recurringTransactions, accoun
       <div className="space-y-4">
         {overdueBills.length > 0 && (
           <div>
-            <h3 className="text-md font-semibold text-destructive dark:text-destructiveDark mb-2">VENCIDAS ({overdueBills.length})</h3>
-            <ul className="space-y-2 max-h-40 overflow-y-auto pr-1">
+            <h3 className="text-md font-semibold text-destructive dark:text-destructiveDark mb-2">Vencidas ({overdueBills.length})</h3>
+            <ul className="space-y-2">
               {overdueBills.map(rt => renderBillItem(rt, true))}
             </ul>
           </div>
@@ -94,9 +102,9 @@ const BillsAlerts: React.FC<BillsAlertsProps> = ({ recurringTransactions, accoun
         {upcomingBills.length > 0 && (
           <div>
             <h3 className={`text-md font-semibold text-amber-600 dark:text-amber-500 mb-2 ${overdueBills.length > 0 ? 'mt-4' : ''}`}>
-              PRÓXIMOS 7 DIAS ({upcomingBills.length})
+              Próximas (7 dias) ({upcomingBills.length})
             </h3>
-            <ul className="space-y-2 max-h-40 overflow-y-auto pr-1">
+            <ul className="space-y-2">
               {upcomingBills.map(rt => renderBillItem(rt, false))}
             </ul>
           </div>
@@ -107,3 +115,4 @@ const BillsAlerts: React.FC<BillsAlertsProps> = ({ recurringTransactions, accoun
 };
 
 export default BillsAlerts;
+    

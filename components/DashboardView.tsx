@@ -1,17 +1,17 @@
 
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
-import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction } from '../types'; // Added RecurringTransaction
+import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction } from '../types'; 
 import { formatCurrency, getISODateString, formatDate } from '../utils/helpers'; 
 import PlusIcon from './icons/PlusIcon';
 import ScaleIcon from './icons/ScaleIcon'; 
-import UsersIcon from './icons/UsersIcon'; // For Loans Summary
+import UsersIcon from './icons/UsersIcon'; 
 import Button from './Button';
 import CategoryChart from './CategoryChart';
-import DailySummaryBarChart from './CategoryBarChart'; // Corrected import path
-import ChartPieIcon from './icons/ChartPieIcon'; // For Pie chart toggle
+import DailySummaryBarChart from './CategoryBarChart'; 
+import ChartPieIcon from './icons/ChartPieIcon'; 
 import BarChartIcon from './icons/BarChartIcon'; 
-import BillsAlerts from './BillsAlerts'; // New: Bills Alerts
+import BillsAlerts from './BillsAlerts'; 
 
 
 interface DashboardViewProps {
@@ -23,21 +23,23 @@ interface DashboardViewProps {
   moneyBoxes: MoneyBox[]; 
   loans: Loan[]; 
   loanRepayments: LoanRepayment[]; 
-  recurringTransactions: RecurringTransaction[]; // New: For BillsAlerts
+  recurringTransactions: RecurringTransaction[]; 
   onAddTransaction: () => void;
   calculateAccountBalance: (accountId: string) => number;
   calculateMoneyBoxBalance: (moneyBoxId: string) => number; 
-  onViewRecurringTransaction?: (transactionId: string) => void; // Optional navigation
+  onViewRecurringTransaction?: (transactionId: string) => void; 
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const DashboardView: React.FC<DashboardViewProps> = ({ 
     transactions, accounts, categories, creditCards, installmentPurchases, moneyBoxes,
-    loans, loanRepayments, recurringTransactions, // New props
-    onAddTransaction, calculateAccountBalance, calculateMoneyBoxBalance, onViewRecurringTransaction
+    loans, loanRepayments, recurringTransactions, 
+    onAddTransaction, calculateAccountBalance, calculateMoneyBoxBalance, onViewRecurringTransaction,
+    isPrivacyModeEnabled,
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
   const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'pie' | 'bar'>('pie'); 
-  const currentMonthYYYYMM = getISODateString(new Date()).substring(0, 7); // YYYY-MM
+  const currentMonthYYYYMM = getISODateString(new Date()).substring(0, 7); 
 
   const totalAccountBalance = useMemo(() => {
     return accounts.reduce((sum, acc) => sum + calculateAccountBalance(acc.id), 0);
@@ -49,9 +51,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
   const totalOutstandingCreditCardDebt = useMemo(() => {
     return installmentPurchases.reduce((totalDebt, p) => {
-        if (p.installmentsPaid >= p.numberOfInstallments) return totalDebt;
-        const installmentValue = p.totalAmount / p.numberOfInstallments;
-        const remainingInstallments = p.numberOfInstallments - p.installmentsPaid;
+        if (p.installments_paid >= p.number_of_installments) return totalDebt;
+        const installmentValue = p.total_amount / p.number_of_installments;
+        const remainingInstallments = p.number_of_installments - p.installments_paid;
         return totalDebt + (installmentValue * remainingInstallments);
     }, 0);
   }, [installmentPurchases]);
@@ -59,9 +61,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   const totalOutstandingLoanReceivables = useMemo(() => {
     return loans.reduce((total, loan) => {
       const paidForThisLoan = loanRepayments
-        .filter(rp => loan.repaymentIds.includes(rp.id))
-        .reduce((sum, rp) => sum + rp.amountPaid, 0);
-      return total + (loan.totalAmountToReimburse - paidForThisLoan);
+        .filter(rp => rp.loan_id === loan.id)
+        .reduce((sum, rp) => sum + rp.amount_paid, 0);
+      return total + (loan.total_amount_to_reimburse - paidForThisLoan);
     }, 0);
   }, [loans, loanRepayments]);
   
@@ -77,16 +79,16 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   }, [transactions]);
   
   const budgetedCategories = useMemo(() => {
-    return categories.filter(c => c.type === TransactionType.EXPENSE && c.monthlyBudget && c.monthlyBudget > 0);
+    return categories.filter(c => c.type === TransactionType.EXPENSE && c.monthly_budget && c.monthly_budget > 0);
   }, [categories]);
 
   const budgetSummary = useMemo(() => {
-    const totalBudgeted = budgetedCategories.reduce((sum, cat) => sum + (cat.monthlyBudget || 0), 0);
+    const totalBudgeted = budgetedCategories.reduce((sum, cat) => sum + (cat.monthly_budget || 0), 0);
     let totalSpentInBudgetedCategories = 0;
 
     budgetedCategories.forEach(cat => {
         const spending = transactions
-            .filter(t => t.categoryId === cat.id && t.date.startsWith(currentMonthYYYYMM) && t.type === TransactionType.EXPENSE)
+            .filter(t => t.category_id === cat.id && t.date.startsWith(currentMonthYYYYMM) && t.type === TransactionType.EXPENSE)
             .reduce((sum, t) => sum + t.amount, 0);
         totalSpentInBudgetedCategories += spending;
     });
@@ -107,18 +109,17 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         </Button>
       </div>
 
-      {/* Balances Summary, Loans & Net Worth */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
           <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO TOTAL (CONTAS)</h2>
           <p className={`text-3xl font-bold ${totalAccountBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
-            {formatCurrency(totalAccountBalance)}
+            {formatCurrency(totalAccountBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
         </div>
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
           <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO CAIXINHAS</h2>
           <p className={`text-3xl font-bold ${totalMoneyBoxBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
-            {formatCurrency(totalMoneyBoxBalance)}
+            {formatCurrency(totalMoneyBoxBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
         </div>
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
@@ -127,7 +128,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                  <UsersIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
             </div>
           <p className={`text-3xl font-bold text-primary dark:text-primaryDark`}>
-            {formatCurrency(totalOutstandingLoanReceivables)}
+            {formatCurrency(totalOutstandingLoanReceivables, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
         </div>
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col items-start">
@@ -136,28 +137,29 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                  <ScaleIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
             </div>
           <p className={`text-3xl font-bold ${netWorth >= 0 ? 'text-primary dark:text-primaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
-            {formatCurrency(netWorth)}
+            {formatCurrency(netWorth, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
-          <div className="text-xs mt-1 space-y-0.5">
-            {totalOutstandingCreditCardDebt > 0 && (
-                <p className="text-destructive dark:text-destructiveDark/80">Dívida Cartões: {formatCurrency(totalOutstandingCreditCardDebt)}</p>
-            )}
-            {totalOutstandingLoanReceivables > 0 && (
-                 <p className="text-primary dark:text-primaryDark/80">Empréstimos a Receber: {formatCurrency(totalOutstandingLoanReceivables)}</p>
-            )}
-          </div>
+          {!isPrivacyModeEnabled && (
+            <div className="text-xs mt-1 space-y-0.5">
+              {totalOutstandingCreditCardDebt > 0 && (
+                  <p className="text-destructive dark:text-destructiveDark/80">Dívida Cartões: {formatCurrency(totalOutstandingCreditCardDebt)}</p>
+              )}
+              {totalOutstandingLoanReceivables > 0 && (
+                  <p className="text-primary dark:text-primaryDark/80">Empréstimos a Receber: {formatCurrency(totalOutstandingLoanReceivables)}</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Bills Alerts - New Section */}
       <BillsAlerts 
         recurringTransactions={recurringTransactions} 
         accounts={accounts} 
         categories={categories}
         onViewTransaction={onViewRecurringTransaction} 
+        isPrivacyModeEnabled={isPrivacyModeEnabled}
       />
       
-      {/* Monthly Chart */}
       <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
             <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark">Resumo Mensal ({currentMonthYYYYMM.split('-')[1]}/{currentMonthYYYYMM.split('-')[0]})</h2>
@@ -176,7 +178,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 >
                     Receitas
                 </Button>
-                <div className="h-6 border-l border-borderBase dark:border-borderBaseDark mx-1 sm:mx-2"></div> {/* Divider */}
+                <div className="h-6 border-l border-borderBase dark:border-borderBaseDark mx-1 sm:mx-2"></div>
                 <Button 
                     variant={monthlyChartDisplayMode === 'pie' ? 'primary' : 'ghost'}
                     size="sm"
@@ -197,7 +199,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 </Button>
             </div>
         </div>
-        {monthlyChartDisplayMode === 'pie' ? (
+        {isPrivacyModeEnabled ? (
+            <p className="text-center text-textMuted dark:text-textMutedDark py-8">Gráficos ocultos em Modo Privacidade.</p>
+        ) : monthlyChartDisplayMode === 'pie' ? (
             <CategoryChart 
               transactions={transactions} 
               categories={categories.filter(c => c.type === expenseIncomeChartType)} 
@@ -213,38 +217,44 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         )}
       </div>
       
-      {/* Budget Overview */}
       {budgetedCategories.length > 0 && (
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
           <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Orçamento Mensal ({currentMonthYYYYMM.split('-')[1]}/{currentMonthYYYYMM.split('-')[0]})</h2>
           <div className="mb-3">
             <div className="flex justify-between text-sm">
-              <span>Total Gasto (Orçado): {formatCurrency(budgetSummary.totalSpentInBudgetedCategories)}</span>
-              <span>Total Orçado: {formatCurrency(budgetSummary.totalBudgeted)}</span>
+              <span>Total Gasto (Orçado): {formatCurrency(budgetSummary.totalSpentInBudgetedCategories, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
+              <span>Total Orçado: {formatCurrency(budgetSummary.totalBudgeted, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
             </div>
-            <div className="w-full progress-bar-bg rounded-full h-2.5 mt-1 dark:progress-bar-bg">
-              <div 
-                className={`h-2.5 rounded-full ${budgetSummary.totalSpentInBudgetedCategories > budgetSummary.totalBudgeted ? 'bg-destructive' : 'bg-primary dark:bg-primaryDark'}`}
-                style={{ width: `${Math.min((budgetSummary.totalSpentInBudgetedCategories / budgetSummary.totalBudgeted) * 100, 100)}%` }}
-              ></div>
-            </div>
+            {!isPrivacyModeEnabled && budgetSummary.totalBudgeted > 0 && (
+                <div className="w-full progress-bar-bg rounded-full h-2.5 mt-1 dark:progress-bar-bg">
+                <div 
+                    className={`h-2.5 rounded-full ${budgetSummary.totalSpentInBudgetedCategories > budgetSummary.totalBudgeted ? 'bg-destructive' : 'bg-primary dark:bg-primaryDark'}`}
+                    style={{ width: `${Math.min((budgetSummary.totalSpentInBudgetedCategories / budgetSummary.totalBudgeted) * 100, 100)}%` }}
+                ></div>
+                </div>
+            )}
+            {isPrivacyModeEnabled && <p className="text-xs text-textMuted dark:text-textMutedDark text-center">Progresso oculto em Modo Privacidade.</p>}
           </div>
           <ul className="space-y-2 max-h-48 overflow-y-auto">
             {budgetedCategories.map(cat => {
                 const spending = transactions
-                    .filter(t => t.categoryId === cat.id && t.date.startsWith(currentMonthYYYYMM) && t.type === TransactionType.EXPENSE)
+                    .filter(t => t.category_id === cat.id && t.date.startsWith(currentMonthYYYYMM) && t.type === TransactionType.EXPENSE)
                     .reduce((sum, t) => sum + t.amount, 0);
-                const progress = cat.monthlyBudget ? Math.min((spending / cat.monthlyBudget) * 100, 100) : 0;
-                const isOver = cat.monthlyBudget ? spending > cat.monthlyBudget : false;
+                const progress = cat.monthly_budget ? Math.min((spending / cat.monthly_budget) * 100, 100) : 0;
+                const isOver = cat.monthly_budget ? spending > cat.monthly_budget : false;
                 return (
                     <li key={cat.id} className="text-sm">
                         <div className="flex justify-between">
                             <span>{cat.name}</span>
-                            <span className={isOver ? 'text-destructive dark:text-destructiveDark' : ''}>{formatCurrency(spending)} / {formatCurrency(cat.monthlyBudget || 0)}</span>
+                            <span className={isOver ? 'text-destructive dark:text-destructiveDark' : ''}>
+                                {formatCurrency(spending, 'BRL', 'pt-BR', isPrivacyModeEnabled)} / {formatCurrency(cat.monthly_budget || 0, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+                            </span>
                         </div>
-                        <div className="w-full progress-bar-bg rounded-full h-1.5 mt-0.5 dark:progress-bar-bg">
-                            <div className={`h-1.5 rounded-full ${isOver ? 'bg-destructive' : 'bg-secondary dark:bg-secondaryDark'}`} style={{ width: `${progress}%`}}></div>
-                        </div>
+                        {!isPrivacyModeEnabled && cat.monthly_budget && cat.monthly_budget > 0 && (
+                            <div className="w-full progress-bar-bg rounded-full h-1.5 mt-0.5 dark:progress-bar-bg">
+                                <div className={`h-1.5 rounded-full ${isOver ? 'bg-destructive' : 'bg-secondary dark:bg-secondaryDark'}`} style={{ width: `${progress}%`}}></div>
+                            </div>
+                        )}
                     </li>
                 );
             })}
@@ -253,21 +263,20 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       )}
 
 
-      {/* Recent Transactions */}
       <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
         <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Transações Recentes</h2>
         {recentTransactions.length > 0 ? (
           <ul className="space-y-3">
             {recentTransactions.map(tx => {
-              const account = accounts.find(a => a.id === tx.accountId);
-              const category = categories.find(c => c.id === tx.categoryId);
+              const account = accounts.find(a => a.id === tx.account_id);
+              const category = categories.find(c => c.id === tx.category_id);
               let txColor = 'text-textBase dark:text-textBaseDark';
               if (tx.type === TransactionType.INCOME) txColor = 'text-secondary dark:text-secondaryDark';
               else if (tx.type === TransactionType.EXPENSE) txColor = 'text-destructive dark:text-destructiveDark';
               
               let descriptionText = tx.description || (tx.type === TransactionType.TRANSFER ? 'Transferência' : category?.name) || 'Transação';
               if (tx.type === TransactionType.TRANSFER) {
-                const toAccount = accounts.find(a => a.id === tx.toAccountId);
+                const toAccount = accounts.find(a => a.id === tx.to_account_id);
                 descriptionText += ` para ${toAccount?.name || 'N/A'}`;
               }
 
@@ -277,7 +286,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                     <p className="font-medium text-textBase dark:text-textBaseDark">{descriptionText}</p>
                     <p className="text-sm text-textMuted dark:text-textMutedDark">{account?.name} &bull; {formatDate(tx.date)}</p> 
                   </div>
-                  <p className={`font-semibold ${txColor}`}>{formatCurrency(tx.amount)}</p>
+                  <p className={`font-semibold ${txColor}`}>{formatCurrency(tx.amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
                 </li>
               );
             })}

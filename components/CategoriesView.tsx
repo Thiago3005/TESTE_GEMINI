@@ -1,33 +1,36 @@
+
 import React from 'react'; 
 import { useState, ChangeEvent }from 'react'; 
-import { Category, TransactionType, Transaction, AIConfig } from '../types'; // Added AIConfig
-import { generateId } from '../utils/helpers';
+import { Category, TransactionType, Transaction, AIConfig } from '../types'; 
+import { generateId, formatCurrency } from '../utils/helpers';
 import CategoryItem from './CategoryItem';
 import Modal from './Modal';
 import Input from './Input';
 import Select from './Select';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
-import LightBulbIcon from './icons/LightBulbIcon'; // For suggest budget button
+import LightBulbIcon from './icons/LightBulbIcon'; 
 
 interface CategoriesViewProps {
   categories: Category[];
   transactions: Transaction[];
-  aiConfig: AIConfig; // New: To check for income and pass to modal
-  onAddCategory: (category: Category) => void;
+  aiConfig: AIConfig; 
+  onAddCategory: (category: Omit<Category, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => void;
   onUpdateCategory: (category: Category) => void;
   onDeleteCategory: (categoryId: string) => void;
-  onSuggestBudget: (categoryName: string, currentBudgets: {name: string, budget?: number}[]) => Promise<number | null>; // New
+  onSuggestBudget: (categoryName: string, currentBudgets: {name: string, budget?: number}[]) => Promise<number | null>; 
+  isPrivacyModeEnabled?: boolean; // New prop
 }
 
 const CategoriesView: React.FC<CategoriesViewProps> = ({
   categories,
   transactions,
-  aiConfig, // New
+  aiConfig, 
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
-  onSuggestBudget, // New
+  onSuggestBudget, 
+  isPrivacyModeEnabled,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -51,7 +54,7 @@ const CategoriesView: React.FC<CategoriesViewProps> = ({
     setEditingCategory(category);
     setCategoryName(category.name);
     setCategoryType(category.type);
-    setMonthlyBudget(category.monthlyBudget?.toString() || '');
+    setMonthlyBudget(category.monthly_budget?.toString() || '');
     setFormError('');
     setIsModalOpen(true);
   };
@@ -73,23 +76,26 @@ const CategoriesView: React.FC<CategoriesViewProps> = ({
     }
     setFormError('');
 
-    const categoryData: Category = {
-        id: editingCategory?.id || generateId(),
-        name: categoryName.trim(),
-        type: categoryType,
-        monthlyBudget: categoryType === TransactionType.EXPENSE ? budgetValue : undefined,
-    };
-
     if (editingCategory) {
-      onUpdateCategory(categoryData);
+      onUpdateCategory({ 
+        ...editingCategory, 
+        name: categoryName.trim(), 
+        type: categoryType, 
+        monthly_budget: categoryType === TransactionType.EXPENSE ? budgetValue : undefined 
+      });
     } else {
-      onAddCategory(categoryData);
+      onAddCategory({ 
+        // id, user_id, created_at, updated_at are handled by Supabase/App.tsx
+        name: categoryName.trim(), 
+        type: categoryType, 
+        monthly_budget: categoryType === TransactionType.EXPENSE ? budgetValue : undefined 
+      } as Omit<Category, 'id' | 'user_id' | 'created_at' | 'updated_at'>);
     }
     closeModal();
   };
   
   const getTransactionCountForCategory = (categoryId: string): number => {
-    return transactions.filter(t => t.categoryId === categoryId).length;
+    return transactions.filter(t => t.category_id === categoryId).length;
   };
 
   const handleSuggestBudgetClick = async () => {
@@ -100,8 +106,8 @@ const CategoriesView: React.FC<CategoriesViewProps> = ({
     setFormError('');
     setIsSuggestingBudget(true);
     const currentBudgetsForSuggestion = categories
-        .filter(c => c.type === TransactionType.EXPENSE && c.id !== editingCategory?.id && c.monthlyBudget)
-        .map(c => ({ name: c.name, budget: c.monthlyBudget }));
+        .filter(c => c.type === TransactionType.EXPENSE && c.id !== editingCategory?.id && c.monthly_budget)
+        .map(c => ({ name: c.name, budget: c.monthly_budget }));
 
     const suggested = await onSuggestBudget(editingCategory?.name || categoryName, currentBudgetsForSuggestion);
     if (suggested !== null) {
@@ -138,6 +144,7 @@ const CategoriesView: React.FC<CategoriesViewProps> = ({
                   onEdit={openModalForEdit}
                   onDelete={onDeleteCategory}
                   transactionCount={getTransactionCountForCategory(category.id)}
+                  isPrivacyModeEnabled={isPrivacyModeEnabled}
                 />
               ))}
             </ul>
@@ -157,6 +164,7 @@ const CategoriesView: React.FC<CategoriesViewProps> = ({
                   onEdit={openModalForEdit}
                   onDelete={onDeleteCategory}
                   transactionCount={getTransactionCountForCategory(category.id)}
+                  isPrivacyModeEnabled={isPrivacyModeEnabled}
                 />
               ))}
             </ul>
@@ -201,7 +209,7 @@ const CategoriesView: React.FC<CategoriesViewProps> = ({
                     step="0.01"
                     value={monthlyBudget}
                     onChange={(e) => setMonthlyBudget(e.target.value)}
-                    placeholder="Ex: 500.00"
+                    placeholder={isPrivacyModeEnabled ? formatCurrency(0, 'BRL', 'pt-BR', true).replace('0,00', 'Ex: 500.00') : "Ex: 500.00"}
                 />
                 {aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available' && aiConfig.monthlyIncome && aiConfig.monthlyIncome > 0 && (
                      <Button 

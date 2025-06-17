@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { InstallmentPurchase, CreditCard } from '../types';
@@ -9,7 +10,7 @@ import { generateId, getISODateString } from '../utils/helpers';
 interface InstallmentPurchaseFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (purchase: InstallmentPurchase) => void;
+  onSave: (purchase: Omit<InstallmentPurchase, 'user_id' | 'created_at' | 'updated_at'>) => void;
   creditCard: CreditCard; // The card this purchase belongs to
   existingPurchase?: InstallmentPurchase | null;
 }
@@ -31,10 +32,10 @@ const InstallmentPurchaseFormModal: React.FC<InstallmentPurchaseFormModalProps> 
   useEffect(() => {
     if (existingPurchase) {
       setDescription(existingPurchase.description);
-      setPurchaseDate(existingPurchase.purchaseDate);
-      setTotalAmount(existingPurchase.totalAmount.toString());
-      setNumberOfInstallments(existingPurchase.numberOfInstallments.toString());
-      setInstallmentsPaid(existingPurchase.installmentsPaid.toString());
+      setPurchaseDate(existingPurchase.purchase_date);
+      setTotalAmount(existingPurchase.total_amount.toString());
+      setNumberOfInstallments(existingPurchase.number_of_installments.toString());
+      setInstallmentsPaid(existingPurchase.installments_paid.toString());
     } else {
       setDescription('');
       setPurchaseDate(getISODateString());
@@ -66,14 +67,14 @@ const InstallmentPurchaseFormModal: React.FC<InstallmentPurchaseFormModalProps> 
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const purchaseData: InstallmentPurchase = {
+    const purchaseData: Omit<InstallmentPurchase, 'user_id' | 'created_at' | 'updated_at'> = {
       id: existingPurchase?.id || generateId(),
-      creditCardId: creditCard.id,
+      credit_card_id: creditCard.id,
       description: description.trim(),
-      purchaseDate,
-      totalAmount: parseFloat(totalAmount),
-      numberOfInstallments: parseInt(numberOfInstallments, 10),
-      installmentsPaid: parseInt(installmentsPaid, 10),
+      purchase_date: purchaseDate,
+      total_amount: parseFloat(totalAmount),
+      number_of_installments: parseInt(numberOfInstallments, 10),
+      installments_paid: parseInt(installmentsPaid, 10),
     };
     onSave(purchaseData);
     onClose();

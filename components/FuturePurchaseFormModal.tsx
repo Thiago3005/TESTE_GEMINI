@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useEffect, ChangeEvent } from 'react';
 import { FuturePurchase, FuturePurchasePriority } from '../types';
@@ -6,12 +7,12 @@ import Input from './Input';
 import Select from './Select';
 import Textarea from './Textarea';
 import Button from './Button';
-import { generateId, getISODateString } from '../utils/helpers';
+import { generateId } from '../utils/helpers'; // getISODateString removed
 
 interface FuturePurchaseFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (purchase: Omit<FuturePurchase, 'status' | 'aiAnalysis' | 'aiAnalyzedAt'>) => void;
+  onSave: (purchase: Omit<FuturePurchase, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'>) => void;
   existingPurchase?: FuturePurchase | null;
 }
 
@@ -37,7 +38,7 @@ const FuturePurchaseFormModal: React.FC<FuturePurchaseFormModalProps> = ({
     if (isOpen) {
       if (existingPurchase) {
         setName(existingPurchase.name);
-        setEstimatedCost(existingPurchase.estimatedCost.toString());
+        setEstimatedCost(existingPurchase.estimated_cost.toString());
         setPriority(existingPurchase.priority);
         setNotes(existingPurchase.notes || '');
       } else {
@@ -62,16 +63,18 @@ const FuturePurchaseFormModal: React.FC<FuturePurchaseFormModalProps> = ({
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const purchaseData: Omit<FuturePurchase, 'status' | 'aiAnalysis' | 'aiAnalyzedAt'> = {
-      id: existingPurchase?.id || generateId(),
+    const purchaseData: Omit<FuturePurchase, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'> = {
+      // id, user_id, created_at, updated_at, status, ai_analysis, ai_analyzed_at are handled by Supabase/App.tsx
       name: name.trim(),
-      estimatedCost: parseFloat(estimatedCost),
+      estimated_cost: parseFloat(estimatedCost),
       priority,
       notes: notes.trim() || undefined,
-      createdAt: existingPurchase?.createdAt || getISODateString(),
-      // status, aiAnalysis, and aiAnalyzedAt are handled by App.tsx logic
     };
-    onSave(purchaseData);
+     // If it's an existing purchase, we pass its ID so App.tsx knows to update it
+    const saveData = existingPurchase ? { ...purchaseData, id: existingPurchase.id } : { ...purchaseData, id: generateId() };
+
+
+    onSave(saveData);
     onClose();
   };
 
