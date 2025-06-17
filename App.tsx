@@ -321,7 +321,7 @@ const AppContent: React.FC = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin, // Or your specific callback URL
+          redirectTo: 'https://thiago3005.github.io/controle-financeiro/', 
         },
       });
       if (error) throw error;
