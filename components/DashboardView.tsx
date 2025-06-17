@@ -1,7 +1,7 @@
 
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
-import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment } from '../types'; // Added Loan, LoanRepayment
+import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction } from '../types'; // Added RecurringTransaction
 import { formatCurrency, getISODateString, formatDate } from '../utils/helpers'; 
 import PlusIcon from './icons/PlusIcon';
 import ScaleIcon from './icons/ScaleIcon'; 
@@ -10,8 +10,8 @@ import Button from './Button';
 import CategoryChart from './CategoryChart';
 import DailySummaryBarChart from './CategoryBarChart'; // Corrected import path
 import ChartPieIcon from './icons/ChartPieIcon'; // For Pie chart toggle
-// Using a generic bar chart icon for the toggle
-import BarChartIcon from './icons/BarChartIcon'; // Assuming BarChartIcon.tsx exists or will be created
+import BarChartIcon from './icons/BarChartIcon'; 
+import BillsAlerts from './BillsAlerts'; // New: Bills Alerts
 
 
 interface DashboardViewProps {
@@ -21,17 +21,19 @@ interface DashboardViewProps {
   creditCards: CreditCard[]; 
   installmentPurchases: InstallmentPurchase[]; 
   moneyBoxes: MoneyBox[]; 
-  loans: Loan[]; // New
-  loanRepayments: LoanRepayment[]; // New
+  loans: Loan[]; 
+  loanRepayments: LoanRepayment[]; 
+  recurringTransactions: RecurringTransaction[]; // New: For BillsAlerts
   onAddTransaction: () => void;
   calculateAccountBalance: (accountId: string) => number;
   calculateMoneyBoxBalance: (moneyBoxId: string) => number; 
+  onViewRecurringTransaction?: (transactionId: string) => void; // Optional navigation
 }
 
 const DashboardView: React.FC<DashboardViewProps> = ({ 
     transactions, accounts, categories, creditCards, installmentPurchases, moneyBoxes,
-    loans, loanRepayments, // New props
-    onAddTransaction, calculateAccountBalance, calculateMoneyBoxBalance 
+    loans, loanRepayments, recurringTransactions, // New props
+    onAddTransaction, calculateAccountBalance, calculateMoneyBoxBalance, onViewRecurringTransaction
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
   const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'pie' | 'bar'>('pie'); 
@@ -146,6 +148,14 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Bills Alerts - New Section */}
+      <BillsAlerts 
+        recurringTransactions={recurringTransactions} 
+        accounts={accounts} 
+        categories={categories}
+        onViewTransaction={onViewRecurringTransaction} 
+      />
       
       {/* Monthly Chart */}
       <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">

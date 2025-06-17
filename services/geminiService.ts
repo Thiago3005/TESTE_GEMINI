@@ -298,18 +298,34 @@ export const fetchBudgetSuggestion = async (
         const response = await result.response;
         const text = response.text();
         
+        // Melhor tratamento da resposta JSON
         let jsonStr = text || '';
-        const fenceRegex = /```(?:json)?\s*([\s\S]*?)```/;
-        const match = jsonStr.match(fenceRegex);
-        if (match && match[1]) {
-            jsonStr = match[1].trim();
+        
+        // Remove formatação markdown se existir
+        const markdownRegex = /```(?:json)?\s*([\s\S]*?)```/;
+        const markdownMatch = jsonStr.match(markdownRegex);
+        if (markdownMatch && markdownMatch[1]) {
+            jsonStr = markdownMatch[1].trim();
         }
         
-        const parsed = JSON.parse(jsonStr);
-
-        if (parsed && typeof parsed.suggestedBudget === 'number' && parsed.suggestedBudget >= 0) { // Allow 0 budget
-            return { suggestedBudget: parsed.suggestedBudget };
+        // Tenta encontrar um objeto JSON válido na string
+        const jsonRegex = /\{[\s\S]*\}/;
+        const jsonMatch = jsonStr.match(jsonRegex);
+        if (jsonMatch) {
+            jsonStr = jsonMatch[0];
         }
+        
+        try {
+            const parsed = JSON.parse(jsonStr);
+
+            if (parsed && typeof parsed.suggestedBudget === 'number' && parsed.suggestedBudget >= 0) { // Allow 0 budget
+                return { suggestedBudget: parsed.suggestedBudget };
+            }
+        } catch (parseError) {
+            console.error("Error parsing JSON response:", parseError);
+            console.log("Raw response:", text);
+        }
+        
         return { 
             id: generateId(),
             timestamp: new Date().toISOString(),
@@ -340,7 +356,7 @@ export const fetchFuturePurchaseAnalysis = async (
   if (!ai || !isGeminiApiKeyAvailable()) {
     return {
       id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-      content: "AI Coach desativado ou API Key não configurada para analisar compra futura.",
+      content: "AI Coach desativado ou API Key (VITE_GEMINI_API_KEY) não configurada para analisar compra futura.",
       relatedFuturePurchaseId: purchase.id, isRead: false,
     };
   }
@@ -352,50 +368,54 @@ export const fetchFuturePurchaseAnalysis = async (
     const response = await result.response;
     const text = response.text();
 
+    // Melhor tratamento da resposta JSON
     let jsonStr = text || '';
-    const fenceRegex = /```(?:json)?\s*([\s\S]*?)```/;
-    const match = jsonStr.match(fenceRegex);
-    if (match && match[1]) {
-        jsonStr = match[1].trim();
+    
+    // Remove formatação markdown se existir
+    const markdownRegex = /```(?:json)?\s*([\s\S]*?)```/;
+    const markdownMatch = jsonStr.match(markdownRegex);
+    if (markdownMatch && markdownMatch[1]) {
+      jsonStr = markdownMatch[1].trim();
+    }
+    
+    // Tenta encontrar um objeto JSON válido na string
+    const jsonRegex = /\{[\s\S]*\}/;
+    const jsonMatch = jsonStr.match(jsonRegex);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
     }
     
     try {
-        const parsed = JSON.parse(jsonStr);
+      const parsed = JSON.parse(jsonStr);
 
-        if (parsed && typeof parsed.analysisText === 'string' && 
-            typeof parsed.recommendedStatus === 'string' &&
-            ['ACHIEVABLE_SOON', 'NOT_RECOMMENDED_NOW', 'PLANNED'].includes(parsed.recommendedStatus)) {
-            return { 
-                analysisText: parsed.analysisText, 
-                recommendedStatus: parsed.recommendedStatus as FuturePurchaseStatus 
-            };
-        }
-        return {
-            id: generateId(), 
-            timestamp: new Date().toISOString(), 
-            type: 'error_message',
-            content: "Não foi possível obter uma análise válida da IA para esta compra (resposta inválida).",
-            relatedFuturePurchaseId: purchase.id, 
-            isRead: false,
+      if (parsed && typeof parsed.analysisText === 'string' && 
+          typeof parsed.recommendedStatus === 'string' &&
+          ['ACHIEVABLE_SOON', 'NOT_RECOMMENDED_NOW', 'PLANNED'].includes(parsed.recommendedStatus)) {
+        return { 
+          analysisText: parsed.analysisText, 
+          recommendedStatus: parsed.recommendedStatus as FuturePurchaseStatus 
         };
-    } catch (error) {
-        console.error("Error parsing Gemini response:", error);
-        return {
-            id: generateId(), 
-            timestamp: new Date().toISOString(), 
-            type: 'error_message',
-            content: `Desculpe, não consegui analisar esta compra futura no momento. Detalhe: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
-            relatedFuturePurchaseId: purchase.id, 
-            isRead: false,
-        };
+      }
+    } catch (parseError) {
+      console.error("Error parsing JSON response:", parseError);
+      console.log("Raw response:", text);
     }
+    
+    return {
+      id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+      content: "Não foi possível obter uma análise válida da IA para esta compra (resposta inválida).",
+      relatedFuturePurchaseId: purchase.id, isRead: false,
+    };
   } catch (error) {
     console.error("Error fetching future purchase analysis from Gemini:", error);
-    let errorMessage = "Desculpe, não consegui analisar esta compra futura no momento.";
-    if (error instanceof Error) errorMessage += ` Detalhe: ${error.message}`;
+    let errorMessage = "Desculpe, não consegui analisar esta compra futura.";
+    if (error instanceof Error) {
+      errorMessage += ` Detalhe: ${error.message}`;
+    }
     return {
-        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
-        content: errorMessage, relatedFuturePurchaseId: purchase.id, isRead: false,
+      id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+      content: errorMessage,
+      relatedFuturePurchaseId: purchase.id, isRead: false,
     };
   }
 };

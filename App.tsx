@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useEffect, useCallback, useMemo }from 'react'; 
 import { 
@@ -5,12 +6,15 @@ import {
   MoneyBox, MoneyBoxTransaction, MoneyBoxTransactionType, Theme,
   Tag, RecurringTransaction, RecurringTransactionFrequency,
   Loan, LoanRepayment,
-  AIConfig, AIInsight, UserProfile,
-  FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority // Added FuturePurchase types
+  AIConfig, AIInsight, AIInsightType, UserProfile,
+  FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType
 } from './types';
 import { APP_NAME, getInitialCategories, getInitialAccounts } from './constants';
 import { generateId, getISODateString, formatDate, formatCurrency } from './utils/helpers'; 
 import useLocalStorage from './hooks/useLocalStorage';
+
+// Contexts
+import { ToastProvider, useToasts } from './contexts/ToastContext';
 
 // Views
 import DashboardView from './components/DashboardView';
@@ -19,7 +23,7 @@ import AccountsView from './components/AccountsView';
 import CategoriesView from './components/CategoriesView';
 import CreditCardsView from './components/CreditCardsView';
 import MoneyBoxesView from './components/MoneyBoxesView';
-import FuturePurchasesView from './components/FuturePurchasesView'; // New
+import FuturePurchasesView from './components/FuturePurchasesView'; 
 import DataManagementView from './components/DataManagementView';
 import TagsView from './components/TagsView'; 
 import RecurringTransactionsView from './components/RecurringTransactionsView'; 
@@ -41,7 +45,7 @@ import TagIcon from './components/icons/TagIcon';
 import CogIcon from './components/icons/CogIcon';
 import PlusIcon from './components/icons/PlusIcon';
 import PiggyBankIcon from './components/icons/PiggyBankIcon';
-import ShoppingCartIcon from './components/icons/ShoppingCartIcon'; // New
+import ShoppingCartIcon from './components/icons/ShoppingCartIcon'; 
 import BookmarkSquareIcon from './components/icons/BookmarkSquareIcon'; 
 import ArrowPathIcon from './components/icons/ArrowPathIcon'; 
 import UsersIcon from './components/icons/UsersIcon'; 
@@ -57,13 +61,14 @@ import type { FinancialContext } from './services/geminiService';
 const getProfileKey = (baseKey: string, profileId: string | null): string => {
   if (!profileId) {
     console.warn(`Attempting to generate key "${baseKey}" without an active profile.`);
-    return `${baseKey}_NO_PROFILE_ACTIVE_STATE`; 
+    return `profile_NO_PROFILE_ACTIVE_STATE_${baseKey}`; 
   }
   return `profile_${profileId}_${baseKey}`;
 };
 
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => { // Renamed App to AppContent
+  const { addToast } = useToasts();
   // Profile Management State
   const [profiles, setProfiles] = useLocalStorage<UserProfile[]>('finapp_profiles_list', []);
   const [activeProfileId, setActiveProfileId] = useLocalStorage<string | null>('finapp_active_profile_id', null);
@@ -87,7 +92,7 @@ const App: React.FC = () => {
     isEnabled: false,
     apiKeyStatus: 'unknown',
     monthlyIncome: null,
-    autoBackupToFileEnabled: false, // Initialize new flag
+    autoBackupToFileEnabled: false, 
   });
   const [aiInsights, setAiInsights] = useLocalStorage<AIInsight[]>(getProfileKey('finapp_aiInsights', activeProfileId), []);
 
@@ -138,6 +143,30 @@ const App: React.FC = () => {
     }
   }, [aiConfig.autoBackupToFileEnabled, handleExportDataToFile]);
 
+  // AI Insight Toast Notifications
+  const [lastToastedInsightId, setLastToastedInsightId] = useState<string | null>(null);
+  useEffect(() => {
+    if (aiInsights.length > 0 && activeProfileId) { // Ensure profile is active for toasts
+      const latestInsight = aiInsights[0]; // Assuming new insights are prepended
+      if (latestInsight.id !== lastToastedInsightId && !latestInsight.isLoading) {
+        let toastType: ToastType = 'info';
+        if (latestInsight.type === 'error_message') {
+          toastType = 'error';
+        } else if (latestInsight.type === 'budget_warning' || 
+                   (latestInsight.type === 'future_purchase_advice' && latestInsight.content.toLowerCase().includes('não recomendado'))) {
+          toastType = 'warning';
+        } else if (latestInsight.type === 'budget_recommendation' || 
+                   (latestInsight.type === 'future_purchase_advice' && latestInsight.content.toLowerCase().includes('viável'))) {
+          toastType = 'success';
+        }
+        
+        const toastMessage = latestInsight.content.length > 120 ? latestInsight.content.substring(0, 117) + "..." : latestInsight.content;
+        addToast(toastMessage, toastType, 7000); // 7 seconds
+        setLastToastedInsightId(latestInsight.id);
+      }
+    }
+  }, [aiInsights, addToast, lastToastedInsightId, activeProfileId]);
+
 
   // Profile Management Logic
   useEffect(() => {
@@ -160,7 +189,6 @@ const App: React.FC = () => {
       if (localStorage.getItem(currentProfileFuturePurchasesKey) === null) {
           setFuturePurchases([]); 
       }
-      // Ensure aiConfig has the new autoBackupToFileEnabled flag if loading from older storage
       if (localStorage.getItem(currentProfileAiConfigKey)) {
         const storedAiConfig = JSON.parse(localStorage.getItem(currentProfileAiConfigKey)!);
         if (storedAiConfig.autoBackupToFileEnabled === undefined) {
@@ -337,6 +365,7 @@ const App: React.FC = () => {
         return result.suggestedBudget;
     } else if (result && 'content' in result) { 
          setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? {...result, isLoading: false} : i));
+         return null; 
     } else {
         const errorInsight: AIInsight = {
             id: loadingInsight.id, 
@@ -352,7 +381,7 @@ const App: React.FC = () => {
 
   const handleAnalyzeFuturePurchase = useCallback(async (purchaseId: string) => {
     if (!activeProfileId || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') {
-      alert("AI Coach desabilitado ou API Key não configurada.");
+      addToast("AI Coach desabilitado ou API Key não configurada.", 'warning');
       return;
     }
     const purchase = futurePurchases.find(p => p.id === purchaseId);
@@ -382,11 +411,11 @@ const App: React.FC = () => {
         type: 'future_purchase_advice',
         isLoading: false,
       } : i));
-    } else if (analysisResult && 'content' in analysisResult) { // It's an AIInsight error message
-        setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: p.status === 'AI_ANALYZING' ? 'PLANNED' : p.status } : p)); // Revert status
+    } else if (analysisResult && 'content' in analysisResult) { 
+        setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: p.status === 'AI_ANALYZING' ? 'PLANNED' : p.status } : p)); 
         setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? { ...analysisResult, isLoading: false, relatedFuturePurchaseId: purchase.id } : i));
     } else {
-         setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: p.status === 'AI_ANALYZING' ? 'PLANNED' : p.status } : p)); // Revert status
+         setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: p.status === 'AI_ANALYZING' ? 'PLANNED' : p.status } : p)); 
          setAiInsights(prev => prev.map(i => i.id === loadingInsight.id ? {
             ...loadingInsight, 
             content: `Não foi possível analisar a compra "${purchase.name}" no momento.`, 
@@ -395,7 +424,7 @@ const App: React.FC = () => {
         } : i));
     }
     triggerAutoBackupIfEnabled();
-  }, [aiConfig.isEnabled, aiConfig.apiKeyStatus, futurePurchases, setFuturePurchases, setAiInsights, generateFinancialContext, activeProfileId, triggerAutoBackupIfEnabled]);
+  }, [aiConfig.isEnabled, aiConfig.apiKeyStatus, futurePurchases, setFuturePurchases, setAiInsights, generateFinancialContext, activeProfileId, triggerAutoBackupIfEnabled, addToast]);
 
 
   const handleAddTransaction = (transaction: Transaction) => {
@@ -446,10 +475,10 @@ const App: React.FC = () => {
   const handleUpdateAccount = (updatedAccount: Account) => { if (activeProfileId) setAccounts(prev => prev.map(acc => acc.id === updatedAccount.id ? updatedAccount : acc)); triggerAutoBackupIfEnabled();};
   const handleDeleteAccount = (accountId: string) => {
     if (!activeProfileId) return;
-     if (transactions.some(t => t.accountId === accountId || t.toAccountId === accountId)) { alert("Não é possível excluir contas com transações. Remova ou reatribua as transações primeiro."); return; }
-     if (moneyBoxTransactions.some(mbt => mbt.linkedAccountId === accountId)) { alert("Esta conta está vinculada a transações de caixinhas. Remova esses vínculos primeiro."); return; }
-     if (recurringTransactions.some(rt => rt.accountId === accountId || rt.toAccountId === accountId)) { alert("Esta conta é usada em transações recorrentes. Remova ou edite essas recorrências primeiro."); return; }
-     if (loans.some(l => l.linkedAccountId === accountId || l.repaymentIds.some(rpId => loanRepayments.find(rp => rp.id === rpId)?.creditedAccountId === accountId))) { alert("Esta conta está vinculada a empréstimos (financiamento ou recebimento de pagamentos). Verifique os empréstimos."); return; }
+     if (transactions.some(t => t.accountId === accountId || t.toAccountId === accountId)) { addToast("Não é possível excluir contas com transações. Remova ou reatribua as transações primeiro.", 'error'); return; }
+     if (moneyBoxTransactions.some(mbt => mbt.linkedAccountId === accountId)) { addToast("Esta conta está vinculada a transações de caixinhas. Remova esses vínculos primeiro.", 'error'); return; }
+     if (recurringTransactions.some(rt => rt.accountId === accountId || rt.toAccountId === accountId)) { addToast("Esta conta é usada em transações recorrentes. Remova ou edite essas recorrências primeiro.", 'error'); return; }
+     if (loans.some(l => l.linkedAccountId === accountId || l.repaymentIds.some(rpId => loanRepayments.find(rp => rp.id === rpId)?.creditedAccountId === accountId))) { addToast("Esta conta está vinculada a empréstimos (financiamento ou recebimento de pagamentos). Verifique os empréstimos.", 'error'); return; }
     if (window.confirm('Excluir esta conta?')) {setAccounts(prev => prev.filter(acc => acc.id !== accountId)); triggerAutoBackupIfEnabled();}
   };
 
@@ -457,8 +486,8 @@ const App: React.FC = () => {
   const handleUpdateCategory = (updatedCategory: Category) => { if (activeProfileId) setCategories(prev => prev.map(cat => cat.id === updatedCategory.id ? updatedCategory : cat)); triggerAutoBackupIfEnabled();};
   const handleDeleteCategory = (categoryId: string) => {
     if (!activeProfileId) return;
-    if (transactions.some(t => t.categoryId === categoryId)) { alert("Não é possível excluir categorias em uso. Remova ou reatribua as transações primeiro."); return; }
-    if (recurringTransactions.some(rt => rt.categoryId === categoryId)) { alert("Esta categoria é usada em transações recorrentes. Remova ou edite essas recorrências primeiro."); return; }
+    if (transactions.some(t => t.categoryId === categoryId)) { addToast("Não é possível excluir categorias em uso. Remova ou reatribua as transações primeiro.", 'error'); return; }
+    if (recurringTransactions.some(rt => rt.categoryId === categoryId)) { addToast("Esta categoria é usada em transações recorrentes. Remova ou edite essas recorrências primeiro.", 'error'); return; }
     if (window.confirm('Excluir esta categoria?')) {setCategories(prev => prev.filter(cat => cat.id !== categoryId)); triggerAutoBackupIfEnabled();}
   };
 
@@ -466,15 +495,15 @@ const App: React.FC = () => {
   const handleUpdateCreditCard = (updatedCard: CreditCard) => { if (activeProfileId) setCreditCards(prev => prev.map(cc => cc.id === updatedCard.id ? updatedCard : cc)); triggerAutoBackupIfEnabled();};
   const handleDeleteCreditCard = (cardId: string) => {
     if (!activeProfileId) return;
-    if (installmentPurchases.some(p => p.creditCardId === cardId)) { alert("Exclua primeiro todas as compras parceladas associadas a este cartão."); return; }
-    if (loans.some(l => l.linkedCreditCardId === cardId)) { alert("Este cartão está vinculado ao financiamento de um empréstimo. Verifique os empréstimos."); return; }
+    if (installmentPurchases.some(p => p.creditCardId === cardId)) { addToast("Exclua primeiro todas as compras parceladas associadas a este cartão.", 'error'); return; }
+    if (loans.some(l => l.linkedCreditCardId === cardId)) { addToast("Este cartão está vinculado ao financiamento de um empréstimo. Verifique os empréstimos.", 'error'); return; }
     if (window.confirm('Excluir este cartão?')) {setCreditCards(prev => prev.filter(cc => cc.id !== cardId)); triggerAutoBackupIfEnabled();}
   };
   const handleAddInstallmentPurchase = (purchase: InstallmentPurchase) => { if (activeProfileId) setInstallmentPurchases(prev => [...prev, purchase]); triggerAutoBackupIfEnabled();};
   const handleUpdateInstallmentPurchase = (updatedPurchase: InstallmentPurchase) => { if (activeProfileId) setInstallmentPurchases(prev => prev.map(ip => ip.id === updatedPurchase.id ? updatedPurchase : ip)); triggerAutoBackupIfEnabled();};
   const handleDeleteInstallmentPurchase = (purchaseId: string) => { 
     if (!activeProfileId) return;
-    if (loans.some(l => l.linkedInstallmentPurchaseId === purchaseId)) { alert("Esta compra parcelada está vinculada a um empréstimo. Exclua ou edite o empréstimo primeiro."); return; }
+    if (loans.some(l => l.linkedInstallmentPurchaseId === purchaseId)) { addToast("Esta compra parcelada está vinculada a um empréstimo. Exclua ou edite o empréstimo primeiro.", 'error'); return; }
     if (window.confirm('Excluir compra parcelada?')) {setInstallmentPurchases(prev => prev.filter(ip => ip.id !== purchaseId)); triggerAutoBackupIfEnabled();} 
   };
   const handleMarkInstallmentPaid = (purchaseId: string) => {
@@ -495,10 +524,10 @@ const App: React.FC = () => {
       const newMainTransaction: Transaction = { id: mainTxId, type: mainTxType, amount: mbt.amount, date: mbt.date, accountId: linkedAccId, description: mainTxDescription };
       setTransactions(prev => [...prev, newMainTransaction]);
       finalMbt = { ...finalMbt, linkedTransactionId: mainTxId, linkedAccountId: linkedAccId };
-       handleGenerateCommentForTransaction(newMainTransaction); // AI comment will trigger its own backup
+       handleGenerateCommentForTransaction(newMainTransaction); 
     }
     setMoneyBoxTransactions(prev => [...prev, finalMbt]);
-    if (!createLinkedTransaction) triggerAutoBackupIfEnabled(); // Only trigger if no main transaction was created (which would trigger its own)
+    if (!createLinkedTransaction) triggerAutoBackupIfEnabled(); 
   };
   const handleDeleteMoneyBoxTransaction = (mbtId: string, linkedTransactionId?: string) => {
     if (!activeProfileId) return;
@@ -511,7 +540,7 @@ const App: React.FC = () => {
   const handleUpdateTag = (updatedTag: Tag) => { if (activeProfileId) setTags(prev => prev.map(t => t.id === updatedTag.id ? updatedTag : t)); triggerAutoBackupIfEnabled();};
   const handleDeleteTag = (tagId: string) => {
     if (!activeProfileId) return;
-    if (transactions.some(t => t.tagIds?.includes(tagId))) { alert("Não é possível excluir tags em uso. Remova-as das transações primeiro."); return; }
+    if (transactions.some(t => t.tagIds?.includes(tagId))) { addToast("Não é possível excluir tags em uso. Remova-as das transações primeiro.", 'error'); return; }
     if (window.confirm('Excluir esta tag?')) {setTags(prev => prev.filter(t => t.id !== tagId)); triggerAutoBackupIfEnabled();}
   };
 
@@ -589,10 +618,10 @@ const App: React.FC = () => {
 
         if (newTransactionsToPost.length > 0) {
             setTransactions(prev => [...prev, ...newTransactionsToPost]);
-            newTransactionsToPost.forEach(tx => handleGenerateCommentForTransaction(tx)); // AI comment will trigger its own backup
+            newTransactionsToPost.forEach(tx => handleGenerateCommentForTransaction(tx)); 
         }
         setRecurringTransactions(updatedRTs); 
-        if (newTransactionsToPost.length === 0) triggerAutoBackupIfEnabled(); // Trigger if no AI comments were generated
+        if (newTransactionsToPost.length === 0) triggerAutoBackupIfEnabled(); 
         resolve({ count: postedCount, errors });
     });
   };
@@ -625,11 +654,11 @@ const App: React.FC = () => {
     setLoans(prev => [...prev, newLoan]);
     if (newLinkedTransaction) {
         setTransactions(prev => [...prev, newLinkedTransaction]);
-        handleGenerateCommentForTransaction(newLinkedTransaction); // AI comment triggers backup
+        handleGenerateCommentForTransaction(newLinkedTransaction); 
     }
     if (newInstallmentPurchase) {
       setInstallmentPurchases(prev => [...prev, newInstallmentPurchase]);
-      if (!newLinkedTransaction) triggerAutoBackupIfEnabled(); // Trigger if no AI comment from main tx
+      if (!newLinkedTransaction) triggerAutoBackupIfEnabled(); 
     }
     if (!newLinkedTransaction && !newInstallmentPurchase) triggerAutoBackupIfEnabled();
   };
@@ -669,12 +698,12 @@ const App: React.FC = () => {
     setLoans(prevLoans => prevLoans.map(l => 
       l.id === loanId ? { ...l, repaymentIds: [...l.repaymentIds, newRepayment.id] } : l
     ));
-    handleGenerateCommentForTransaction(newIncomeTransaction); // AI comment triggers backup
+    handleGenerateCommentForTransaction(newIncomeTransaction); 
   };
 
   const enrichedHandleImportData = (data: any) => {
     if (!activeProfileId) {
-        alert("Nenhum perfil ativo. Selecione ou crie um perfil antes de importar dados.");
+        addToast("Nenhum perfil ativo. Selecione ou crie um perfil antes de importar dados.", 'error');
         return;
     }
     setTransactions(data.transactions || []);
@@ -726,11 +755,19 @@ const App: React.FC = () => {
       />
     );
   }
+  
+  const handleViewRecurringTransaction = (transactionId: string) => {
+    // Logic to navigate to RecurringTransactionsView and potentially highlight the transaction
+    // For now, just switch view
+    setActiveView('RECURRING_TRANSACTIONS');
+    // TODO: Add logic to highlight/scroll to the specific RT if needed
+  };
+
 
   const renderView = () => {
     switch (activeView) {
       case 'DASHBOARD':
-        return <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} onAddTransaction={openTransactionModalForNew} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} />;
+        return <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={openTransactionModalForNew} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={handleViewRecurringTransaction} />;
       case 'TRANSACTIONS':
         return <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} onAddTransaction={openTransactionModalForNew} onEditTransaction={openTransactionModalForEdit} onDeleteTransaction={handleDeleteTransaction} />;
       case 'ACCOUNTS':
@@ -764,12 +801,12 @@ const App: React.FC = () => {
                   aiInsightsToExport={aiInsights}
                   activeProfileName={activeProfileName} 
                   themeToExport={theme} 
-                  setAiConfig={setAiConfig} // Pass setAiConfig
+                  setAiConfig={setAiConfig} 
                 />;
       case 'PROFILE_SELECTION': 
         return <ProfileSelectionView profiles={profiles} onSelectProfile={handleSelectProfile} onCreateProfile={handleCreateProfile} />;
       default:
-        return <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} onAddTransaction={openTransactionModalForNew} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} />;
+        return <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={openTransactionModalForNew} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={handleViewRecurringTransaction} />;
     }
   };
   
@@ -898,6 +935,16 @@ const App: React.FC = () => {
   );
 };
 
+// Main App component that includes the ToastProvider
+const App: React.FC = () => {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
+  );
+};
+
+
 declare module './components/DataManagementView' {
     interface DataManagementViewProps {
         futurePurchases?: FuturePurchase[]; 
@@ -905,7 +952,7 @@ declare module './components/DataManagementView' {
         aiInsightsToExport?: AIInsight[];
         activeProfileName?: string; 
         themeToExport?: Theme; 
-        setAiConfig?: React.Dispatch<React.SetStateAction<AIConfig>>; // Added for auto backup toggle
+        setAiConfig?: React.Dispatch<React.SetStateAction<AIConfig>>; 
     }
 }
 
@@ -928,7 +975,12 @@ declare module './App' {
             aiInsights?: AIInsight[];
             theme?: Theme; 
         }) => void;
-        setAiConfig?: React.Dispatch<React.SetStateAction<AIConfig>>; // Make sure it's here too
+        setAiConfig?: React.Dispatch<React.SetStateAction<AIConfig>>; 
+    }
+    // Add prop for recurringTransactions to DashboardViewProps within App.tsx module augmentation
+    interface DashboardViewProps {
+      recurringTransactions: RecurringTransaction[];
+      onViewRecurringTransaction?: (transactionId: string) => void;
     }
 }
 

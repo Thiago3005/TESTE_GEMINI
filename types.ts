@@ -214,3 +214,13 @@ export interface ChartData {
 }
 
 export type Theme = 'light' | 'dark' | 'system';
+
+// Toast Notification System
+export type ToastType = 'info' | 'success' | 'warning' | 'error';
+
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type: ToastType;
+  duration?: number;
+}

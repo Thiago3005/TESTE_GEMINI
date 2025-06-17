@@ -4,15 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Meu Financeiro Pessoal</title>
-  <!-- 
-    Tailwind CSS via CDN:
-    For development and simplicity, the Tailwind CSS CDN is used here.
-    IMPORTANT FOR PRODUCTION: For optimal performance and smaller bundle sizes, 
-    it is highly recommended to install Tailwind CSS as a PostCSS plugin 
-    and build your CSS. This ensures only the styles you actually use are 
-    included in your final application.
-    See: https://tailwindcss.com/docs/installation
-  -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -74,14 +65,12 @@
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.1.0",
+    "react": "https://esm.sh/react@19.1.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.1.0/client",
+    "recharts": "https://esm.sh/recharts@^2.15.3",
     "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
     "react/": "https://esm.sh/react@^19.1.0/",
-    "recharts": "https://esm.sh/recharts@^2.15.3",
-    "@google/genai": "https://esm.sh/@google/generative-ai",
-    "@google/generative-ai": "https://esm.sh/@google/generative-ai@^0.24.1",
-    "vite": "https://esm.sh/vite@^6.3.5",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^4.5.2"
+    "@google/generative-ai": "https://esm.sh/@google/generative-ai@^0.24.1"
   }
 }
 </script>
@@ -89,7 +78,6 @@
 </head>
 <body class="bg-background text-textBase dark:bg-backgroundDark dark:text-textBaseDark transition-colors duration-300">
   <div id="root"></div>
-  <script type="module" src="./index.tsx"></script>
-<script type="module" src="/index.tsx"></script>
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>
