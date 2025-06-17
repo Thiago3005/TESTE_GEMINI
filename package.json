@@ -11,9 +11,8 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "react": "^19.1.0",
-    "react-dom/client": "19.1.0",
-    "recharts": "^2.15.3",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "recharts": "^2.15.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
