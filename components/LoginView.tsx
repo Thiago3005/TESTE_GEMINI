@@ -20,7 +20,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginWithGoogle, isLoading }) =
           Faça login com sua conta Google para acessar suas finanças.
         </p>
         <Button 
-          variant="primary" 
+          variant="ghost" 
           size="lg"
           className="w-full !py-3 flex items-center justify-center !bg-white !text-neutral-700 hover:!bg-gray-100 border border-gray-300 dark:!bg-slate-700 dark:!text-slate-200 dark:hover:!bg-slate-600 dark:border-slate-500"
           onClick={onLoginWithGoogle}
