@@ -20,8 +20,13 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 dark:bg-opacity-70 backdrop-blur-sm p-4">
-      <div className={`bg-surface dark:bg-surfaceDark rounded-lg shadow-xl dark:shadow-neutralDark/50 w-full ${sizeClasses} transform transition-all`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-borderBase dark:border-borderBaseDark">
+      <div 
+        className={`bg-surface dark:bg-surfaceDark rounded-lg shadow-xl dark:shadow-neutralDark/50 w-full ${sizeClasses} transform transition-all flex flex-col max-h-[85vh]`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+      >
+        <div id="modal-title" className="flex items-center justify-between px-6 py-4 border-b border-borderBase dark:border-borderBaseDark flex-shrink-0">
           <h3 className="text-lg font-semibold text-textBase dark:text-textBaseDark">{title}</h3>
           <button
             onClick={onClose}
@@ -31,7 +36,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
             <CloseIcon className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-grow">
           {children}
         </div>
       </div>

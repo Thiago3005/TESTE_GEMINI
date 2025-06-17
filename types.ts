@@ -1,4 +1,5 @@
 
+
 import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 
 export { SupabaseUser, SupabaseSession };
@@ -23,7 +24,7 @@ export interface Transaction extends SupabaseManaged {
   category_id?: string; // UUID, references categories.id
   description?: string;
   date: string; // YYYY-MM-DD
-  account_id: string; // UUID, references accounts.id
+  account_id: string; // UUID, references accounts.id OR credit_cards.id
   to_account_id?: string; // UUID, For TRANSFER type, references accounts.id
   tag_ids?: string[]; // Array of UUIDs, references tags.id
 }
@@ -53,6 +54,8 @@ export interface InstallmentPurchase extends SupabaseManaged {
   total_amount: number;
   number_of_installments: number;
   installments_paid: number;
+  linked_transaction_id?: string; // UUID, references transactions.id (for direct card debits)
+  linked_installment_purchase_id?: string; // UUID, references another installment_purchase.id (e.g. if this IP was created to fund a Loan)
 }
 
 export interface MoneyBox extends SupabaseManaged {

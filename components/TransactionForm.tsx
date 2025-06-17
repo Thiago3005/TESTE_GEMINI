@@ -1,7 +1,8 @@
 
+
 import React from 'react'; 
-import { useState, useEffect, ChangeEvent }from 'react'; 
-import { Transaction, TransactionType, Account, Category, Tag } from '../types'; // Added Tag
+import { useState, useEffect, ChangeEvent, useMemo }from 'react'; 
+import { Transaction, TransactionType, Account, Category, Tag, CreditCard } from '../types'; // Added CreditCard
 import { TRANSACTION_TYPE_OPTIONS } from '../constants';
 import { generateId, getISODateString, formatCurrency } from '../utils/helpers';
 import Input from './Input';
@@ -12,24 +13,31 @@ interface TransactionFormProps {
   onSubmit: (transaction: Transaction | Omit<Transaction, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => void;
   onCancel: () => void;
   accounts: Account[];
+  creditCards: CreditCard[]; // Added creditCards
   categories: Category[];
   tags: Tag[]; 
   initialTransaction?: Transaction | null;
-  isPrivacyModeEnabled?: boolean; // New prop
+  isPrivacyModeEnabled?: boolean;
 }
 
 const TransactionForm: React.FC<TransactionFormProps> = ({ 
-  onSubmit, onCancel, accounts, categories, tags, initialTransaction, isPrivacyModeEnabled 
+  onSubmit, onCancel, accounts, creditCards, categories, tags, initialTransaction, isPrivacyModeEnabled 
 }) => {
   const [type, setType] = useState<TransactionType>(initialTransaction?.type || TransactionType.EXPENSE);
   const [amount, setAmount] = useState<string>(initialTransaction?.amount.toString() || '');
   const [categoryId, setCategoryId] = useState<string>(initialTransaction?.category_id || '');
   const [description, setDescription] = useState<string>(initialTransaction?.description || '');
   const [date, setDate] = useState<string>(initialTransaction?.date || getISODateString());
-  const [accountId, setAccountId] = useState<string>(initialTransaction?.account_id || (accounts.length > 0 ? accounts[0].id : ''));
+  const [sourceId, setSourceId] = useState<string>(initialTransaction?.account_id || (accounts.length > 0 ? accounts[0].id : '')); // Renamed from accountId to sourceId
   const [toAccountId, setToAccountId] = useState<string>(initialTransaction?.to_account_id || (accounts.length > 1 ? accounts[1].id : ''));
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialTransaction?.tag_ids || []);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const sourceOptions = useMemo(() => {
+    const accOpts = accounts.map(a => ({ value: a.id, label: `Conta: ${a.name}`, type: 'account' }));
+    const cardOpts = creditCards.map(cc => ({ value: cc.id, label: `Cartão: ${cc.name}`, type: 'creditCard' }));
+    return [...accOpts, ...cardOpts];
+  }, [accounts, creditCards]);
 
   useEffect(() => {
     if (initialTransaction) {
@@ -38,7 +46,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setCategoryId(initialTransaction.category_id || '');
       setDescription(initialTransaction.description || '');
       setDate(initialTransaction.date);
-      setAccountId(initialTransaction.account_id);
+      setSourceId(initialTransaction.account_id); // account_id in Transaction can be an account or card ID
       setToAccountId(initialTransaction.to_account_id || '');
       setSelectedTagIds(initialTransaction.tag_ids || []);
     } else {
@@ -47,13 +55,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setCategoryId(categories.filter(c => c.type === TransactionType.EXPENSE)[0]?.id || '');
       setDescription('');
       setDate(getISODateString());
-      setAccountId(accounts[0]?.id || '');
+      setSourceId(sourceOptions[0]?.value || '');
       setToAccountId(accounts[1]?.id || accounts[0]?.id || '');
       setSelectedTagIds([]);
     }
-  }, [initialTransaction, accounts, categories]);
+  }, [initialTransaction, accounts, categories, sourceOptions]);
   
   useEffect(() => {
+    // If type changes, ensure category matches or reset
     if (type !== TransactionType.TRANSFER) {
         const currentCategory = categories.find(c => c.id === categoryId);
         if (!currentCategory || currentCategory.type !== type) {
@@ -61,15 +70,36 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             setCategoryId(defaultCategoryForType?.id || '');
         }
     }
-  }, [type, categoryId, categories]);
+    // If type is INCOME or TRANSFER, and a credit card was selected, switch to first account.
+    // Expenses can be on credit cards.
+    const selectedSource = sourceOptions.find(s => s.value === sourceId);
+    if (selectedSource?.type === 'creditCard' && (type === TransactionType.INCOME || type === TransactionType.TRANSFER)) {
+        setSourceId(accounts[0]?.id || ''); 
+        // Add a toast notification here if desired.
+    }
+
+  }, [type, categoryId, categories, sourceId, accounts, sourceOptions]);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
     if (!amount || parseFloat(amount) <= 0) newErrors.amount = 'Valor deve ser maior que zero.';
-    if (type !== TransactionType.TRANSFER && !categoryId) newErrors.categoryId = 'Categoria é obrigatória.';
-    if (!accountId) newErrors.accountId = 'Conta é obrigatória.';
+    
+    const selectedSource = sourceOptions.find(s => s.value === sourceId);
+    if (type !== TransactionType.TRANSFER && !categoryId && selectedSource?.type !== 'creditCard') {
+      // Category is optional if it's a direct debit on credit card, as the description will be primary.
+      // However, for regular account expenses/income, it's still good practice.
+      // For simplicity now, let's keep it required unless it's a transfer.
+      // This can be refined later if direct card debits should also have optional categories.
+       if (!categoryId) newErrors.categoryId = 'Categoria é obrigatória.';
+    }
+
+
+    if (!sourceId) newErrors.sourceId = 'Origem (Conta/Cartão) é obrigatória.';
     if (type === TransactionType.TRANSFER && !toAccountId) newErrors.toAccountId = 'Conta de destino é obrigatória.';
-    if (type === TransactionType.TRANSFER && accountId === toAccountId) newErrors.toAccountId = 'Conta de origem e destino não podem ser iguais.';
+    if (type === TransactionType.TRANSFER && sourceId === toAccountId) newErrors.toAccountId = 'Conta de origem e destino não podem ser iguais.';
+    if (type === TransactionType.TRANSFER && selectedSource?.type === 'creditCard') {
+        newErrors.sourceId = 'Transferências não podem originar de um cartão de crédito.';
+    }
     if (!date) newErrors.date = 'Data é obrigatória.';
     
     setErrors(newErrors);
@@ -87,12 +117,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       category_id: type === TransactionType.TRANSFER ? undefined : categoryId,
       description,
       date,
-      account_id: accountId,
+      account_id: sourceId, // This now holds the ID of account OR credit card
       to_account_id: type === TransactionType.TRANSFER ? toAccountId : undefined,
       tag_ids: selectedTagIds.length > 0 ? selectedTagIds : undefined,
     };
-    // Casting to any to satisfy the complex conditional type for onSubmit
-    // Supabase will handle user_id, created_at, updated_at
     onSubmit(transactionData as any); 
   };
 
@@ -109,6 +137,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   const filteredCategories = categories.filter(cat => cat.type === type);
   const tagOptions = tags.map(t => ({ value: t.id, label: t.name }));
+  const selectedSourceIsCard = sourceOptions.find(s => s.value === sourceId)?.type === 'creditCard';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -132,7 +161,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       />
       {type !== TransactionType.TRANSFER && (
         <Select
-          label="Categoria"
+          label={selectedSourceIsCard && type === TransactionType.EXPENSE ? "Categoria (Opcional para Débito Direto no Cartão)" : "Categoria"}
           id="category"
           options={filteredCategories.map(c => ({ value: c.id, label: c.name }))}
           value={categoryId}
@@ -140,6 +169,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           error={errors.categoryId}
           placeholder="Selecione uma categoria"
           disabled={filteredCategories.length === 0}
+          // Categoria pode ser opcional se for despesa no cartão, já que a descrição será usada.
+          // required={!(selectedSourceIsCard && type === TransactionType.EXPENSE)} 
         />
       )}
       <Input
@@ -148,6 +179,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         type="text"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
+        placeholder={selectedSourceIsCard && type === TransactionType.EXPENSE ? "Ex: Academia, Assinatura Spotify (será usado na fatura)" : "Ex: Compras no mercado"}
       />
       <Input
         label="Data"
@@ -159,14 +191,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         required
       />
       <Select
-        label={type === TransactionType.TRANSFER ? "Conta de Origem" : "Conta"}
-        id="accountId"
-        options={accounts.map(a => ({ value: a.id, label: a.name }))}
-        value={accountId}
-        onChange={(e: ChangeEvent<HTMLSelectElement>) => setAccountId(e.target.value)}
-        error={errors.accountId}
-        placeholder="Selecione uma conta"
-        disabled={accounts.length === 0}
+        label={type === TransactionType.TRANSFER ? "Debitar de (Conta)" : "Debitar de (Conta / Cartão)"}
+        id="sourceId"
+        options={type === TransactionType.TRANSFER ? sourceOptions.filter(so => so.type === 'account') : sourceOptions}
+        value={sourceId}
+        onChange={(e: ChangeEvent<HTMLSelectElement>) => setSourceId(e.target.value)}
+        error={errors.sourceId}
+        placeholder="Selecione uma origem"
+        disabled={sourceOptions.length === 0}
       />
       {type === TransactionType.TRANSFER && (
         <Select
