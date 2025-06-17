@@ -3,7 +3,7 @@ import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, A
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
 // --- API Key Configuration ---
-const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY_FROM_ENV = import.meta.env.VITE_GEMINI_API_KEY;
 
 let ai: GoogleGenAI | null = null;
 
@@ -15,7 +15,7 @@ if (GEMINI_API_KEY_FROM_ENV) {
     ai = null; 
   }
 } else {
-  console.warn("Gemini API Key (process.env.GEMINI_API_KEY or import.meta.env.VITE_GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
+  console.warn("Gemini API Key (import.meta.env.VITE_GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
 }
 
 export const isGeminiApiKeyAvailable = (): boolean => {
