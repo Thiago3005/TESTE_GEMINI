@@ -34,6 +34,7 @@ import LoansView from './components/LoansView';
 import AICoachView from './components/AICoachView';
 import LoginView from './components/LoginView';
 import DebtPlannerView from './components/DebtPlannerView';
+import CashFlowView from './components/CashFlowView'; // New View
 
 // Components
 import Modal from './components/Modal';
@@ -59,6 +60,7 @@ import EyeIcon from './components/icons/EyeIcon';
 import EyeSlashIcon from './components/icons/EyeSlashIcon';
 import PowerIcon from './components/icons/PowerIcon';
 import BanknotesIcon from './components/icons/BanknotesIcon';
+import PresentationChartLineIcon from './components/icons/PresentationChartLineIcon'; // New Icon
 
 // Services
 import * as geminiService from './services/geminiService';
@@ -695,7 +697,16 @@ const AppContent: React.FC = () => {
     }
     await addOrUpdateRecord('money_box_transactions', {...mbt, linked_transaction_id: linkedTxId} as Omit<MoneyBoxTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>, setMoneyBoxTransactions, (a: MoneyBoxTransaction,b: MoneyBoxTransaction)=>new Date(b.date).getTime() - new Date(a.date).getTime());
   };
-  const handleDeleteMoneyBoxTransaction = (id: string) => deleteRecord('money_box_transactions', id, setMoneyBoxTransactions);
+  const handleDeleteMoneyBoxTransaction = (id: string, linkedTransactionId?:string) => {
+      // If there's a linked main transaction, we might want to offer to delete it too,
+      // or inform the user it won't be deleted automatically.
+      // For now, just deleting the MBT. The user should manage the main transaction if needed.
+      if(linkedTransactionId && window.confirm("Esta transação de caixinha está vinculada a uma transação principal. Deseja remover APENAS a movimentação da caixinha? A transação principal NÃO será afetada.")){
+        deleteRecord('money_box_transactions', id, setMoneyBoxTransactions);
+      } else if (!linkedTransactionId){
+        deleteRecord('money_box_transactions', id, setMoneyBoxTransactions);
+      }
+  };
   
   // Tag Handlers
   const handleAddTag = (data: Omit<Tag, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>) => addOrUpdateRecord('tags', data, setTags, (a: Tag,b: Tag) => a.name.localeCompare(b.name));
@@ -1089,6 +1100,7 @@ const AppContent: React.FC = () => {
 
   const sidebarItems: Array<{ view: AppView; icon: JSX.Element; label: string; hasIndicator?: boolean }> = [
     { view: 'DASHBOARD', icon: <ChartPieIcon />, label: 'Painel Geral' },
+    { view: 'CASH_FLOW', icon: <PresentationChartLineIcon />, label: 'Fluxo de Caixa' },
     { view: 'TRANSACTIONS', icon: <ListBulletIcon />, label: 'Transações' },
     { view: 'ACCOUNTS', icon: <BanknotesIcon />, label: 'Contas' },
     { view: 'CATEGORIES', icon: <BookmarkSquareIcon />, label: 'Categorias' },
@@ -1157,6 +1169,7 @@ const AppContent: React.FC = () => {
       {/* Main content */}
       <main className="flex-1 ml-64 overflow-y-auto bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark">
         {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+        {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'ACCOUNTS' && <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'CATEGORIES' && <CategoriesView categories={categories} transactions={transactions} aiConfig={aiConfig} onAddCategory={handleAddCategory} onUpdateCategory={handleUpdateCategory} onDeleteCategory={handleDeleteCategory} onSuggestBudget={handleSuggestBudgetForCategory} isPrivacyModeEnabled={isPrivacyModeEnabled} />}

@@ -268,14 +268,18 @@ export type AppView =
   | 'TAGS'
   | 'RECURRING_TRANSACTIONS'
   | 'LOANS'
-  | 'DEBT_PLANNER' // New View
+  | 'DEBT_PLANNER'
+  | 'CASH_FLOW' // New View for Cash Flow
   | 'AI_COACH'
   | 'DATA_MANAGEMENT';
 
 export interface ChartData {
-  name: string;
-  value: number;
+  name: string; // Typically represents a category name or a date string
+  value: number; // The primary value for this data point (e.g., total expense amount)
+  value2?: number; // Optional secondary value (e.g., total income amount for comparison)
+  fill?: string; // Optional color for this data point in charts
 }
+
 
 export type Theme = 'light' | 'dark' | 'system';
 
