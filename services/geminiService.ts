@@ -1,8 +1,9 @@
+
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
-import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency } from '../types';
+import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
-const GEMINI_API_KEY_FROM_ENV = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY;
 
 let ai: GoogleGenAI | null = null;
 
@@ -14,7 +15,7 @@ if (GEMINI_API_KEY_FROM_ENV) {
     ai = null; 
   }
 } else {
-  console.warn("Gemini API Key (VITE_GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
+  console.warn("Gemini API Key (process.env.GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
 }
 
 export const isGeminiApiKeyAvailable = (): boolean => {
@@ -44,6 +45,7 @@ export interface FinancialContext {
   theme?: 'light' | 'dark';
   monthlyIncome?: number | null; 
   simulatedTransactionData?: SimulatedTransactionData; // Added for cash flow projection
+  debts?: Debt[]; // Added for debt strategy/projection context
 }
 
 const constructPromptForGeneralAdvice = (context: FinancialContext): string => {
@@ -394,6 +396,58 @@ Se uma simulação foi fornecida, mencione brevemente o impacto dela.
 Seja conciso (3-5 frases). Não use markdown. Responda apenas com a projeção. Se não puder projetar confiavelmente, diga "Não foi possível gerar uma projeção de fluxo de caixa detalhada com os dados atuais."
 Projeção:`;
 };
+
+const constructPromptForDebtStrategyExplanation = (strategy: DebtStrategy): string => {
+  let strategyName = "";
+  let coreConcept = "";
+  switch (strategy) {
+    case 'snowball':
+      strategyName = "Bola de Neve (Snowball)";
+      coreConcept = "prioriza quitar as dívidas com os menores saldos primeiro, independentemente das taxas de juros, para obter vitórias rápidas e motivação.";
+      break;
+    case 'avalanche':
+      strategyName = "Avalanche";
+      coreConcept = "prioriza quitar as dívidas com as maiores taxas de juros primeiro, o que geralmente economiza mais dinheiro em juros a longo prazo.";
+      break;
+    case 'minimums':
+       strategyName = "Pagamentos Mínimos";
+      coreConcept = "consiste em pagar apenas o valor mínimo exigido em todas as dívidas. Geralmente é a forma mais lenta e cara de quitar dívidas devido ao acúmulo de juros.";
+      break;
+    default:
+      return "Estratégia desconhecida.";
+  }
+
+  return `Você é um educador financeiro. Explique a estratégia de quitação de dívidas "${strategyName}" em termos simples.
+O conceito principal desta estratégia é que ${coreConcept}.
+Forneça uma breve explicação (2-3 frases) sobre como funciona, suas principais vantagens e desvantagens.
+Não use markdown. Responda apenas com a explicação.
+Explicação:`;
+};
+
+const constructPromptForDebtProjectionSummary = (projection: DebtProjection, debts: Debt[], context: FinancialContext): string => {
+  const strategyName = projection.strategy === 'snowball' ? 'Bola de Neve' : projection.strategy === 'avalanche' ? 'Avalanche' : 'Pagamentos Mínimos';
+  let debtsSummary = debts.map(d => `- ${d.name}: Saldo ${formatCurrency(d.current_balance)}, Juros ${d.interest_rate_annual}% a.a.`).join('\n');
+
+  return `Você é um consultor financeiro. O usuário calculou um plano de quitação de dívidas.
+Estratégia Utilizada: ${strategyName}.
+Tempo Estimado para Quitar Todas as Dívidas: ${projection.monthsToPayoff} meses (${(projection.monthsToPayoff / 12).toFixed(1)} anos).
+Total de Juros Pagos Estimado: ${formatCurrency(projection.totalInterestPaid)}.
+Total Principal Pago Estimado: ${formatCurrency(projection.totalPrincipalPaid)}.
+Pagamento Extra Mensal Adicionado aos Mínimos: ${formatCurrency(projection.payoffDetails[0]?.monthlyPayments[0]?.payment - debts.find(d => d.id === projection.payoffDetails[0]?.debtId)?.minimum_payment || 0 )} (se houver um extra aplicado à primeira dívida do plano).
+
+Dívidas Incluídas no Plano:
+${debtsSummary}
+
+Renda Mensal Informada: ${context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada'}.
+Saldo Total em Contas: ${formatCurrency(context.accountBalances.reduce((sum, acc) => sum + acc.balance, 0))}
+
+Com base no resultado da projeção e no contexto financeiro do usuário, forneça um resumo e insights (2-4 frases).
+Comente se o plano parece realista, se o tempo de quitação é bom, e talvez uma sugestão baseada no impacto dos juros ou no pagamento extra.
+Exemplo de tom: "Este plano ${strategyName} parece eficaz, quitando suas dívidas em ${projection.monthsToPayoff} meses. O total de juros de ${formatCurrency(projection.totalInterestPaid)} é significativo; considere aumentar o pagamento extra, se possível, para acelerar."
+Não use markdown. Responda apenas com o resumo.
+Resumo:`;
+};
+
 
 const safeGenerateContent = async (
     prompt: string, 
@@ -840,6 +894,54 @@ export const fetchCashFlowProjectionInsight = async (
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: "Não foi possível gerar uma projeção de fluxo de caixa com os dados atuais.",
+        is_read: false,
+    };
+};
+
+
+export const fetchDebtStrategyExplanation = async (strategy: DebtStrategy): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+    if (!ai || !isGeminiApiKeyAvailable()) {
+        return {
+            id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+            content: "AI Coach desativado ou API Key não configurada para explicar estratégia de dívida.",
+            related_debt_strategy: strategy, is_read: false,
+        };
+    }
+    const prompt = constructPromptForDebtStrategyExplanation(strategy);
+    const content = await safeGenerateContent(prompt, 'debt_strategy_explanation');
+    if (content) {
+        return {
+            id: generateId(), timestamp: new Date().toISOString(), type: 'debt_strategy_explanation',
+            content: content, related_debt_strategy: strategy, is_read: false,
+        };
+    }
+    return {
+        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+        content: `Não foi possível obter uma explicação para a estratégia ${strategy} no momento.`,
+        related_debt_strategy: strategy, is_read: false,
+    };
+};
+
+export const fetchDebtProjectionSummary = async (projection: DebtProjection, debtsContext: Debt[], context: FinancialContext): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+    if (!ai || !isGeminiApiKeyAvailable()) {
+        return {
+            id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+            content: "AI Coach desativado ou API Key não configurada para resumir projeção de dívida.",
+            is_read: false,
+        };
+    }
+    const fullContext = {...context, debts: debtsContext };
+    const prompt = constructPromptForDebtProjectionSummary(projection, debtsContext, fullContext);
+    const content = await safeGenerateContent(prompt, 'debt_projection_summary');
+    if (content) {
+        return {
+            id: generateId(), timestamp: new Date().toISOString(), type: 'debt_projection_summary',
+            content: content, related_debt_strategy: projection.strategy, is_read: false,
+        };
+    }
+     return {
+        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+        content: "Não foi possível obter um resumo da projeção de dívida no momento.",
         is_read: false,
     };
 };

@@ -158,6 +158,8 @@ export type AIInsightType =
   | 'saving_opportunity_suggestion' // Sugestão de economia
   | 'unusual_transaction_value'    // Transação de valor incomum
   | 'cash_flow_projection'         // NEW: Previsão de Fluxo de Caixa
+  | 'debt_strategy_explanation'    // NEW: Explicação de estratégia de dívida
+  | 'debt_projection_summary'      // NEW: Resumo de projeção de dívida
   | 'error_message';
 
 export interface AIInsight extends SupabaseManaged {
@@ -169,6 +171,8 @@ export interface AIInsight extends SupabaseManaged {
   related_category_id?: string; // UUID
   related_future_purchase_id?: string; // UUID
   related_credit_card_id?: string; // UUID
+  related_debt_id?: string; // UUID (for debt-related insights)
+  related_debt_strategy?: DebtStrategy; // (for strategy explanations)
   is_read: boolean;
   isLoading?: boolean; // Purely client-side state, not in DB
 }
@@ -234,6 +238,25 @@ export interface DebtPayment extends SupabaseManaged {
   amount_paid: number;
   notes?: string;
   linked_expense_transaction_id?: string; // FK to Transaction (optional)
+}
+
+export type DebtStrategy = 'snowball' | 'avalanche' | 'minimums';
+
+export interface DebtPayoffDetail {
+  debtId: string;
+  monthsToPayoffThisDebt: number;
+  interestPaidThisDebt: number;
+  principalPaidThisDebt: number;
+  monthlyPayments: { month: number; payment: number; interest: number; principal: number; remainingBalance: number }[];
+}
+
+export interface DebtProjection {
+  strategy: DebtStrategy;
+  monthsToPayoff: number;
+  totalInterestPaid: number;
+  totalPrincipalPaid: number;
+  totalPaid: number;
+  payoffDetails: DebtPayoffDetail[];
 }
 
 

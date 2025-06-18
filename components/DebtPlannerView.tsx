@@ -1,14 +1,21 @@
+
 import React from 'react';
 import { useState, useMemo } from 'react';
-import { Debt, DebtPayment, Account } from '../types';
+import { Debt, DebtPayment, Account, DebtStrategy, DebtProjection, AIInsight } from '../types';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import BanknotesIcon from './icons/BanknotesIcon';
 import EditIcon from './icons/EditIcon';
 import TrashIcon from './icons/TrashIcon';
+import LightBulbIcon from './icons/LightBulbIcon';
 import { formatCurrency, formatDate } from '../utils/helpers';
 import DebtFormModal from './DebtFormModal';
 import DebtPaymentFormModal from './DebtPaymentFormModal';
+import { calculateDebtPayoff } from '../utils/debtCalculator';
+import Select from './Select';
+import Input from './Input';
+import Modal from './Modal';
+
 
 interface DebtPlannerViewProps {
   debts: Debt[];
@@ -18,13 +25,15 @@ interface DebtPlannerViewProps {
   onUpdateDebt: (debtData: Debt) => void;
   onDeleteDebt: (debtId: string) => void;
   onAddDebtPayment: (paymentData: Omit<DebtPayment, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id'>, createLinkedExpense: boolean, linkedAccountId?: string) => void;
+  onFetchDebtStrategyExplanation: (strategy: DebtStrategy) => Promise<void>;
+  onFetchDebtProjectionSummary: (projection: DebtProjection, debts: Debt[], strategy: DebtStrategy) => Promise<void>;
   isPrivacyModeEnabled?: boolean;
 }
 
-const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, onEdit: (debt:Debt)=>void, onDelete: (debtId: string) => void, hasPayments: boolean, isPrivacyModeEnabled?: boolean}> = 
+const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, onEdit: (debt:Debt)=>void, onDelete: (debtId: string) => void, hasPayments: boolean, isPrivacyModeEnabled?: boolean}> =
   ({ debt, onRegisterPayment, onEdit, onDelete, hasPayments, isPrivacyModeEnabled }) => {
-  
-  const progressPercent = debt.initial_balance > 0 
+
+  const progressPercent = debt.initial_balance > 0
     ? Math.max(0, Math.min(((debt.initial_balance - debt.current_balance) / debt.initial_balance) * 100, 100))
     : 0;
 
@@ -39,11 +48,11 @@ const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, o
             <Button variant="ghost" size="sm" onClick={() => onEdit(debt)} aria-label="Editar Dívida" className="!p-1.5">
                 <EditIcon className="w-4 h-4" />
             </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => onDelete(debt.id)} 
-              aria-label="Excluir Dívida" 
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onDelete(debt.id)}
+              aria-label="Excluir Dívida"
               className="!p-1.5"
               disabled={hasPayments}
               title={hasPayments ? "Exclua os pagamentos desta dívida primeiro" : "Excluir Dívida"}
@@ -96,6 +105,8 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
   onUpdateDebt,
   onDeleteDebt,
   onAddDebtPayment,
+  onFetchDebtStrategyExplanation,
+  onFetchDebtProjectionSummary,
   isPrivacyModeEnabled,
 }) => {
   const [isDebtFormModalOpen, setIsDebtFormModalOpen] = useState(false);
@@ -103,6 +114,15 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
 
   const [isPaymentFormModalOpen, setIsPaymentFormModalOpen] = useState(false);
   const [selectedDebtForPayment, setSelectedDebtForPayment] = useState<Debt | null>(null);
+
+  const [extraPayment, setExtraPayment] = useState('0');
+  const [selectedStrategy, setSelectedStrategy] = useState<DebtStrategy>('snowball');
+  const [projection, setProjection] = useState<DebtProjection | null>(null);
+  const [isLoadingProjection, setIsLoadingProjection] = useState(false);
+  
+  const [isExplanationModalOpen, setIsExplanationModalOpen] = useState(false);
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+
 
   const openDebtFormModalForNew = () => {
     setEditingDebt(null);
@@ -118,7 +138,7 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
     setSelectedDebtForPayment(debt);
     setIsPaymentFormModalOpen(true);
   };
-  
+
   const totalCurrentDebt = useMemo(() => {
     return debts.filter(d => !d.is_archived).reduce((sum, debt) => sum + debt.current_balance, 0);
   }, [debts]);
@@ -130,6 +150,41 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
   const hasPaymentsForDebt = (debtId: string): boolean => {
     return debtPayments.some(dp => dp.debt_id === debtId);
   }
+
+  const handleCalculateProjection = () => {
+    setIsLoadingProjection(true);
+    setProjection(null);
+    const activeDebts = debts.filter(d => !d.is_archived && d.current_balance > 0);
+    if (activeDebts.length === 0) {
+      alert("Nenhuma dívida ativa para calcular o plano.");
+      setIsLoadingProjection(false);
+      return;
+    }
+    const result = calculateDebtPayoff(activeDebts, parseFloat(extraPayment) || 0, selectedStrategy);
+    setProjection(result);
+    setIsLoadingProjection(false);
+  };
+  
+  const handleFetchExplanation = async (strategy: DebtStrategy) => {
+    setIsExplanationModalOpen(true); // Open modal to show loading or result
+    await onFetchDebtStrategyExplanation(strategy);
+    // App.tsx will handle adding the insight, user will see it in AI Coach.
+    // Or, we can adjust to show it here directly if App.tsx returns the insight
+    // or updates a state prop passed to this component.
+  };
+  
+  const handleFetchProjectionSummary = async () => {
+    if (!projection) return;
+    setIsSummaryModalOpen(true); // Open modal
+    await onFetchDebtProjectionSummary(projection, debts.filter(d => !d.is_archived && d.current_balance > 0), selectedStrategy);
+  };
+
+
+  const strategyOptions: { value: DebtStrategy; label: string }[] = [
+    { value: 'minimums', label: 'Apenas Pagamentos Mínimos' },
+    { value: 'snowball', label: 'Bola de Neve (Menor Saldo Primeiro)' },
+    { value: 'avalanche', label: 'Avalanche (Maior Juros Primeiro)' },
+  ];
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -159,6 +214,65 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
         </div>
       </div>
 
+      <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 space-y-4">
+        <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark">Estratégia de Quitação</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+            <Input
+                label="Pagamento Extra Mensal (R$)"
+                id="extraPayment"
+                type="number"
+                step="0.01"
+                min="0"
+                value={extraPayment}
+                onChange={(e) => setExtraPayment(e.target.value)}
+                placeholder="Ex: 100.00"
+            />
+            <Select
+                label="Escolha a Estratégia"
+                id="debtStrategy"
+                options={strategyOptions}
+                value={selectedStrategy}
+                onChange={(e) => setSelectedStrategy(e.target.value as DebtStrategy)}
+            />
+        </div>
+         <div className="flex flex-wrap gap-2 text-sm">
+            <Button variant="ghost" size="sm" onClick={() => handleFetchExplanation('snowball')} className="!text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                <LightBulbIcon className="w-3.5 h-3.5 mr-1" /> Entenda: Bola de Neve
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => handleFetchExplanation('avalanche')} className="!text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                 <LightBulbIcon className="w-3.5 h-3.5 mr-1" /> Entenda: Avalanche
+            </Button>
+        </div>
+        <Button onClick={handleCalculateProjection} variant="primary" disabled={isLoadingProjection} className="w-full sm:w-auto">
+          {isLoadingProjection ? 'Calculando...' : 'Calcular Plano de Quitação'}
+        </Button>
+
+        {projection && (
+          <div className="mt-4 pt-4 border-t border-borderBase dark:border-borderBaseDark space-y-3">
+            <h3 className="text-lg font-semibold">Resultado da Projeção ({strategyOptions.find(s=>s.value === selectedStrategy)?.label}):</h3>
+            <p>Tempo para quitar todas as dívidas: <span className="font-bold">{(projection.monthsToPayoff / 12).toFixed(1)} anos</span> ({projection.monthsToPayoff} meses)</p>
+            <p>Total de Juros Pagos: <span className="font-bold">{formatCurrency(projection.totalInterestPaid, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span></p>
+            <p>Total Principal Pago: <span className="font-bold">{formatCurrency(projection.totalPrincipalPaid, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span></p>
+            
+            <h4 className="text-md font-semibold mt-2">Ordem de Quitação:</h4>
+            <ul className="list-decimal list-inside text-sm space-y-1">
+              {projection.payoffDetails.map(detail => {
+                const debt = debts.find(d => d.id === detail.debtId);
+                return (
+                  <li key={detail.debtId}>
+                    <strong>{debt?.name || 'Dívida Desconhecida'}</strong>: Quitada em {detail.monthsToPayoffThisDebt} meses. Juros pagos nesta dívida: {formatCurrency(detail.interestPaidThisDebt, 'BRL', 'pt-BR', isPrivacyModeEnabled)}.
+                  </li>
+                );
+              })}
+            </ul>
+            <Button variant="ghost" size="sm" onClick={handleFetchProjectionSummary} className="!text-xs text-blue-600 dark:text-blue-400 hover:underline mt-2">
+                <LightBulbIcon className="w-3.5 h-3.5 mr-1" /> Obter Resumo da IA sobre este plano
+            </Button>
+          </div>
+        )}
+      </div>
+
+
       {debts.filter(d => !d.is_archived).length > 0 ? (
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {debts.filter(d => !d.is_archived).sort((a,b) => a.name.localeCompare(b.name)).map(debt => (
@@ -178,7 +292,7 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
           Nenhuma dívida cadastrada. Adicione suas dívidas para começar a planejar!
         </p>
       )}
-      
+
       {isDebtFormModalOpen && (
         <DebtFormModal
           isOpen={isDebtFormModalOpen}
@@ -196,9 +310,14 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
           accounts={accounts}
         />
       )}
-      <p className="text-xs text-center text-textMuted dark:text-textMutedDark py-4">
-        Funcionalidades avançadas como estratégias de pagamento (Bola de Neve, Avalanche) e projeções detalhadas serão adicionadas em breve.
-      </p>
+      
+      <Modal isOpen={isExplanationModalOpen} onClose={() => setIsExplanationModalOpen(false)} title="Explicação da Estratégia (IA)">
+        <p className="text-textMuted dark:text-textMutedDark">Buscando explicação da IA... Verifique o AI Coach para a resposta completa.</p>
+      </Modal>
+      <Modal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} title="Resumo do Plano (IA)">
+        <p className="text-textMuted dark:text-textMutedDark">Buscando resumo da IA... Verifique o AI Coach para a resposta completa.</p>
+      </Modal>
+
     </div>
   );
 };
