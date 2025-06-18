@@ -1,9 +1,9 @@
+
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
 import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
-// --- API Key Configuration ---
-const GEMINI_API_KEY_FROM_ENV = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY;
 
 let ai: GoogleGenAI | null = null;
 
@@ -15,32 +15,38 @@ if (GEMINI_API_KEY_FROM_ENV) {
     ai = null; 
   }
 } else {
-  console.warn("Gemini API Key (import.meta.env.VITE_GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
+  console.warn("Gemini API Key (process.env.GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
 }
 
 export const isGeminiApiKeyAvailable = (): boolean => {
   return !!GEMINI_API_KEY_FROM_ENV && !!ai;
 };
 
-// --- Data Structures for Prompts ---
-
+export interface SimulatedTransactionData {
+  description?: string;
+  amount: number;
+  type: TransactionType;
+  date: string;
+}
 export interface FinancialContext {
-  currentDate: string;
+  currentDate: string; 
+  dayOfMonth: number; 
+  daysInMonth: number; 
   accounts: Pick<Account, 'name' | 'id'>[];
   accountBalances: { accountId: string, balance: number }[];
   categories: Pick<Category, 'id' | 'name' | 'type' | 'monthly_budget'>[];
-  recentTransactions?: Transaction[]; 
+  transactions?: Transaction[]; 
   moneyBoxes?: Pick<MoneyBox, 'id' | 'name' | 'goal_amount'>[];
   moneyBoxBalances?: { moneyBoxId: string, balance: number }[];
   loans?: Pick<Loan, 'id' | 'person_name' | 'total_amount_to_reimburse'>[]; 
   outstandingLoanBalances?: { loanId: string, outstanding: number }[];
-  recurringTransactions?: Pick<RecurringTransaction, 'id' | 'description' | 'amount' | 'type' | 'next_due_date'>[];
+  recurringTransactions?: Pick<RecurringTransaction, 'id' | 'description' | 'amount' | 'type' | 'next_due_date' | 'frequency' | 'category_id'>[];
   futurePurchases?: Pick<FuturePurchase, 'id' | 'name' | 'estimated_cost' | 'priority' | 'status'>[];
   theme?: 'light' | 'dark';
   monthlyIncome?: number | null; 
+  simulatedTransactionData?: SimulatedTransactionData; // Added for cash flow projection
 }
 
-// --- Helper to construct prompts ---
 const constructPromptForGeneralAdvice = (context: FinancialContext): string => {
   let prompt = `Você é um assistente financeiro amigável e prestativo para um aplicativo de finanças pessoais.
 Data Atual: ${context.currentDate}.
@@ -193,8 +199,227 @@ Exemplo de Cálculo (Data Atual: 2024-07-25, Fechamento: dia 20, Vencimento: dia
 - O pagamento dessa fatura seria em 05 de Outubro de 2024.`;
 };
 
+const constructPromptForSpendingAnomaly = (categoryName: string, currentSpend: number, proRataBudget: number, budget?: number, context?: FinancialContext): string => {
+  return `Você é um assistente financeiro.
+Categoria: "${categoryName}"
+Gasto Atual no Mês: ${formatCurrency(currentSpend)}
+${budget ? `Orçamento Mensal para esta Categoria: ${formatCurrency(budget)}.` : 'Orçamento não definido para esta categoria.'}
+${budget && context ? `Hoje é dia ${context.dayOfMonth} de ${context.daysInMonth} do mês. Proporcionalmente, o gasto esperado até agora seria em torno de ${formatCurrency(proRataBudget)}.` : ''}
 
-// --- API Call Functions ---
+Com base no gasto atual, ele está significativamente acima do esperado para esta altura do mês ou do orçamento proporcional?
+Se sim, forneça um alerta CURTO e DIRETO (1-2 frases). Ex: "Atenção: Seus gastos com ${categoryName} (${formatCurrency(currentSpend)}) já ultrapassaram o esperado para esta data (${formatCurrency(proRataBudget)})." ou "Gastos com ${categoryName} estão X% acima do esperado para hoje."
+Se não houver anomalia clara, ou se o gasto estiver dentro do esperado/orçamento, responda APENAS com a palavra "NORMAL".
+Não faça perguntas. Não use markdown.
+Alerta:`;
+};
+
+const constructPromptForBudgetOverspendProjection = (categoryName: string, currentSpend: number, budget: number, daysRemaining: number, projectedSpend: number, context?: FinancialContext): string => {
+  return `Você é um assistente financeiro.
+Categoria: "${categoryName}"
+Gasto Atual no Mês: ${formatCurrency(currentSpend)}
+Orçamento Mensal para esta Categoria: ${formatCurrency(budget)}
+${context ? `Hoje é dia ${context.dayOfMonth} de ${context.daysInMonth} do mês. Faltam ${daysRemaining} dias.` : ''}
+Projeção de Gasto Total no Mês (mantendo o ritmo atual): ${formatCurrency(projectedSpend)}
+
+Com base no ritmo atual de gastos, há uma projeção de que o orçamento para "${categoryName}" será estourado este mês?
+Se sim, forneça um alerta CURTO e DIRETO (1-2 frases), mencionando o possível valor do estouro. Ex: "Alerta: Mantendo este ritmo, seus gastos com ${categoryName} podem exceder o orçamento em cerca de ${formatCurrency(projectedSpend - budget)} este mês."
+Se não houver projeção clara de estouro, ou se a projeção estiver dentro do orçamento, responda APENAS com a palavra "NORMAL".
+Não faça perguntas. Não use markdown.
+Alerta:`;
+};
+
+const constructPromptForRecurringPaymentCandidate = (
+  transactions: Transaction[], 
+  existingRecurringTransactions: Pick<RecurringTransaction, 'description' | 'amount' | 'type' | 'frequency' | 'category_id'>[],
+  context: FinancialContext
+): string => {
+  const ninetyDaysAgo = new Date(context.currentDate);
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const recentTransactions = transactions.filter(t => t.date >= getISODateString(ninetyDaysAgo) && t.type === TransactionType.EXPENSE);
+
+  return `Você é um assistente financeiro que ajuda a identificar despesas recorrentes não cadastradas.
+  Analise o histórico de despesas do usuário dos últimos 90 dias (data atual: ${context.currentDate}).
+  Procure por pagamentos que se repetem com valores e descrições similares em intervalos regulares (ex: mensais, semanais).
+  
+  Despesas Recorrentes já cadastradas (NÃO SUGIRA ESTAS):
+  ${existingRecurringTransactions.length > 0 ? existingRecurringTransactions.map(rt => `- "${rt.description}" (${formatCurrency(rt.amount)}, ${rt.frequency})`).join('\n') : 'Nenhuma.'}
+
+  Histórico de Transações de Despesa (Últimos 90 dias):
+  ${recentTransactions.map(t => `- Data: ${t.date}, Descrição: "${t.description || context.categories.find(c=>c.id === t.category_id)?.name || 'Despesa'}", Valor: ${formatCurrency(t.amount)}`).slice(0, 30).join('\n')} 
+  ${recentTransactions.length > 30 ? `\n... (e mais ${recentTransactions.length - 30} transações)` : ''}
+
+  Se encontrar UMA despesa que parece ser recorrente mas NÃO ESTÁ na lista de já cadastradas, sugira registrá-la.
+  Seja específico: "Notei pagamentos para '{Nome do Serviço/Descrição}' de aproximadamente {Valor} em datas como {Data1}, {Data2}. Gostaria de cadastrar como despesa recorrente?"
+  Se encontrar múltiplas, sugira a mais óbvia ou mais frequente.
+  Se não encontrar nenhuma candidata clara, responda APENAS com a palavra "NORMAL".
+  Não use markdown. Não faça perguntas diretas no final, apenas a sugestão como no exemplo.
+  Sugestão:`;
+};
+
+const constructPromptForSavingOpportunity = (
+  transactions: Transaction[], 
+  categories: Pick<Category, 'id' | 'name' | 'type'>[],
+  moneyBoxes: Pick<MoneyBox, 'id' | 'name' | 'goal_amount'>[],
+  context: FinancialContext
+): string => {
+  const oneMonthAgo = new Date(context.currentDate);
+  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+  const monthlyExpenses = transactions.filter(t => t.type === TransactionType.EXPENSE && t.date >= getISODateString(oneMonthAgo));
+
+  let prompt = `Você é um coach financeiro que ajuda usuários a encontrar oportunidades de economia.
+  Renda Mensal: ${context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada'}.
+  Data Atual: ${context.currentDate}.
+
+  Metas de Economia (Caixinhas):
+  ${moneyBoxes.length > 0 ? moneyBoxes.map(mb => `- ${mb.name}${mb.goal_amount ? ` (Meta: ${formatCurrency(mb.goal_amount)})` : ''}`).join('\n') : 'Nenhuma meta de economia ativa.'}
+
+  Gastos do Último Mês (Top 5 categorias por frequência, excluindo essenciais como aluguel, contas fixas de casa):
+  `;
+  const categorySpending: { [key: string]: { total: number, count: number, name: string } } = {};
+  monthlyExpenses.forEach(t => {
+    if (t.category_id) {
+      const catName = categories.find(c => c.id === t.category_id)?.name || 'Outros';
+      if (['Moradia', 'Aluguel', 'Condomínio', 'Impostos', 'Luz', 'Água', 'Gás', 'Internet Fixa', 'Saúde', 'Educação'].includes(catName)) return;
+
+      if (!categorySpending[t.category_id]) {
+        categorySpending[t.category_id] = { total: 0, count: 0, name: catName };
+      }
+      categorySpending[t.category_id].total += t.amount;
+      categorySpending[t.category_id].count++;
+    }
+  });
+  const sortedFrequentCategories = Object.values(categorySpending).sort((a,b) => b.count - a.count).slice(0,5);
+  prompt += sortedFrequentCategories.map(s => `- ${s.name}: ${formatCurrency(s.total)} em ${s.count} transações`).join('\n') || 'Nenhum gasto relevante encontrado.';
+
+  prompt += `\n\nIdentifique UMA categoria onde o usuário parece ter gastos pequenos e frequentes que, somados, são significativos (ex: cafés diários, lanches, delivery, apps de transporte).
+  Sugira uma pequena mudança de hábito que poderia gerar economia. Se houver metas (Caixinhas), tente vincular a economia a uma delas.
+  Seja prático e positivo. Ex: "Seus gastos com 'Delivery' somaram ${formatCurrency(150)} no último mês. Que tal reduzir para uma vez por semana e direcionar ${formatCurrency(75)} para sua meta 'Viagem'?"
+  Se não houver oportunidade clara ou dados suficientes, responda APENAS com a palavra "NORMAL".
+  Não use markdown. Não faça perguntas.
+  Sugestão:`;
+  return prompt;
+};
+
+const constructPromptForUnusualTransactionValue = (
+  transaction: Transaction,
+  categoryName: string,
+  recentCategoryTransactions: Transaction[], 
+  context: FinancialContext
+): string => {
+  const samples = recentCategoryTransactions
+    .filter(t => t.id !== transaction.id) 
+    .slice(0, 10) 
+    .map(t => formatCurrency(t.amount));
+
+  return `Você é um assistente financeiro que detecta transações de valor incomum.
+  O usuário registrou uma despesa:
+  - Descrição: "${transaction.description || categoryName}"
+  - Categoria: "${categoryName}"
+  - Valor: ${formatCurrency(transaction.amount)}
+  - Data: ${transaction.date}
+
+  Valores de despesas recentes nesta categoria ("${categoryName}"): ${samples.length > 0 ? samples.join(', ') : 'Nenhuma outra recente.'}
+  
+  O valor desta transação (${formatCurrency(transaction.amount)}) é significativamente mais alto que o normal para esta categoria, baseado nas amostras?
+  Se sim, forneça um alerta CURTO. Ex: "Alerta: O valor de ${formatCurrency(transaction.amount)} para ${categoryName} parece mais alto que seus gastos usuais nesta categoria. Está correto?"
+  Se o valor parecer normal ou não houver dados suficientes para comparar, responda APENAS com a palavra "NORMAL".
+  Não use markdown. Não faça perguntas no final, apenas o alerta como no exemplo.
+  Alerta:`;
+};
+
+const constructPromptForCashFlowProjection = (context: FinancialContext, projectionPeriodDays: number): string => {
+  const endDate = new Date(context.currentDate);
+  endDate.setDate(endDate.getDate() + projectionPeriodDays);
+  const endDateStr = getISODateString(endDate);
+
+  const upcomingRecurring = context.recurringTransactions
+    ?.filter(rt => rt.next_due_date <= endDateStr)
+    .sort((a, b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime())
+    .map(rt => `- ${rt.type === TransactionType.INCOME ? 'Receita' : 'Despesa'}: ${rt.description} (${formatCurrency(rt.amount)}) em ${formatDate(rt.next_due_date)}`)
+    .join('\n');
+  
+  const oneMonthAgo = new Date(context.currentDate);
+  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+  const recentNonRecurringExpenses = context.transactions
+    ?.filter(t => t.type === TransactionType.EXPENSE && 
+                  t.date >= getISODateString(oneMonthAgo) && 
+                  !context.recurringTransactions?.some(rt => rt.description.toLowerCase().includes(t.description?.toLowerCase() || 'xxxx')))
+    .reduce((acc, t) => {
+      const catName = context.categories.find(c => c.id === t.category_id)?.name || 'Outras Despesas';
+      acc[catName] = (acc[catName] || 0) + t.amount;
+      return acc;
+    }, {} as Record<string, number>);
+  
+  const recentSpendingSummary = recentNonRecurringExpenses 
+    ? Object.entries(recentNonRecurringExpenses)
+        .map(([cat, total]) => `- ${cat}: aprox. ${formatCurrency(total)}/mês`)
+        .join('\n')
+    : 'Nenhum padrão recente de gastos discricionários encontrado.';
+
+  let simulatedTxDetails = '';
+  if (context.simulatedTransactionData) {
+    const sim = context.simulatedTransactionData;
+    simulatedTxDetails = `\nConsidere também a seguinte transação SIMULADA para esta projeção:
+- Tipo: ${sim.type === TransactionType.INCOME ? 'Receita' : 'Despesa'}
+- Valor: ${formatCurrency(sim.amount)}
+- Data: ${formatDate(sim.date)}
+- Descrição: ${sim.description || (sim.type === TransactionType.INCOME ? 'Receita Simulada' : 'Despesa Simulada')}
+Esta simulação NÃO está salva, use-a apenas para esta projeção.`;
+  }
+
+  return `Você é um assistente financeiro. Preveja o fluxo de caixa do usuário para os próximos ${projectionPeriodDays} dias.
+Data Atual: ${context.currentDate}.
+Projeção até: ${formatDate(endDateStr)}.
+Renda Mensal Informada: ${context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada (use apenas recorrências e histórico)'}.
+${simulatedTxDetails}
+
+Saldos Atuais das Contas Principais:
+${context.accounts.map(acc => {
+  const balanceInfo = context.accountBalances.find(b => b.accountId === acc.id);
+  return `- ${acc.name}: ${balanceInfo ? formatCurrency(balanceInfo.balance) : 'N/A'}`;
+}).join('\n')}
+Saldo Total Combinado: ${formatCurrency(context.accountBalances.reduce((sum, ab) => sum + ab.balance, 0))}
+
+Transações Recorrentes Programadas (Receitas e Despesas) no Período:
+${upcomingRecurring || 'Nenhuma transação recorrente programada no período.'}
+
+Padrão de Gastos Discricionários Recentes (último mês, não recorrentes):
+${recentSpendingSummary}
+
+Analise essas informações e forneça uma projeção textual do fluxo de caixa.
+Destaque:
+1.  Um resumo geral (ex: "Seu saldo deve permanecer positivo", "Prevê-se um aperto financeiro em meados de [Mês]").
+2.  Principais entradas e saídas esperadas e suas datas.
+3.  Qualquer data onde o saldo possa ficar perigosamente baixo ou negativo, se aplicável.
+Se uma simulação foi fornecida, mencione brevemente o impacto dela.
+Seja conciso (3-5 frases). Não use markdown. Responda apenas com a projeção. Se não puder projetar confiavelmente, diga "Não foi possível gerar uma projeção de fluxo de caixa detalhada com os dados atuais."
+Projeção:`;
+};
+
+const safeGenerateContent = async (
+    prompt: string, 
+    insightTypeForError: AIInsightType, 
+    relatedId?: string 
+): Promise<string | null> => {
+    if (!ai || !isGeminiApiKeyAvailable()) {
+        console.warn(`Gemini API not available for ${insightTypeForError}.`);
+        return null; 
+    }
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-04-17",
+            contents: prompt,
+        });
+        const text = response.text?.trim();
+        if (text && text.toUpperCase() !== "NORMAL") {
+            return text;
+        }
+        return null; 
+    } catch (error) {
+        console.error(`Error fetching ${insightTypeForError} from Gemini:`, error);
+        return null;
+    }
+};
 
 export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
   if (!ai || !isGeminiApiKeyAvailable()) {
@@ -348,7 +573,7 @@ export const fetchBudgetSuggestion = async (
         
         const parsed = JSON.parse(jsonStr);
 
-        if (parsed && typeof parsed.suggestedBudget === 'number' && parsed.suggestedBudget >= 0) { // Allow 0 budget
+        if (parsed && typeof parsed.suggestedBudget === 'number' && parsed.suggestedBudget >= 0) { 
             return { suggestedBudget: parsed.suggestedBudget };
         }
         return { 
@@ -450,7 +675,7 @@ export const fetchBestPurchaseDayAdvice = async (
     });
 
     let jsonStr = response.text?.trim() || '';
-    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s; // Regex to remove markdown fences if present
+    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s; 
     const match = jsonStr.match(fenceRegex);
     if (match && match[2]) {
         jsonStr = match[2].trim();
@@ -460,7 +685,7 @@ export const fetchBestPurchaseDayAdvice = async (
 
     if (parsedResult.error) {
         console.warn("Gemini returned an error for best purchase day:", parsedResult.error);
-        return { ...parsedResult, explanation: parsedResult.error }; // Use error as explanation if present
+        return { ...parsedResult, explanation: parsedResult.error }; 
     }
     if (parsedResult.bestPurchaseDay && parsedResult.paymentDueDate && parsedResult.explanation) {
         return parsedResult;
@@ -488,8 +713,140 @@ export const fetchBestPurchaseDayAdvice = async (
   }
 };
 
+export const fetchSpendingAnomalyInsight = async (
+    categoryName: string, 
+    currentSpend: number, 
+    proRataBudget: number,
+    budget: number | undefined, 
+    context: FinancialContext | undefined,
+    categoryId: string
+): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+    const prompt = constructPromptForSpendingAnomaly(categoryName, currentSpend, proRataBudget, budget, context);
+    const content = await safeGenerateContent(prompt, 'spending_anomaly_category', categoryId);
+    if (content) {
+        return {
+            id: generateId(),
+            timestamp: new Date().toISOString(),
+            type: 'spending_anomaly_category',
+            content: content,
+            related_category_id: categoryId,
+            is_read: false,
+        };
+    }
+    return null;
+};
+
+export const fetchBudgetOverspendProjectionInsight = async (
+    categoryName: string,
+    currentSpend: number,
+    budget: number,
+    daysRemaining: number,
+    projectedSpend: number,
+    context: FinancialContext | undefined,
+    categoryId: string
+): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+    const prompt = constructPromptForBudgetOverspendProjection(categoryName, currentSpend, budget, daysRemaining, projectedSpend, context);
+    const content = await safeGenerateContent(prompt, 'budget_overspend_projection', categoryId);
+     if (content) {
+        return {
+            id: generateId(),
+            timestamp: new Date().toISOString(),
+            type: 'budget_overspend_projection',
+            content: content,
+            related_category_id: categoryId,
+            is_read: false,
+        };
+    }
+    return null;
+};
+
+export const fetchRecurringPaymentCandidateInsight = async (
+    transactions: Transaction[],
+    existingRecurringTransactions: RecurringTransaction[],
+    context: FinancialContext
+): Promise<Omit<AIInsight, 'user_id'|'created_at'|'updated_at'> | null> => {
+    const prompt = constructPromptForRecurringPaymentCandidate(transactions, existingRecurringTransactions.map(rt => ({description: rt.description, amount: rt.amount, type:rt.type, frequency: rt.frequency, category_id: rt.category_id})), context);
+    const content = await safeGenerateContent(prompt, 'recurring_payment_candidate');
+    if (content) {
+        return {
+            id: generateId(),
+            timestamp: new Date().toISOString(),
+            type: 'recurring_payment_candidate',
+            content: content,
+            is_read: false,
+        };
+    }
+    return null;
+};
+
+export const fetchSavingOpportunityInsight = async (
+    transactions: Transaction[],
+    categories: Category[],
+    moneyBoxes: MoneyBox[],
+    context: FinancialContext
+): Promise<Omit<AIInsight, 'user_id'|'created_at'|'updated_at'> | null> => {
+    const prompt = constructPromptForSavingOpportunity(transactions, categories.map(c=> ({id:c.id, name: c.name, type:c.type})), moneyBoxes.map(m=>({id: m.id, name:m.name, goal_amount: m.goal_amount})), context);
+    const content = await safeGenerateContent(prompt, 'saving_opportunity_suggestion');
+    if (content) {
+        return {
+            id: generateId(),
+            timestamp: new Date().toISOString(),
+            type: 'saving_opportunity_suggestion',
+            content: content,
+            is_read: false,
+        };
+    }
+    return null;
+};
+
+export const fetchUnusualTransactionInsight = async (
+    transaction: Transaction,
+    categoryName: string,
+    recentCategoryTransactions: Transaction[],
+    context: FinancialContext
+): Promise<Omit<AIInsight, 'user_id'|'created_at'|'updated_at'> | null> => {
+    const prompt = constructPromptForUnusualTransactionValue(transaction, categoryName, recentCategoryTransactions, context);
+    const content = await safeGenerateContent(prompt, 'unusual_transaction_value', transaction.category_id);
+    if (content) {
+        return {
+            id: generateId(),
+            timestamp: new Date().toISOString(),
+            type: 'unusual_transaction_value',
+            content: content,
+            related_transaction_id: transaction.id,
+            related_category_id: transaction.category_id,
+            is_read: false,
+        };
+    }
+    return null;
+};
+
+export const fetchCashFlowProjectionInsight = async (
+    context: FinancialContext,
+    projectionPeriodDays: number
+): Promise<Omit<AIInsight, 'user_id'|'created_at'|'updated_at'> | null> => {
+    const prompt = constructPromptForCashFlowProjection(context, projectionPeriodDays);
+    const content = await safeGenerateContent(prompt, 'cash_flow_projection');
+    if (content) {
+        return {
+            id: generateId(),
+            timestamp: new Date().toISOString(),
+            type: 'cash_flow_projection',
+            content: content,
+            is_read: false,
+        };
+    }
+     return { 
+        id: generateId(),
+        timestamp: new Date().toISOString(),
+        type: 'error_message',
+        content: "Não foi possível gerar uma projeção de fluxo de caixa com os dados atuais.",
+        is_read: false,
+    };
+};
+
 export const calculateNextDueDate = (currentDueDate: string, frequency: RecurringTransactionFrequency, customIntervalDays?: number): string => {
-  const date = new Date(currentDueDate + 'T00:00:00'); // Ensure local date interpretation
+  const date = new Date(currentDueDate + 'T00:00:00'); 
   switch (frequency) {
     case 'daily':
       date.setDate(date.getDate() + 1);
@@ -507,7 +864,6 @@ export const calculateNextDueDate = (currentDueDate: string, frequency: Recurrin
       date.setDate(date.getDate() + (customIntervalDays || 1));
       break;
     default:
-      // Should not happen with valid frequency
       break; 
   }
   return getISODateString(date);

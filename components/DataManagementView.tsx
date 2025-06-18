@@ -3,7 +3,8 @@ import React from 'react';
 import {
     Transaction, Account, Category, CreditCard, InstallmentPurchase,
     MoneyBox, MoneyBoxTransaction, Tag, RecurringTransaction, Loan, LoanRepayment,
-    FuturePurchase, AIInsight, SupabaseUser, UserPreferences, AIConfig
+    FuturePurchase, AIInsight, SupabaseUser, UserPreferences, AIConfig,
+    Debt, DebtPayment
 } from '../types';
 import Button from './Button';
 // supabase client import removed as it's not directly used here after removing import.
@@ -23,6 +24,8 @@ interface DataManagementViewProps {
     loans: Loan[];
     loanRepayments: LoanRepayment[];
     aiInsights: AIInsight[];
+    debts: Debt[]; // Added
+    debtPayments: DebtPayment[]; // Added
   };
   userPreferencesToExport: Omit<UserPreferences, 'user_id' | 'created_at' | 'updated_at'>;
   activeProfileName?: string;

@@ -10,14 +10,13 @@ import {
   Tag, RecurringTransaction, RecurringTransactionFrequency,
   Loan, LoanRepayment, LoanStatus,
   AIConfig, AIInsight, AIInsightType,
-  FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile
+  FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile,
+  Debt, DebtPayment // Added Debt types
 } from './types';
 import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts } from './constants';
 import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency, getEligibleInstallmentsForBillingCycle } from './utils/helpers';
-// useLocalStorage is no longer used for primary data
-// import useLocalStorage from './hooks/useLocalStorage';
 
-// Contexts
+
 import { ToastProvider, useToasts } from './contexts/ToastContext';
 
 // Views
@@ -34,7 +33,8 @@ import RecurringTransactionsView from './components/RecurringTransactionsView';
 import LoansView from './components/LoansView';
 import AICoachView from './components/AICoachView';
 import LoginView from './components/LoginView';
-// import ProfileSelectionView from './components/ProfileSelectionView'; // Not used in current App logic path
+import DebtPlannerView from './components/DebtPlannerView'; // New View
+
 
 // Components
 import Modal from './components/Modal';
@@ -59,10 +59,11 @@ import UserCircleIcon from './components/icons/UserCircleIcon';
 import EyeIcon from './components/icons/EyeIcon';
 import EyeSlashIcon from './components/icons/EyeSlashIcon';
 import PowerIcon from './components/icons/PowerIcon';
+import BanknotesIcon from './components/icons/BanknotesIcon'; // New Icon
 
 // Services
 import * as geminiService from './services/geminiService';
-import type { FinancialContext } from './services/geminiService';
+import type { FinancialContext, SimulatedTransactionData } from './services/geminiService';
 
 
 const AppContent: React.FC = () => {
@@ -98,9 +99,12 @@ const AppContent: React.FC = () => {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loanRepayments, setLoanRepayments] = useState<LoanRepayment[]>([]);
   const [aiInsights, setAiInsights] = useState<AIInsight[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]); // New state for Debts
+  const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([]); // New state for DebtPayments
+
 
   // Loading states for data
-  const [isLoadingData, setIsLoadingData] = useState(true); // Combined loading state
+  const [isLoadingData, setIsLoadingData] = useState(true); 
 
   const [activeView, setActiveView] = useState<AppView>('DASHBOARD');
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
@@ -126,17 +130,14 @@ const AppContent: React.FC = () => {
         setIsLoadingSession(false);
         if (_event === 'SIGNED_OUT') {
             setActiveView('LOGIN');
-            // Clear all local state on sign out
             setTransactions([]); setAccounts([]); setCategories([]); setCreditCards([]);
             setInstallmentPurchases([]); setMoneyBoxes([]); setMoneyBoxTransactions([]);
             setFuturePurchases([]); setTags([]); setRecurringTransactions([]);
             setLoans([]); setLoanRepayments([]); setAiInsights([]);
-            // Reset preferences to default
+            setDebts([]); setDebtPayments([]); // Clear debt data on sign out
             setThemeState('system'); setIsPrivacyModeEnabledState(false);
             setAiConfigState({ isEnabled: false, apiKeyStatus: 'unknown', monthlyIncome: null, autoBackupToFileEnabled: false });
             addToast("Você foi desconectado.", 'info');
-        } else if (_event === 'SIGNED_IN' && newSession) {
-             // setActiveView('DASHBOARD'); // Data fetching effect will handle view
         }
       }
     );
@@ -146,7 +147,6 @@ const AppContent: React.FC = () => {
   const fetchAndSetAllUserData = useCallback(async (userId: string) => {
     setIsLoadingData(true);
     try {
-        // Fetch User Preferences
         const { data: prefsData, error: prefsError } = await supabase
             .from('user_preferences')
             .select('*')
@@ -165,7 +165,6 @@ const AppContent: React.FC = () => {
                 apiKeyStatus: geminiService.isGeminiApiKeyAvailable() ? 'available' : 'unavailable',
             });
         } else {
-             // Create default preferences for new user
             const defaultPrefs: Omit<UserPreferences, 'user_id' | 'updated_at' | 'created_at'> = {
                 theme: 'system', is_privacy_mode_enabled: false,
                 ai_is_enabled: false, ai_monthly_income: null, ai_auto_backup_enabled: false,
@@ -184,11 +183,11 @@ const AppContent: React.FC = () => {
             });
         }
 
-        // Fetch all other data types in parallel
         const [
             transactionsRes, accountsRes, categoriesRes, creditCardsRes, installmentPurchasesRes,
             moneyBoxesRes, moneyBoxTransactionsRes, futurePurchasesRes, tagsRes,
-            recurringTransactionsRes, loansRes, loanRepaymentsRes, aiInsightsRes
+            recurringTransactionsRes, loansRes, loanRepaymentsRes, aiInsightsRes,
+            debtsRes, debtPaymentsRes // Fetch debt data
         ] = await Promise.all([
             supabase.from('transactions').select('*').eq('user_id', userId).order('date', { ascending: false }),
             supabase.from('accounts').select('*').eq('user_id', userId).order('name'),
@@ -203,6 +202,8 @@ const AppContent: React.FC = () => {
             supabase.from('loans').select('*').eq('user_id', userId).order('loan_date', { ascending: false }),
             supabase.from('loan_repayments').select('*').eq('user_id', userId).order('repayment_date', { ascending: false }),
             supabase.from('ai_insights').select('*').eq('user_id', userId).order('timestamp', { ascending: false }),
+            supabase.from('debts').select('*').eq('user_id', userId).order('created_at', { ascending: false }), // Added
+            supabase.from('debt_payments').select('*').eq('user_id', userId).order('payment_date', { ascending: false }), // Added
         ]);
 
         if (transactionsRes.error) throw transactionsRes.error; setTransactions(transactionsRes.data as Transaction[]);
@@ -218,16 +219,17 @@ const AppContent: React.FC = () => {
         if (loansRes.error) throw loansRes.error; setLoans(loansRes.data as Loan[]);
         if (loanRepaymentsRes.error) throw loanRepaymentsRes.error; setLoanRepayments(loanRepaymentsRes.data as LoanRepayment[]);
         if (aiInsightsRes.error) throw aiInsightsRes.error; setAiInsights(aiInsightsRes.data as AIInsight[]);
+        if (debtsRes.error) throw debtsRes.error; setDebts(debtsRes.data as Debt[]); // Added
+        if (debtPaymentsRes.error) throw debtPaymentsRes.error; setDebtPayments(debtPaymentsRes.data as DebtPayment[]); // Added
         
-        // Seed initial data if necessary (e.g., accounts and categories)
         if (accountsRes.data?.length === 0) {
-            const seedAccs = getSeedAccounts(userId).map(acc => ({ ...acc, user_id: userId })); // Pass userId to seed functions
+            const seedAccs = getSeedAccounts(userId).map(acc => ({ ...acc, user_id: userId })); 
             const { data: newAccs, error: seedAccError } = await supabase.from('accounts').insert(seedAccs).select();
             if (seedAccError) throw seedAccError;
             if (newAccs) setAccounts(newAccs as Account[]);
         }
         if (categoriesRes.data?.length === 0) {
-            const seedCats = getSeedCategories(userId).map(cat => ({ ...cat, user_id: userId })); // Pass userId to seed functions
+            const seedCats = getSeedCategories(userId).map(cat => ({ ...cat, user_id: userId })); 
             const { data: newCats, error: seedCatError } = await supabase.from('categories').insert(seedCats).select();
             if (seedCatError) throw seedCatError;
             if (newCats) setCategories(newCats as Category[]);
@@ -237,7 +239,6 @@ const AppContent: React.FC = () => {
     } catch (error: any) {
         console.error("Error fetching user data:", error);
         addToast(`Erro ao carregar dados: ${error.message}`, 'error');
-        // Potentially set error states for individual data types or a global data error state
     } finally {
         setIsLoadingData(false);
     }
@@ -325,7 +326,6 @@ const AppContent: React.FC = () => {
         },
       });
       if (error) throw error;
-      // Supabase handles redirection
     } catch (error: any) {
       console.error("Error signing in with Google:", error);
       setAuthError(error.message || "Falha ao fazer login com Google.");
@@ -336,17 +336,300 @@ const AppContent: React.FC = () => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      // Auth state change listener will handle UI updates
     } catch (error: any) {
       console.error("Error signing out:", error);
       addToast(error.message || "Falha ao sair.", 'error');
     }
   };
 
+  const calculateAccountBalance = useCallback((accountId: string): number => {
+    if (!user) return 0;
+    const account = accounts.find(acc => acc.id === accountId);
+    if (!account) return 0;
 
-  // --- CRUD Operations for ALL Data Types (Supabase) ---
+    return transactions.reduce((balance, transaction) => {
+        if (transaction.account_id === accountId) {
+        if (transaction.type === TransactionType.INCOME) return balance + transaction.amount;
+        if (transaction.type === TransactionType.EXPENSE) return balance - transaction.amount;
+        if (transaction.type === TransactionType.TRANSFER) return balance - transaction.amount; 
+        } else if (transaction.to_account_id === accountId && transaction.type === TransactionType.TRANSFER) {
+        return balance + transaction.amount; 
+        }
+        return balance;
+    }, account.initial_balance);
+  }, [accounts, transactions, user]);
 
-  // Transactions (already mostly Supabase ready)
+  const calculateMoneyBoxBalance = useCallback((moneyBoxId: string): number => {
+    if (!user) return 0;
+    return moneyBoxTransactions.reduce((balance, mbt) => {
+      if (mbt.money_box_id === moneyBoxId) {
+        if (mbt.type === MoneyBoxTransactionType.DEPOSIT) return balance + mbt.amount;
+        if (mbt.type === MoneyBoxTransactionType.WITHDRAWAL) return balance - mbt.amount;
+      }
+      return balance;
+    }, 0);
+  }, [moneyBoxTransactions, user]);
+
+  const generateFinancialContext = useCallback((simulatedTx?: SimulatedTransactionData): FinancialContext | null => {
+    if (!user) return null;
+    const currentDateObj = new Date();
+    const currentDate = getISODateString(currentDateObj);
+    const dayOfMonth = currentDateObj.getDate();
+    const currentYear = currentDateObj.getFullYear();
+    const currentMonth = currentDateObj.getMonth(); 
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+    let effectiveTransactions = [...transactions];
+    if (simulatedTx) {
+        // Create a temporary full transaction object for the simulation
+        const tempSimulatedTx: Transaction = {
+            id: `simulated-${generateClientSideId()}`, // Temporary ID
+            user_id: user.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            type: simulatedTx.type,
+            amount: simulatedTx.amount,
+            date: simulatedTx.date,
+            description: simulatedTx.description,
+            account_id: 'simulated_account', // Placeholder, AI will know it's a general impact
+        };
+        effectiveTransactions.push(tempSimulatedTx);
+    }
+
+
+    const getAppliedTheme = (): 'light' | 'dark' => {
+      if (theme === 'system') {
+        return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      return theme; 
+    };
+    return {
+        currentDate,
+        dayOfMonth,
+        daysInMonth,
+        accounts: accounts.map(a => ({ id: a.id, name: a.name })),
+        accountBalances: accounts.map(a => ({ accountId: a.id, balance: calculateAccountBalance(a.id) })),
+        categories: categories.map(c => ({ id: c.id, name: c.name, type: c.type, monthly_budget: c.monthly_budget })),
+        transactions: effectiveTransactions, 
+        moneyBoxes: moneyBoxes.map(mb => ({ id: mb.id, name: mb.name, goal_amount: mb.goal_amount })),
+        moneyBoxBalances: moneyBoxes.map(mb => ({ moneyBoxId: mb.id, balance: calculateMoneyBoxBalance(mb.id) })),
+        loans: loans.map(l => ({ id: l.id, person_name: l.person_name, total_amount_to_reimburse: l.total_amount_to_reimburse })),
+        outstandingLoanBalances: loans.map(l => {
+            const paid = loanRepayments.filter(rp => rp.loan_id === l.id).reduce((sum, rp) => sum + rp.amount_paid, 0);
+            return { loanId: l.id, outstanding: l.total_amount_to_reimburse - paid };
+        }),
+        recurringTransactions: recurringTransactions.map(rt => ({id: rt.id, description: rt.description, amount: rt.amount, type: rt.type, next_due_date: rt.next_due_date, frequency: rt.frequency, category_id: rt.category_id })),
+        futurePurchases: futurePurchases.map(fp => ({id: fp.id, name: fp.name, estimated_cost: fp.estimated_cost, priority: fp.priority, status: fp.status })),
+        theme: getAppliedTheme(),
+        monthlyIncome: aiConfig.monthlyIncome,
+        simulatedTransactionData: simulatedTx, // Pass simulated transaction data separately for explicit handling in prompt
+    };
+  }, [user, accounts, transactions, categories, moneyBoxes, moneyBoxTransactions, loans, loanRepayments, recurringTransactions, futurePurchases, theme, aiConfig.monthlyIncome, calculateAccountBalance, calculateMoneyBoxBalance]);
+
+  const handleAddAIInsight = async (insight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>) => {
+    if (!user) return;
+    const { data, error } = await supabase.from('ai_insights').insert({ ...insight, user_id: user.id }).select().single();
+    if (error) { addToast(`Erro ao salvar insight: ${error.message}`, 'error'); }
+    else if (data) { setAiInsights(prev => [data as AIInsight, ...prev].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())); }
+  };
+
+  const handleFetchGeneralAIAdvice = useCallback(async () => {
+    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
+    const context = generateFinancialContext();
+    if (!context) return;
+
+    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = {
+      timestamp: new Date().toISOString(), type: 'general_advice', content: "Buscando novo conselho...", is_read: false, isLoading: true,
+    };
+    const clientSideLoadingId = generateClientSideId(); 
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, created_at: '', updated_at: ''}, ...prev]);
+
+    const advice = await geminiService.fetchGeneralAdvice(context);
+    
+    setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId)); 
+    if (advice) handleAddAIInsight(advice as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>); 
+    
+  }, [user, aiConfig.isEnabled, aiConfig.apiKeyStatus, generateFinancialContext, handleAddAIInsight]);
+
+  const handleGenerateCommentForTransaction = useCallback(async (transaction: Transaction) => {
+    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
+    const context = generateFinancialContext();
+    if (!context) return;
+
+     const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = {
+        timestamp: new Date().toISOString(), type: 'transaction_comment',
+        content: `Analisando transação: ${transaction.description || transaction.type}...`,
+        related_transaction_id: transaction.id, is_read: false, isLoading: true,
+      };
+    const clientSideLoadingId = generateClientSideId();
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, created_at: '', updated_at: ''}, ...prev]);
+    
+    const categoryName = transaction.category_id ? categories.find(c => c.id === transaction.category_id)?.name : undefined;
+    const accountName = accounts.find(a => a.id === transaction.account_id)?.name || creditCards.find(cc => cc.id === transaction.account_id)?.name;
+    const comment = await geminiService.fetchCommentForTransaction(transaction, context, categoryName, accountName);
+
+    setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
+    if (comment) handleAddAIInsight(comment as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>);
+  }, [user, aiConfig.isEnabled, aiConfig.apiKeyStatus, categories, accounts, creditCards, generateFinancialContext, handleAddAIInsight]);
+
+  const handleAnalyzeSpendingForCategory = useCallback(async (transaction: Transaction) => {
+    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available' || transaction.type !== TransactionType.EXPENSE || !transaction.category_id) {
+        return;
+    }
+    const context = generateFinancialContext();
+    if (!context) return;
+
+    const category = categories.find(c => c.id === transaction.category_id);
+    if (!category) return;
+
+    const currentMonthStr = transaction.date.substring(0, 7);
+    const currentMonthTransactions = transactions.filter(t => t.category_id === category.id && t.date.startsWith(currentMonthStr) && t.type === TransactionType.EXPENSE);
+    const currentSpendInCat = currentMonthTransactions.reduce((sum, t) => sum + t.amount, 0);
+    
+    if (category.monthly_budget && category.monthly_budget > 0) {
+        const proRataBudget = (category.monthly_budget / context.daysInMonth) * context.dayOfMonth;
+        if (currentSpendInCat > proRataBudget * 1.20) { 
+            const anomalyInsight = await geminiService.fetchSpendingAnomalyInsight(category.name, currentSpendInCat, proRataBudget, category.monthly_budget, context, category.id);
+            if (anomalyInsight) handleAddAIInsight(anomalyInsight);
+        }
+    }
+
+    if (category.monthly_budget && category.monthly_budget > 0 && context.dayOfMonth > 0) {
+        const projectedSpend = (currentSpendInCat / context.dayOfMonth) * context.daysInMonth;
+        const daysRemaining = context.daysInMonth - context.dayOfMonth;
+        if (projectedSpend > category.monthly_budget * 1.05) { 
+            const projectionInsight = await geminiService.fetchBudgetOverspendProjectionInsight(category.name, currentSpendInCat, category.monthly_budget, daysRemaining, projectedSpend, context, category.id);
+            if (projectionInsight) handleAddAIInsight(projectionInsight);
+        }
+    }
+
+    const recentCategoryTransactions = transactions.filter(t => t.category_id === category.id && t.id !== transaction.id).slice(0, 20);
+    if (recentCategoryTransactions.length > 5) { 
+        const unusualInsight = await geminiService.fetchUnusualTransactionInsight(transaction, category.name, recentCategoryTransactions, context);
+        if (unusualInsight) handleAddAIInsight(unusualInsight);
+    }
+
+  }, [user, aiConfig, categories, transactions, generateFinancialContext, handleAddAIInsight]);
+
+  const handleFetchRecurringPaymentCandidates = useCallback(async () => {
+    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
+    const context = generateFinancialContext();
+    if (!context) return;
+
+    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = {
+        timestamp: new Date().toISOString(), type: 'recurring_payment_candidate',
+        content: "Analisando possíveis despesas recorrentes não cadastradas...", is_read: false, isLoading: true,
+    };
+    const clientSideLoadingId = generateClientSideId();
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, created_at: '', updated_at: ''}, ...prev]);
+    
+    const insight = await geminiService.fetchRecurringPaymentCandidateInsight(transactions, recurringTransactions, context);
+    
+    setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
+    if (insight) handleAddAIInsight(insight);
+    else addToast("Nenhuma nova despesa recorrente óbvia encontrada.", "info");
+  }, [user, aiConfig, transactions, recurringTransactions, generateFinancialContext, handleAddAIInsight, addToast]);
+
+  const handleFetchSavingOpportunities = useCallback(async () => {
+    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
+    const context = generateFinancialContext();
+    if (!context) return;
+
+    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = {
+        timestamp: new Date().toISOString(), type: 'saving_opportunity_suggestion',
+        content: "Buscando oportunidades de economia...", is_read: false, isLoading: true,
+    };
+    const clientSideLoadingId = generateClientSideId();
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, created_at: '', updated_at: ''}, ...prev]);
+
+    const insight = await geminiService.fetchSavingOpportunityInsight(transactions, categories, moneyBoxes, context);
+
+    setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
+    if (insight) handleAddAIInsight(insight);
+    else addToast("Nenhuma oportunidade clara de economia encontrada no momento.", "info");
+  }, [user, aiConfig, transactions, categories, moneyBoxes, generateFinancialContext, handleAddAIInsight, addToast]);
+
+  const handleFetchCashFlowProjection = useCallback(async (projectionPeriodDays: number = 30, simulatedTx?: SimulatedTransactionData) => {
+    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
+    const context = generateFinancialContext(simulatedTx);
+    if (!context) return;
+
+    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = {
+        timestamp: new Date().toISOString(), type: 'cash_flow_projection',
+        content: `Gerando projeção de fluxo de caixa para os próximos ${projectionPeriodDays} dias${simulatedTx ? ' (com simulação)' : ''}...`, 
+        is_read: false, isLoading: true,
+    };
+    const clientSideLoadingId = generateClientSideId();
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, created_at: '', updated_at: ''}, ...prev]);
+
+    const insight = await geminiService.fetchCashFlowProjectionInsight(context, projectionPeriodDays);
+    
+    setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
+    if (insight) handleAddAIInsight(insight); 
+  }, [user, aiConfig, generateFinancialContext, handleAddAIInsight]);
+
+
+  const handleSuggestCategoryBudget = useCallback(async (categoryName: string, currentExpenseBudgets: {name: string, budget?: number}[]) => {
+    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available' || !aiConfig.monthlyIncome) { addToast("Renda mensal não informada ou IA desativada.", 'warning'); return null; }
+    
+    const context = generateFinancialContext();
+    if (!context) return null;
+
+    const relatedCat = categories.find(c=>c.name === categoryName && c.type === TransactionType.EXPENSE);
+    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = {
+        timestamp: new Date().toISOString(), type: 'budget_recommendation',
+        content: `Calculando sugestão de orçamento para ${categoryName}...`, 
+        related_category_id: relatedCat?.id, is_read: false, isLoading: true,
+    };
+    const clientSideLoadingId = generateClientSideId();
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, created_at: '', updated_at: ''}, ...prev]);
+    
+    const result = await geminiService.fetchBudgetSuggestion(categoryName, aiConfig.monthlyIncome, currentExpenseBudgets, context);
+
+    setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
+    if (result && 'suggestedBudget' in result && typeof result.suggestedBudget === 'number') {
+        const successInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = { 
+            content: `Sugestão para ${categoryName}: ${formatCurrency(result.suggestedBudget)}`, 
+            related_category_id: relatedCat?.id, 
+            timestamp: new Date().toISOString(), type: 'budget_recommendation', is_read: false 
+        };
+        handleAddAIInsight(successInsight);
+        return result.suggestedBudget;
+    } else if (result && 'content' in result) { 
+        handleAddAIInsight(result as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>);
+    }
+    return null;
+  }, [user, aiConfig, categories, generateFinancialContext, addToast, handleAddAIInsight]);
+
+  const handleAnalyzeFuturePurchase = useCallback(async (purchaseId: string) => {
+    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') { addToast("AI Coach desativado ou API Key indisponível.", 'warning'); return; }
+    const purchase = futurePurchases.find(p => p.id === purchaseId);
+    if (!purchase) return;
+    
+    const context = generateFinancialContext();
+    if (!context) return;
+
+    setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: 'AI_ANALYZING' } : p));
+    const result = await geminiService.fetchFuturePurchaseAnalysis(purchase, context);
+
+    if (result && 'analysisText' in result) {
+        const { data, error } = await supabase.from('future_purchases')
+            .update({ status: result.recommendedStatus, ai_analysis: result.analysisText, ai_analyzed_at: new Date().toISOString() })
+            .eq('id', purchaseId).eq('user_id', user.id).select().single();
+        
+        if (error || !data) {
+            addToast(`Erro ao atualizar compra futura: ${error?.message || 'Falha'}`, 'error');
+            setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: purchase.status } : p)); 
+        } else {
+            setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? data as FuturePurchase : p));
+            addToast(`Análise para "${purchase.name}" concluída!`, 'info');
+        }
+    } else if (result && 'content' in result) { 
+        handleAddAIInsight(result as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>);
+        setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: purchase.status } : p)); 
+    }
+  }, [user, aiConfig, futurePurchases, generateFinancialContext, addToast, handleAddAIInsight]);
+
   const handleAddTransaction = async (transactionData: Omit<Transaction, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
     if (!user) return;
     const newTransactionSupabase: Omit<Transaction, 'id' | 'created_at' | 'updated_at'> = { ...transactionData, user_id: user.id };
@@ -358,13 +641,13 @@ const AppContent: React.FC = () => {
         setTransactions(prev => [newTransaction as Transaction, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         setIsTransactionModalOpen(false); 
         handleGenerateCommentForTransaction(newTransaction as Transaction);
+        handleAnalyzeSpendingForCategory(newTransaction as Transaction); 
         addToast('Transação adicionada!', 'success');
 
-        // Check if it's a direct debit on a credit card
         const isCreditCardSource = creditCards.some(cc => cc.id === newTransaction.account_id);
         if (isCreditCardSource && newTransaction.type === TransactionType.EXPENSE) {
             const installmentPurchaseData: Omit<InstallmentPurchase, 'id'|'user_id'|'created_at'|'updated_at'> = {
-                credit_card_id: newTransaction.account_id, // This is the card ID
+                credit_card_id: newTransaction.account_id,
                 description: `Débito na Fatura: ${newTransaction.description || categories.find(c=>c.id === newTransaction.category_id)?.name || 'Despesa no Cartão'}`,
                 purchase_date: newTransaction.date,
                 total_amount: newTransaction.amount,
@@ -372,8 +655,7 @@ const AppContent: React.FC = () => {
                 installments_paid: 0,
                 linked_transaction_id: newTransaction.id,
             };
-            // Using handleAddInstallmentPurchase to add it
-            await handleAddInstallmentPurchase(installmentPurchaseData, false); // Added false to prevent double toast
+            await handleAddInstallmentPurchase(installmentPurchaseData, false);
         }
     }
   };
@@ -398,16 +680,16 @@ const AppContent: React.FC = () => {
         setIsTransactionModalOpen(false); 
         setEditingTransaction(null);
         handleGenerateCommentForTransaction(updatedTransaction as Transaction);
+        handleAnalyzeSpendingForCategory(updatedTransaction as Transaction); 
         addToast('Transação atualizada!', 'success');
 
-        // Logic for linked InstallmentPurchase
         const oldIsCardExpense = creditCards.some(cc => cc.id === originalTransaction.account_id) && originalTransaction.type === TransactionType.EXPENSE;
         const newIsCardExpense = creditCards.some(cc => cc.id === updatedTransaction.account_id) && updatedTransaction.type === TransactionType.EXPENSE;
         const oldLinkedIp = installmentPurchases.find(ip => ip.linked_transaction_id === originalTransaction.id && ip.number_of_installments === 1);
 
-        if (oldIsCardExpense && !newIsCardExpense && oldLinkedIp) { // Was card expense, now isn't (e.g. changed account or type)
-            await handleDeleteInstallmentPurchase(oldLinkedIp.id, false); // Delete old IP, no cascade to original Tx
-        } else if (!oldIsCardExpense && newIsCardExpense) { // Wasn't card expense, now is
+        if (oldIsCardExpense && !newIsCardExpense && oldLinkedIp) {
+            await handleDeleteInstallmentPurchase(oldLinkedIp.id, false);
+        } else if (!oldIsCardExpense && newIsCardExpense) {
             const installmentPurchaseData: Omit<InstallmentPurchase, 'id'|'user_id'|'created_at'|'updated_at'> = {
                 credit_card_id: updatedTransaction.account_id,
                 description: `Débito na Fatura: ${updatedTransaction.description || categories.find(c=>c.id === updatedTransaction.category_id)?.name || 'Despesa no Cartão'}`,
@@ -417,8 +699,8 @@ const AppContent: React.FC = () => {
                 linked_transaction_id: updatedTransaction.id,
             };
             await handleAddInstallmentPurchase(installmentPurchaseData, false);
-        } else if (oldIsCardExpense && newIsCardExpense && oldLinkedIp) { // Still card expense, details might have changed
-            if (originalTransaction.account_id !== updatedTransaction.account_id && oldLinkedIp) { // Card changed
+        } else if (oldIsCardExpense && newIsCardExpense && oldLinkedIp) {
+            if (originalTransaction.account_id !== updatedTransaction.account_id && oldLinkedIp) {
                  await handleDeleteInstallmentPurchase(oldLinkedIp.id, false);
                  const newIpData: Omit<InstallmentPurchase, 'id'|'user_id'|'created_at'|'updated_at'> = {
                     credit_card_id: updatedTransaction.account_id,
@@ -427,7 +709,7 @@ const AppContent: React.FC = () => {
                     number_of_installments: 1, installments_paid: 0, linked_transaction_id: updatedTransaction.id,
                 };
                 await handleAddInstallmentPurchase(newIpData, false);
-            } else if (oldLinkedIp) { // Same card, update IP details
+            } else if (oldLinkedIp) {
                 const updatedIpData: InstallmentPurchase = {
                     ...oldLinkedIp,
                     description: `Débito na Fatura: ${updatedTransaction.description || categories.find(c=>c.id === updatedTransaction.category_id)?.name || 'Despesa no Cartão'}`,
@@ -444,12 +726,9 @@ const AppContent: React.FC = () => {
     if (window.confirm('Excluir esta transação?')) {
        const linkedMbTx = moneyBoxTransactions.find(mbt => mbt.linked_transaction_id === transactionId);
        if (linkedMbTx) {
-         // ... (unlinking logic as before)
        }
-        // New: Check for linked InstallmentPurchase (direct debit)
         const linkedInstallmentPurchase = installmentPurchases.find(ip => ip.linked_transaction_id === transactionId && ip.number_of_installments === 1);
         if (linkedInstallmentPurchase) {
-            // Delete the linked installment purchase, but don't trigger its cascade delete back to this transaction
             await handleDeleteInstallmentPurchase(linkedInstallmentPurchase.id, false); 
         }
 
@@ -459,7 +738,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Accounts
   const handleAddAccount = async (account: Omit<Account, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
     if (!user) return;
     const { data, error } = await supabase.from('accounts').insert({ ...account, user_id: user.id }).select().single();
@@ -477,9 +755,10 @@ const AppContent: React.FC = () => {
     if (transactions.some(t => t.account_id === accountId || t.to_account_id === accountId) ||
         recurringTransactions.some(rt => rt.account_id === accountId || rt.to_account_id === accountId) ||
         loans.some(l => l.linked_account_id === accountId || loanRepayments.some(lr => lr.loan_id === l.id && lr.credited_account_id === accountId)) ||
-        moneyBoxTransactions.some(mbt => transactions.find(t => t.id === mbt.linked_transaction_id)?.account_id === accountId)
+        moneyBoxTransactions.some(mbt => transactions.find(t => t.id === mbt.linked_transaction_id)?.account_id === accountId) ||
+        debtPayments.some(dp => transactions.find(t=> t.id === dp.linked_expense_transaction_id)?.account_id === accountId) // Check if account used in debt payments
       ) {
-      addToast("Conta em uso. Remova/reatribua transações, recorrências ou empréstimos primeiro.", 'error'); return;
+      addToast("Conta em uso. Remova/reatribua transações, recorrências, empréstimos ou pagamentos de dívidas primeiro.", 'error'); return;
     }
     if (window.confirm('Excluir esta conta?')) {
       const { error } = await supabase.from('accounts').delete().eq('id', accountId).eq('user_id', user.id);
@@ -488,7 +767,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Categories
   const handleAddCategory = async (category: Omit<Category, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
     if (!user) return;
     const { data, error } = await supabase.from('categories').insert({ ...category, user_id: user.id }).select().single();
@@ -513,7 +791,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Credit Cards & Installment Purchases
   const handleAddCreditCard = async (card: Omit<CreditCard, 'id'|'user_id'|'created_at'|'updated_at'>) => {
     if (!user) return;
     const { data, error } = await supabase.from('credit_cards').insert({ ...card, user_id: user.id }).select().single();
@@ -530,7 +807,7 @@ const AppContent: React.FC = () => {
      if (!user) return;
     if (installmentPurchases.some(ip => ip.credit_card_id === cardId) || 
         loans.some(l => l.linked_credit_card_id === cardId) ||
-        transactions.some(t => t.account_id === cardId && t.type === TransactionType.EXPENSE) // Check if card is used as source for direct debits
+        transactions.some(t => t.account_id === cardId && t.type === TransactionType.EXPENSE)
     ) {
         addToast("Cartão em uso em compras, empréstimos ou débitos diretos. Remova-os primeiro.", 'error'); return;
     }
@@ -574,7 +851,7 @@ const AppContent: React.FC = () => {
     if (window.confirm(confirmMessage)) {
       if (purchaseToDelete?.linked_transaction_id && purchaseToDelete.number_of_installments === 1 && cascadeDeleteTransaction) {
         const { error: txError } = await supabase.from('transactions').delete().eq('id', purchaseToDelete.linked_transaction_id).eq('user_id', user.id);
-        if (txError) { addToast(`Erro ao excluir transação vinculada: ${txError.message}`, 'error'); /* Optionally stop here */ }
+        if (txError) { addToast(`Erro ao excluir transação vinculada: ${txError.message}`, 'error'); }
         else { setTransactions(prev => prev.filter(t => t.id !== purchaseToDelete.linked_transaction_id)); }
       }
 
@@ -589,7 +866,7 @@ const AppContent: React.FC = () => {
     if (!purchase) return;
     if (purchase.installments_paid < purchase.number_of_installments) {
       const updatedPurchase = { ...purchase, installments_paid: purchase.installments_paid + 1 };
-      await handleUpdateInstallmentPurchase(updatedPurchase); // This will show its own toast
+      await handleUpdateInstallmentPurchase(updatedPurchase); 
     }
   };
 
@@ -647,9 +924,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-
-  // ... (rest of the CRUD functions for MoneyBoxes, Tags, Recurring, Loans, FuturePurchases, AIInsights remain largely the same)
-  // MoneyBoxes & MoneyBoxTransactions
   const handleAddMoneyBox = async (moneyBox: Omit<MoneyBox, 'id'|'user_id'|'created_at'|'updated_at'>) => {
     if (!user) return;
     const { data, error } = await supabase.from('money_boxes').insert({ ...moneyBox, user_id: user.id }).select().single();
@@ -699,7 +973,6 @@ const AppContent: React.FC = () => {
   };
   const handleDeleteMoneyBoxTransaction = async (mbtId: string, linkedTransactionId?: string) => {
     if (!user) return;
-    // Note: Deleting linked main transaction is a user choice, not automatic here. Could add a confirm.
     if (window.confirm(`Excluir esta transação da caixinha? ${linkedTransactionId ? '\\nA transação principal vinculada NÃO será excluída automaticamente por esta ação.' : ''}`)) {
       const { error } = await supabase.from('money_box_transactions').delete().eq('id', mbtId).eq('user_id', user.id);
       if (error) { addToast(`Erro: ${error.message}`, 'error'); }
@@ -707,7 +980,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Tags
   const handleAddTag = async (tag: Omit<Tag, 'id'|'user_id'|'created_at'|'updated_at'>) => {
     if (!user) return;
     const { data, error } = await supabase.from('tags').insert({ ...tag, user_id: user.id }).select().single();
@@ -732,7 +1004,6 @@ const AppContent: React.FC = () => {
     }
   };
   
-  // Recurring Transactions
   const handleAddRecurringTransaction = async (rt: Omit<RecurringTransaction, 'id'|'user_id'|'created_at'|'updated_at'>) => {
     if (!user) return;
     const { data, error } = await supabase.from('recurring_transactions').insert({ ...rt, user_id: user.id }).select().single();
@@ -761,15 +1032,13 @@ const AppContent: React.FC = () => {
     const errors: string[] = [];
 
     for (const rt of toProcess) {
-        const transactionData: Omit<Transaction, 'id'|'user_id'|'created_at'|'updated_at'|'tag_ids'> = { // tag_ids can be added if RTs support them
+        const transactionData: Omit<Transaction, 'id'|'user_id'|'created_at'|'updated_at'|'tag_ids'> = { 
             type: rt.type, amount: rt.amount, category_id: rt.category_id,
-            description: `Rec: ${rt.description}`, date: rt.next_due_date, // Use next_due_date as transaction date
+            description: `Rec: ${rt.description}`, date: rt.next_due_date, 
             account_id: rt.account_id, to_account_id: rt.to_account_id,
         };
-        // Using handleAddTransaction for consistency and auto IP creation if applicable
-        await handleAddTransaction(transactionData); // This will handle its own toasts and state updates
+        await handleAddTransaction(transactionData); 
         
-        // Update recurring transaction
         const newNextDueDate = geminiService.calculateNextDueDate(rt.next_due_date, rt.frequency, rt.custom_interval_days);
         const updatedRTData: Partial<RecurringTransaction> = {
             last_posted_date: rt.next_due_date,
@@ -786,7 +1055,6 @@ const AppContent: React.FC = () => {
     return { count, errors };
   };
 
-  // Loans & Loan Repayments
   const handleAddLoan = async (loanData: Omit<Loan, 'id'|'user_id'|'created_at'|'updated_at'|'linked_expense_transaction_id'|'linked_installment_purchase_id'>, ccInstallmentsFromForm?: number) => {
     if (!user) return;
     let linkedExpenseTxId: string | undefined = undefined;
@@ -802,7 +1070,6 @@ const AppContent: React.FC = () => {
         linkedExpenseTxId = expTx.id;
         setTransactions(prev => [expTx as Transaction, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     } else if (loanData.funding_source === 'creditCard' && loanData.linked_credit_card_id && loanData.cost_on_credit_card && ccInstallmentsFromForm) {
-        // Here we use handleAddInstallmentPurchase instead of direct Supabase insert
         const ipData: Omit<InstallmentPurchase, 'id'|'user_id'|'created_at'|'updated_at'> = {
             credit_card_id: loanData.linked_credit_card_id,
             description: `Empréstimo (crédito) para ${loanData.person_name}`,
@@ -810,33 +1077,13 @@ const AppContent: React.FC = () => {
             total_amount: loanData.cost_on_credit_card,
             number_of_installments: ccInstallmentsFromForm,
             installments_paid: 0,
-            // No linked_transaction_id here as this IP itself is the "source" for the loan.
         };
-        // Need to get the ID of the created installment purchase
-        const tempId = generateClientSideId(); // Placeholder for optimistic update or to await actual ID
-        await handleAddInstallmentPurchase(ipData, false); // Add without toast, Loan toast will cover.
-        // This is tricky: handleAddInstallmentPurchase is async and updates state.
-        // We need the ID of the created installment purchase.
-        // For simplicity, let's assume it's the last one added for now, or modify handleAddInstallmentPurchase to return the created object.
-        // A more robust way would be to make handleAddInstallmentPurchase return the created object.
-        // Since I can't modify its signature right now, I'll proceed knowing this is a simplification.
-        // The most recently added IP to that card *should* be it.
-        const newIp = installmentPurchases.find(ip => 
-            ip.credit_card_id === loanData.linked_credit_card_id &&
-            ip.description === `Empréstimo (crédito) para ${loanData.person_name}` &&
-            ip.purchase_date === loanData.loan_date &&
-            ip.total_amount === loanData.cost_on_credit_card &&
-            !ip.linked_installment_purchase_id // Assuming this is a new one not from another loan.
-        ); // This is still not foolproof.
-        if (newIp) linkedInstallmentPurchaseId = newIp.id;
-        else {
-            // Try to get the latest from state. This relies on state updating synchronously.
-            const latestIp = installmentPurchases.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-            if (latestIp?.description.startsWith(`Empréstimo (crédito) para ${loanData.person_name}`)) { // Heuristic
-                 linkedInstallmentPurchaseId = latestIp.id;
-            } else {
-                 addToast('Aviso: Não foi possível vincular automaticamente a compra parcelada ao empréstimo. Verifique manualmente.', 'warning');
-            }
+        await handleAddInstallmentPurchase(ipData, false); 
+        const latestIp = installmentPurchases.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+        if (latestIp?.description.startsWith(`Empréstimo (crédito) para ${loanData.person_name}`)) {
+             linkedInstallmentPurchaseId = latestIp.id;
+        } else {
+             addToast('Aviso: Não foi possível vincular automaticamente a compra parcelada ao empréstimo. Verifique manualmente.', 'warning');
         }
     }
 
@@ -891,22 +1138,20 @@ const AppContent: React.FC = () => {
     else if (data) { setLoanRepayments(prev => [...prev, data as LoanRepayment]); addToast('Pagamento registrado!', 'success'); }
   };
 
-  // Future Purchases
   const handleAddFuturePurchase = async (purchaseData: Omit<FuturePurchase, 'id'|'user_id'|'created_at'|'updated_at'|'status' | 'ai_analysis' | 'ai_analyzed_at'>) => {
     if (!user) return;
     const newPurchase: Omit<FuturePurchase, 'id'|'created_at'|'updated_at'> = {
-        ...purchaseData, user_id: user.id, status: 'PLANNED', // Default status
+        ...purchaseData, user_id: user.id, status: 'PLANNED', 
     };
     const { data, error } = await supabase.from('future_purchases').insert(newPurchase).select().single();
     if (error) { addToast(`Erro: ${error.message}`, 'error'); }
     else if (data) { setFuturePurchases(prev => [...prev, data as FuturePurchase]); addToast('Compra futura adicionada!', 'success'); }
   };
   const handleUpdateFuturePurchase = async (updatedPurchaseData: Omit<FuturePurchase, 'user_id'|'created_at'|'updated_at'|'status' | 'ai_analysis' | 'ai_analyzed_at'>) => {
-    // Status and AI fields are updated by specific AI functions
     if (!user) return;
     const purchaseToUpdate = futurePurchases.find(p => p.id === updatedPurchaseData.id);
     if (!purchaseToUpdate) return;
-    const finalUpdateData = { ...purchaseToUpdate, ...updatedPurchaseData }; // Merge existing with new, preserving status/AI fields
+    const finalUpdateData = { ...purchaseToUpdate, ...updatedPurchaseData }; 
 
     const { data, error } = await supabase.from('future_purchases').update(finalUpdateData).eq('id', finalUpdateData.id).eq('user_id', user.id).select().single();
     if (error) { addToast(`Erro: ${error.message}`, 'error'); }
@@ -921,170 +1166,85 @@ const AppContent: React.FC = () => {
     }
   };
 
-   // AI Insights (CRUD for local state for now, but will be Supabase)
-  const handleAddAIInsight = async (insight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>) => {
-    if (!user) return;
-    const { data, error } = await supabase.from('ai_insights').insert({ ...insight, user_id: user.id }).select().single();
-    if (error) { addToast(`Erro ao salvar insight: ${error.message}`, 'error'); }
-    else if (data) { setAiInsights(prev => [data as AIInsight, ...prev].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())); }
-  };
    const handleUpdateAIInsight = async (updatedInsight: AIInsight) => {
      if (!user) return;
-    // Primarily for marking as read
     const { data, error } = await supabase.from('ai_insights').update({is_read: updatedInsight.is_read}).eq('id', updatedInsight.id).eq('user_id', user.id).select().single();
     if (error) { addToast(`Erro ao atualizar insight: ${error.message}`, 'error'); }
     else if (data) { setAiInsights(prev => prev.map(i => i.id === data.id ? data as AIInsight : i).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));}
   };
-
-
-  // --- AI Logic (using addAIInsight for persistence) ---
-  const calculateAccountBalance = useCallback((accountId: string): number => {
-    if (!user) return 0;
-    const account = accounts.find(acc => acc.id === accountId);
-    if (!account) return 0;
-
-    return transactions.reduce((balance, transaction) => {
-        if (transaction.account_id === accountId) {
-        if (transaction.type === TransactionType.INCOME) return balance + transaction.amount;
-        if (transaction.type === TransactionType.EXPENSE) return balance - transaction.amount;
-        if (transaction.type === TransactionType.TRANSFER) return balance - transaction.amount; // Money leaving this account
-        } else if (transaction.to_account_id === accountId && transaction.type === TransactionType.TRANSFER) {
-        return balance + transaction.amount; // Money entering this account
-        }
-        return balance;
-    }, account.initial_balance);
-  }, [accounts, transactions, user]);
-
-  const calculateMoneyBoxBalance = useCallback((moneyBoxId: string): number => {
-    if (!user) return 0;
-    return moneyBoxTransactions.reduce((balance, mbt) => {
-      if (mbt.money_box_id === moneyBoxId) {
-        if (mbt.type === MoneyBoxTransactionType.DEPOSIT) return balance + mbt.amount;
-        if (mbt.type === MoneyBoxTransactionType.WITHDRAWAL) return balance - mbt.amount;
-      }
-      return balance;
-    }, 0);
-  }, [moneyBoxTransactions, user]);
-
-  const generateFinancialContext = useCallback((): FinancialContext => {
-    const getAppliedTheme = (): 'light' | 'dark' => {
-      if (theme === 'system') {
-        return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      }
-      return theme; 
+  
+  // --- Debt Planner Handlers ---
+  const handleAddDebt = async (debtData: Omit<Debt, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived'>) => {
+    if (!user) return;
+    const newDebt = { 
+        ...debtData, 
+        user_id: user.id, 
+        current_balance: debtData.initial_balance, // current_balance starts as initial_balance
+        is_archived: false 
     };
-    return {
-        currentDate: getISODateString(),
-        accounts: accounts.map(a => ({ id: a.id, name: a.name })),
-        accountBalances: accounts.map(a => ({ accountId: a.id, balance: calculateAccountBalance(a.id) })),
-        categories: categories.map(c => ({ id: c.id, name: c.name, type: c.type, monthly_budget: c.monthly_budget })),
-        recentTransactions: transactions.slice(0, 10),
-        moneyBoxes: moneyBoxes.map(mb => ({ id: mb.id, name: mb.name, goal_amount: mb.goal_amount })),
-        moneyBoxBalances: moneyBoxes.map(mb => ({ moneyBoxId: mb.id, balance: calculateMoneyBoxBalance(mb.id) })),
-        loans: loans.map(l => ({ id: l.id, person_name: l.person_name, total_amount_to_reimburse: l.total_amount_to_reimburse })),
-        outstandingLoanBalances: loans.map(l => {
-            const paid = loanRepayments.filter(rp => rp.loan_id === l.id).reduce((sum, rp) => sum + rp.amount_paid, 0);
-            return { loanId: l.id, outstanding: l.total_amount_to_reimburse - paid };
-        }),
-        recurringTransactions: recurringTransactions.map(rt => ({id: rt.id, description: rt.description, amount: rt.amount, type: rt.type, next_due_date: rt.next_due_date })),
-        futurePurchases: futurePurchases.map(fp => ({id: fp.id, name: fp.name, estimated_cost: fp.estimated_cost, priority: fp.priority, status: fp.status })),
-        theme: getAppliedTheme(),
-        monthlyIncome: aiConfig.monthlyIncome,
-    };
-  }, [accounts, transactions, categories, moneyBoxes, moneyBoxTransactions, loans, loanRepayments, recurringTransactions, futurePurchases, theme, aiConfig.monthlyIncome, calculateAccountBalance, calculateMoneyBoxBalance]);
+    const { data, error } = await supabase.from('debts').insert(newDebt).select().single();
+    if (error) { addToast(`Erro ao adicionar dívida: ${error.message}`, 'error'); }
+    else if (data) { setDebts(prev => [...prev, data as Debt].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())); addToast('Dívida adicionada!', 'success'); }
+  };
 
-  const handleFetchGeneralAIAdvice = useCallback(async () => {
-    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
-    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = {
-      timestamp: new Date().toISOString(), type: 'general_advice', content: "Buscando novo conselho...", is_read: false, isLoading: true,
-    };
-    const clientSideLoadingId = generateClientSideId(); // For optimistic UI update
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, created_at: '', updated_at: ''}, ...prev]);
+  const handleUpdateDebt = async (updatedDebtData: Debt) => {
+    if (!user) return;
+    const { data, error } = await supabase.from('debts').update(updatedDebtData).eq('id', updatedDebtData.id).eq('user_id', user.id).select().single();
+    if (error) { addToast(`Erro ao atualizar dívida: ${error.message}`, 'error'); }
+    else if (data) { setDebts(prev => prev.map(d => d.id === data.id ? data as Debt : d)); addToast('Dívida atualizada!', 'success'); }
+  };
 
-    const context = generateFinancialContext();
-    const advice = await geminiService.fetchGeneralAdvice(context);
-    
-    setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId)); // Remove optimistic
-    if (advice) handleAddAIInsight(advice as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>); // Add real insight
-    
-  }, [user, aiConfig.isEnabled, aiConfig.apiKeyStatus, generateFinancialContext, handleAddAIInsight]);
+  const handleDeleteDebt = async (debtId: string) => {
+    if (!user) return;
+    if (debtPayments.some(dp => dp.debt_id === debtId)) {
+      addToast("Esta dívida possui pagamentos registrados. Exclua os pagamentos primeiro.", 'error');
+      return;
+    }
+    if (window.confirm('Excluir esta dívida?')) {
+      const { error } = await supabase.from('debts').delete().eq('id', debtId).eq('user_id', user.id);
+      if (error) { addToast(`Erro ao excluir dívida: ${error.message}`, 'error'); }
+      else { setDebts(prev => prev.filter(d => d.id !== debtId)); addToast('Dívida excluída!', 'success'); }
+    }
+  };
 
-  const handleGenerateCommentForTransaction = useCallback(async (transaction: Transaction) => {
-    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
-     const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = {
-        timestamp: new Date().toISOString(), type: 'transaction_comment',
-        content: `Analisando transação: ${transaction.description || transaction.type}...`,
-        related_transaction_id: transaction.id, is_read: false, isLoading: true,
+  const handleAddDebtPayment = async (
+    paymentData: Omit<DebtPayment, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id'>,
+    createLinkedExpense: boolean,
+    linkedAccountId?: string
+  ) => {
+    if (!user) return;
+    const debt = debts.find(d => d.id === paymentData.debt_id);
+    if (!debt) { addToast("Dívida não encontrada.", 'error'); return; }
+
+    let linkedTxId: string | undefined = undefined;
+    if (createLinkedExpense && linkedAccountId) {
+      const expenseTxData = {
+        type: TransactionType.EXPENSE,
+        amount: paymentData.amount_paid,
+        category_id: categories.find(c => c.name.toLowerCase().includes('pagamento de dívida') || c.name.toLowerCase().includes('empréstimo'))?.id, // Try to find a suitable category
+        description: `Pagamento: ${debt.name}`,
+        date: paymentData.payment_date,
+        account_id: linkedAccountId,
       };
-    const clientSideLoadingId = generateClientSideId();
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, created_at: '', updated_at: ''}, ...prev]);
-    
-    const context = generateFinancialContext();
-    const categoryName = transaction.category_id ? categories.find(c => c.id === transaction.category_id)?.name : undefined;
-    // account_id can be an account or a credit card
-    const accountName = accounts.find(a => a.id === transaction.account_id)?.name || creditCards.find(cc => cc.id === transaction.account_id)?.name;
-    const comment = await geminiService.fetchCommentForTransaction(transaction, context, categoryName, accountName);
-
-    setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
-    if (comment) handleAddAIInsight(comment as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>);
-  }, [user, aiConfig.isEnabled, aiConfig.apiKeyStatus, categories, accounts, creditCards, generateFinancialContext, handleAddAIInsight]);
-
-  const handleSuggestCategoryBudget = useCallback(async (categoryName: string, currentExpenseBudgets: {name: string, budget?: number}[]) => {
-    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available' || !aiConfig.monthlyIncome) { addToast("Renda mensal não informada ou IA desativada.", 'warning'); return null; }
-    
-    const relatedCat = categories.find(c=>c.name === categoryName && c.type === TransactionType.EXPENSE);
-    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = {
-        timestamp: new Date().toISOString(), type: 'budget_recommendation',
-        content: `Calculando sugestão de orçamento para ${categoryName}...`, 
-        related_category_id: relatedCat?.id, is_read: false, isLoading: true,
-    };
-    const clientSideLoadingId = generateClientSideId();
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, created_at: '', updated_at: ''}, ...prev]);
-
-    const context = generateFinancialContext();
-    const result = await geminiService.fetchBudgetSuggestion(categoryName, aiConfig.monthlyIncome, currentExpenseBudgets, context);
-
-    setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
-    if (result && 'suggestedBudget' in result && typeof result.suggestedBudget === 'number') {
-        const successInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'> = { 
-            content: `Sugestão para ${categoryName}: ${formatCurrency(result.suggestedBudget)}`, 
-            related_category_id: relatedCat?.id, 
-            timestamp: new Date().toISOString(), type: 'budget_recommendation', is_read: false 
-        };
-        handleAddAIInsight(successInsight);
-        return result.suggestedBudget;
-    } else if (result && 'content' in result) { // It's an AIInsight error message
-        handleAddAIInsight(result as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>);
+      const { data: newTx, error: txError } = await supabase.from('transactions').insert({ ...expenseTxData, user_id: user.id }).select().single();
+      if (txError || !newTx) { addToast(`Erro ao criar despesa vinculada: ${txError?.message || 'Falha'}`, 'error'); return; }
+      linkedTxId = newTx.id;
+      setTransactions(prev => [newTx as Transaction, ...prev]);
     }
-    return null;
-  }, [user, aiConfig, categories, generateFinancialContext, addToast, handleAddAIInsight]);
+    
+    const newPayment = { ...paymentData, user_id: user.id, linked_expense_transaction_id: linkedTxId };
+    const { data: savedPayment, error: paymentError } = await supabase.from('debt_payments').insert(newPayment).select().single();
 
-  const handleAnalyzeFuturePurchase = useCallback(async (purchaseId: string) => {
-    if (!user || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') { addToast("AI Coach desativado ou API Key indisponível.", 'warning'); return; }
-    const purchase = futurePurchases.find(p => p.id === purchaseId);
-    if (!purchase) return;
-
-    setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: 'AI_ANALYZING' } : p));
-    const context = generateFinancialContext();
-    const result = await geminiService.fetchFuturePurchaseAnalysis(purchase, context);
-
-    if (result && 'analysisText' in result) {
-        const { data, error } = await supabase.from('future_purchases')
-            .update({ status: result.recommendedStatus, ai_analysis: result.analysisText, ai_analyzed_at: new Date().toISOString() })
-            .eq('id', purchaseId).eq('user_id', user.id).select().single();
-        
-        if (error || !data) {
-            addToast(`Erro ao atualizar compra futura: ${error?.message || 'Falha'}`, 'error');
-            setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: purchase.status } : p)); // Revert status
-        } else {
-            setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? data as FuturePurchase : p));
-            addToast(`Análise para "${purchase.name}" concluída!`, 'info');
-        }
-    } else if (result && 'content' in result) { // It's an AIInsight error message
-        handleAddAIInsight(result as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'>);
-        setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? { ...p, status: purchase.status } : p)); // Revert status
+    if (paymentError) { addToast(`Erro ao registrar pagamento da dívida: ${paymentError.message}`, 'error'); return; }
+    
+    if (savedPayment) {
+      setDebtPayments(prev => [...prev, savedPayment as DebtPayment]);
+      const updatedDebt = { ...debt, current_balance: Math.max(0, debt.current_balance - savedPayment.amount_paid) };
+      // if (updatedDebt.current_balance === 0) updatedDebt.is_archived = true; // Auto-archive if paid off
+      await handleUpdateDebt(updatedDebt); // This will also update the state for debts
+      addToast('Pagamento da dívida registrado!', 'success');
     }
-  }, [user, aiConfig, futurePurchases, generateFinancialContext, addToast, handleAddAIInsight]);
+  };
 
 
   const openTransactionModalForNew = () => { setEditingTransaction(null); setIsTransactionModalOpen(true); };
@@ -1094,20 +1254,20 @@ const AppContent: React.FC = () => {
   const navItems = [
     { view: 'DASHBOARD', label: 'Painel Geral', icon: <ChartPieIcon /> },
     { view: 'TRANSACTIONS', label: 'Transações', icon: <ListBulletIcon /> },
-    { view: 'ACCOUNTS', label: 'Contas', icon: <CreditCardIcon /> }, // Using CreditCardIcon as a generic account icon
+    { view: 'ACCOUNTS', label: 'Contas', icon: <CreditCardIcon /> }, 
     { view: 'CATEGORIES', label: 'Categorias', icon: <TagIcon /> },
     { view: 'CREDIT_CARDS', label: 'Cartões de Crédito', icon: <CreditCardIcon /> },
     { view: 'MONEY_BOXES', label: 'Caixinhas', icon: <PiggyBankIcon /> },
     { view: 'FUTURE_PURCHASES', label: 'Compras Futuras', icon: <ShoppingCartIcon /> },
-    { view: 'TAGS', label: 'Tags', icon: <BookmarkSquareIcon /> }, // Using a bookmark style icon for Tags
+    { view: 'TAGS', label: 'Tags', icon: <BookmarkSquareIcon /> }, 
     { view: 'RECURRING_TRANSACTIONS', label: 'Recorrências', icon: <ArrowPathIcon /> },
     { view: 'LOANS', label: 'Empréstimos', icon: <UsersIcon /> },
+    { view: 'DEBT_PLANNER', label: 'Planejador Dívidas', icon: <BanknotesIcon /> },
     { view: 'AI_COACH', label: 'AI Coach', icon: <ChatBubbleLeftRightIcon /> },
     { view: 'DATA_MANAGEMENT', label: 'Dados', icon: <CogIcon /> },
   ];
-  const mobileNavItems = navItems.filter(item => ['DASHBOARD', 'TRANSACTIONS', 'AI_COACH', 'FUTURE_PURCHASES', 'ACCOUNTS'].includes(item.view)).slice(0,5);
+  const mobileNavItems = navItems.filter(item => ['DASHBOARD', 'TRANSACTIONS', 'AI_COACH', 'DEBT_PLANNER', 'ACCOUNTS'].includes(item.view)).slice(0,5);
 
-  // --- Render Logic ---
   if (isLoadingSession || (user && isLoadingData)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background dark:bg-backgroundDark">
@@ -1124,7 +1284,6 @@ const AppContent: React.FC = () => {
     const rt = recurringTransactions.find(r => r.id === transactionId);
     if (rt) {
         setActiveView('RECURRING_TRANSACTIONS' as AppView);
-        // Future: Could implement highlighting or scrolling to the specific RT in that view.
     } else {
         addToast("Transação recorrente não encontrada.", "warning");
     }
@@ -1164,11 +1323,32 @@ const AppContent: React.FC = () => {
         return <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
       case 'LOANS':
         return <LoansView loans={loans} loanRepayments={loanRepayments} accounts={accounts} creditCards={creditCards} onAddLoan={handleAddLoan} onUpdateLoan={handleUpdateLoan} onDeleteLoan={handleDeleteLoan} onAddLoanRepayment={handleAddLoanRepayment} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
+      case 'DEBT_PLANNER':
+        return <DebtPlannerView 
+                  debts={debts} 
+                  debtPayments={debtPayments} 
+                  accounts={accounts}
+                  onAddDebt={handleAddDebt}
+                  onUpdateDebt={handleUpdateDebt}
+                  onDeleteDebt={handleDeleteDebt}
+                  onAddDebtPayment={handleAddDebtPayment}
+                  isPrivacyModeEnabled={isPrivacyModeEnabled} 
+                />;
       case 'AI_COACH':
-        return <AICoachView aiConfig={aiConfig} setAiConfig={updateAiConfig} insights={aiInsights} onFetchGeneralAdvice={handleFetchGeneralAIAdvice} onUpdateInsight={handleUpdateAIInsight} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
+        return <AICoachView 
+                    aiConfig={aiConfig} 
+                    setAiConfig={updateAiConfig} 
+                    insights={aiInsights} 
+                    onFetchGeneralAdvice={handleFetchGeneralAIAdvice} 
+                    onUpdateInsight={handleUpdateAIInsight} 
+                    isPrivacyModeEnabled={isPrivacyModeEnabled}
+                    onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates}
+                    onFetchSavingOpportunities={handleFetchSavingOpportunities}
+                    onFetchCashFlowProjection={handleFetchCashFlowProjection}
+                />;
       case 'DATA_MANAGEMENT':
         return <DataManagementView
-                  allData={{ transactions, accounts, categories, creditCards, installmentPurchases, moneyBoxes, moneyBoxTransactions, futurePurchases, tags, recurringTransactions, loans, loanRepayments, aiInsights }}
+                  allData={{ transactions, accounts, categories, creditCards, installmentPurchases, moneyBoxes, moneyBoxTransactions, futurePurchases, tags, recurringTransactions, loans, loanRepayments, aiInsights, debts, debtPayments }} // Added debts, debtPayments
                   userPreferencesToExport={{theme, is_privacy_mode_enabled: isPrivacyModeEnabled, ai_is_enabled: aiConfig.isEnabled, ai_monthly_income: aiConfig.monthlyIncome, ai_auto_backup_enabled: aiConfig.autoBackupToFileEnabled }}
                   activeProfileName={activeUserDisplayName}
                   setAiConfig={updateAiConfig} 
@@ -1184,7 +1364,6 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-background text-textBase dark:bg-backgroundDark dark:text-textBaseDark flex flex-col md:flex-row transition-colors duration-300">
       <nav className="hidden md:flex flex-col w-64 bg-surface dark:bg-surfaceDark border-r border-borderBase dark:border-borderBaseDark p-4 fixed top-0 left-0 h-full shadow-lg dark:shadow-neutralDark/40 overflow-y-auto">
-        {/* ... (Navbar content same as before, check AI Coach condition) ... */}
          <div className="px-2 py-3 mb-1">
           <h1 className="text-2xl font-bold text-primary dark:text-primaryDark">{APP_NAME}</h1>
            <div className="flex items-center mt-2 space-x-2">
@@ -1247,7 +1426,6 @@ const AppContent: React.FC = () => {
       </main>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface dark:bg-surfaceDark border-t border-borderBase dark:border-borderBaseDark shadow-top p-1 grid grid-cols-5 gap-1 z-20">
-       {/* ... (Mobile Navbar content same as before, check AI Coach condition) ... */}
         {mobileNavItems.map(item => {
           if (item.view === 'AI_COACH' && aiConfig.apiKeyStatus === 'unavailable') {
             return ( <div key={item.view} className="flex flex-col items-center justify-center p-1.5 rounded-md opacity-50">...</div> );
@@ -1282,7 +1460,7 @@ const AppContent: React.FC = () => {
           onSubmit={editingTransaction ? handleUpdateTransaction : (txData) => handleAddTransaction(txData as Omit<Transaction, 'id' | 'user_id' | 'created_at' | 'updated_at'>)}
           onCancel={() => { setIsTransactionModalOpen(false); setEditingTransaction(null); }}
           accounts={accounts}
-          creditCards={creditCards} // Pass creditCards to the form
+          creditCards={creditCards} 
           categories={categories}
           tags={tags}
           initialTransaction={editingTransaction}
@@ -1293,7 +1471,6 @@ const AppContent: React.FC = () => {
   );
 };
 
-// Main App component that includes the ToastProvider
 const App: React.FC = () => {
   return (
     <ToastProvider>
@@ -1302,12 +1479,23 @@ const App: React.FC = () => {
   );
 };
 
-// Module augmentations
+interface SimulatedTransactionForProjection { // Keep consistent with AICoachView
+  description?: string;
+  amount: number;
+  type: TransactionType;
+  date: string;
+}
+
 declare module './components/MoneyBoxesView' {
     interface MoneyBoxesViewProps { onDeleteMoneyBox: (moneyBoxId: string) => void; }
 }
 declare module './components/AICoachView' {
-    interface AICoachViewProps { onUpdateInsight: (insight: AIInsight) => void; }
+    interface AICoachViewProps { 
+        onUpdateInsight: (insight: AIInsight) => void; 
+        onFetchRecurringPaymentCandidates: () => void;
+        onFetchSavingOpportunities: () => void;
+        onFetchCashFlowProjection: (projectionPeriodDays?: number, simulatedTransaction?: SimulatedTransactionForProjection) => void;
+    }
 }
 declare module './components/DataManagementView' {
     interface DataManagementViewProps {
@@ -1319,6 +1507,7 @@ declare module './components/DataManagementView' {
             recurringTransactions: RecurringTransaction[];
             loans: Loan[]; loanRepayments: LoanRepayment[];
             aiInsights: AIInsight[];
+            debts: Debt[]; debtPayments: DebtPayment[]; // Added
         };
         userPreferencesToExport: Omit<UserPreferences, 'user_id' | 'created_at' | 'updated_at'>;
         activeProfileName?: string;
@@ -1326,7 +1515,6 @@ declare module './components/DataManagementView' {
         setAiConfig?: (configUpdater: Partial<Omit<AIConfig, 'apiKeyStatus'>>) => void;
     }
 }
-// Other module augmentations remain similar, ensure props match new data flow if needed.
 declare module './components/DashboardView' {
     interface DashboardViewProps { isPrivacyModeEnabled?: boolean; }
 }
@@ -1362,15 +1550,26 @@ declare module './components/RecurringTransactionsView' {
 declare module './components/LoansView' {
     interface LoansViewProps { isPrivacyModeEnabled?: boolean; }
 }
-// Updated TransactionFormProps
 declare module './components/TransactionForm' {
     interface TransactionFormProps { 
         isPrivacyModeEnabled?: boolean;
-        creditCards: CreditCard[]; // Added creditCards
+        creditCards: CreditCard[]; 
     }
 }
 declare module './components/MoneyBoxHistoryModal' {
   interface MoneyBoxHistoryModalProps { isPrivacyModeEnabled?: boolean;}
+}
+declare module './components/DebtPlannerView' { // Added
+  interface DebtPlannerViewProps {
+    debts: Debt[];
+    debtPayments: DebtPayment[];
+    accounts: Account[];
+    onAddDebt: (debtData: Omit<Debt, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived'>) => void;
+    onUpdateDebt: (debtData: Debt) => void;
+    onDeleteDebt: (debtId: string) => void;
+    onAddDebtPayment: (paymentData: Omit<DebtPayment, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id'>, createLinkedExpense: boolean, linkedAccountId?: string) => void;
+    isPrivacyModeEnabled?: boolean;
+  }
 }
 
 

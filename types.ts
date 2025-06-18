@@ -1,5 +1,4 @@
 
-
 import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 
 export { SupabaseUser, SupabaseSession };
@@ -147,12 +146,18 @@ export interface AIConfig { // This is derived from UserPreferences
 export type AIInsightType =
   | 'general_advice'
   | 'transaction_comment'
-  | 'budget_warning'
+  | 'budget_warning' // Generic budget warning, can be deprecated by more specific ones
   | 'spending_suggestion'
   | 'budget_recommendation'
   | 'goal_update'
   | 'future_purchase_advice'
   | 'best_purchase_day_advice'
+  | 'spending_anomaly_category'       // Gasto anormal na categoria
+  | 'budget_overspend_projection'   // Projeção de estouro de orçamento
+  | 'recurring_payment_candidate'   // Possível recorrência não mapeada
+  | 'saving_opportunity_suggestion' // Sugestão de economia
+  | 'unusual_transaction_value'    // Transação de valor incomum
+  | 'cash_flow_projection'         // NEW: Previsão de Fluxo de Caixa
   | 'error_message';
 
 export interface AIInsight extends SupabaseManaged {
@@ -209,6 +214,28 @@ export interface FuturePurchase extends SupabaseManaged {
   // createdAt is now created_at from SupabaseManaged
 }
 
+// Debt Planner Types
+export type DebtType = 'credit_card_balance' | 'personal_loan' | 'student_loan' | 'mortgage' | 'car_loan' | 'other';
+
+export interface Debt extends SupabaseManaged {
+  name: string;
+  type: DebtType;
+  initial_balance: number;
+  current_balance: number; // This will be managed by the app
+  interest_rate_annual: number; // Annual percentage rate, e.g., 19.9 for 19.9%
+  minimum_payment: number;
+  due_date_day_of_month?: number; // e.g., 15 for 15th of month
+  is_archived: boolean; // To hide paid-off or irrelevant debts
+}
+
+export interface DebtPayment extends SupabaseManaged {
+  debt_id: string; // FK to Debt
+  payment_date: string; // YYYY-MM-DD
+  amount_paid: number;
+  notes?: string;
+  linked_expense_transaction_id?: string; // FK to Transaction (optional)
+}
+
 
 export type AppView =
   | 'LOGIN'
@@ -222,6 +249,7 @@ export type AppView =
   | 'TAGS'
   | 'RECURRING_TRANSACTIONS'
   | 'LOANS'
+  | 'DEBT_PLANNER' // New View
   | 'AI_COACH'
   | 'DATA_MANAGEMENT';
 
