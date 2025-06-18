@@ -1,14 +1,14 @@
-
 import React from 'react';
 import { useState, useMemo } from 'react';
 import { Debt, DebtPayment, Account } from '../types';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import BanknotesIcon from './icons/BanknotesIcon';
+import EditIcon from './icons/EditIcon';
+import TrashIcon from './icons/TrashIcon';
 import { formatCurrency, formatDate } from '../utils/helpers';
-// Modals will be created in separate files
-// import DebtFormModal from './DebtFormModal';
-// import DebtPaymentFormModal from './DebtPaymentFormModal';
+import DebtFormModal from './DebtFormModal';
+import DebtPaymentFormModal from './DebtPaymentFormModal';
 
 interface DebtPlannerViewProps {
   debts: Debt[];
@@ -21,8 +21,8 @@ interface DebtPlannerViewProps {
   isPrivacyModeEnabled?: boolean;
 }
 
-const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, onEdit: (debt:Debt)=>void, onDelete: (debtId: string) => void, isPrivacyModeEnabled?: boolean}> = 
-  ({ debt, onRegisterPayment, onEdit, onDelete, isPrivacyModeEnabled }) => {
+const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, onEdit: (debt:Debt)=>void, onDelete: (debtId: string) => void, hasPayments: boolean, isPrivacyModeEnabled?: boolean}> = 
+  ({ debt, onRegisterPayment, onEdit, onDelete, hasPayments, isPrivacyModeEnabled }) => {
   
   const progressPercent = debt.initial_balance > 0 
     ? Math.max(0, Math.min(((debt.initial_balance - debt.current_balance) / debt.initial_balance) * 100, 100))
@@ -37,10 +37,18 @@ const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, o
         </div>
         <div className="flex space-x-1">
             <Button variant="ghost" size="sm" onClick={() => onEdit(debt)} aria-label="Editar Dívida" className="!p-1.5">
-                <PlusIcon className="w-3 h-3 transform rotate-45" /> {/* Placeholder for Edit */}
+                <EditIcon className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onDelete(debt.id)} aria-label="Excluir Dívida" className="!p-1.5">
-                <PlusIcon className="w-3 h-3 transform rotate-45" /> {/* Placeholder for Delete */}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => onDelete(debt.id)} 
+              aria-label="Excluir Dívida" 
+              className="!p-1.5"
+              disabled={hasPayments}
+              title={hasPayments ? "Exclua os pagamentos desta dívida primeiro" : "Excluir Dívida"}
+            >
+                <TrashIcon className={`w-4 h-4 ${hasPayments ? 'text-neutralDark/50' : 'text-destructive dark:text-destructiveDark'}`} />
             </Button>
         </div>
       </div>
@@ -67,9 +75,14 @@ const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, o
           </div>
         </div>
       )}
-      <Button variant="secondary" size="sm" onClick={() => onRegisterPayment(debt)}>
-        <PlusIcon className="w-4 h-4 mr-1" /> Registrar Pagamento
-      </Button>
+      {debt.current_balance > 0 && (
+        <Button variant="secondary" size="sm" onClick={() => onRegisterPayment(debt)}>
+          <PlusIcon className="w-4 h-4 mr-1" /> Registrar Pagamento
+        </Button>
+      )}
+       {debt.current_balance <= 0 && (
+        <p className="text-sm font-semibold text-secondary dark:text-secondaryDark">Dívida Quitada!</p>
+      )}
     </li>
   );
 }
@@ -111,8 +124,12 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
   }, [debts]);
 
   const totalMinimumPayments = useMemo(() => {
-     return debts.filter(d => !d.is_archived).reduce((sum, debt) => sum + debt.minimum_payment, 0);
+     return debts.filter(d => !d.is_archived && d.current_balance > 0).reduce((sum, debt) => sum + debt.minimum_payment, 0);
   }, [debts]);
+
+  const hasPaymentsForDebt = (debtId: string): boolean => {
+    return debtPayments.some(dp => dp.debt_id === debtId);
+  }
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -144,13 +161,14 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
 
       {debts.filter(d => !d.is_archived).length > 0 ? (
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {debts.filter(d => !d.is_archived).map(debt => (
+          {debts.filter(d => !d.is_archived).sort((a,b) => a.name.localeCompare(b.name)).map(debt => (
             <DebtItem
               key={debt.id}
               debt={debt}
               onRegisterPayment={openPaymentFormModal}
               onEdit={openDebtFormModalForEdit}
               onDelete={onDeleteDebt}
+              hasPayments={hasPaymentsForDebt(debt.id)}
               isPrivacyModeEnabled={isPrivacyModeEnabled}
             />
           ))}
@@ -161,12 +179,11 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
         </p>
       )}
       
-      {/* Modals will be rendered here, e.g.,
-      {isDebtFormModalOpen && selectedDebtForPayment && (
+      {isDebtFormModalOpen && (
         <DebtFormModal
           isOpen={isDebtFormModalOpen}
           onClose={() => setIsDebtFormModalOpen(false)}
-          onSave={editingDebt ? onUpdateDebt : onAddDebt}
+          onSave={editingDebt ? (data) => onUpdateDebt({...(data as Debt), id: editingDebt.id}) : onAddDebt}
           existingDebt={editingDebt}
         />
       )}
@@ -179,7 +196,6 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
           accounts={accounts}
         />
       )}
-      */}
       <p className="text-xs text-center text-textMuted dark:text-textMutedDark py-4">
         Funcionalidades avançadas como estratégias de pagamento (Bola de Neve, Avalanche) e projeções detalhadas serão adicionadas em breve.
       </p>
