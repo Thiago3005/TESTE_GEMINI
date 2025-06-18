@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useState, ChangeEvent } from 'react';
 import { AIConfig, AIInsight, AIInsightType, TransactionType } from '../types';
@@ -177,7 +176,7 @@ const AICoachView: React.FC<AICoachViewProps> = ({
       {aiConfig.apiKeyStatus === 'unavailable' && (
         <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg relative" role="alert">
           <strong className="font-bold">API Key Indisponível! </strong>
-          <span className="block sm:inline">A funcionalidade do AI Coach está desativada. A chave da API Gemini (process.env.GEMINI_API_KEY) não foi configurada no ambiente. Sem ela, o AI Coach não pode operar.</span>
+          <span className="block sm:inline">A funcionalidade do AI Coach está desativada. A chave da API Gemini (import.meta.env.VITE_GEMINI_API_KEY) não foi configurada no ambiente. Sem ela, o AI Coach não pode operar.</span>
         </div>
       )}
 
