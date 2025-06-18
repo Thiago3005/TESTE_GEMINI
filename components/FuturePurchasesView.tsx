@@ -11,8 +11,8 @@ import Select from './Select';
 
 interface FuturePurchasesViewProps {
   futurePurchases: FuturePurchase[];
-  onAddFuturePurchase: (purchase: Omit<FuturePurchase, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'>) => void;
-  onUpdateFuturePurchase: (purchase: Omit<FuturePurchase, 'user_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'>) => void;
+  onAddFuturePurchase: (purchase: Omit<FuturePurchase, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'>) => void;
+  onUpdateFuturePurchase: (purchase: Omit<FuturePurchase, 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'> & { id: string }) => void;
   onDeleteFuturePurchase: (purchaseId: string) => void;
   onAnalyzeFuturePurchase: (purchaseId: string) => void;
   isPrivacyModeEnabled?: boolean; // New prop

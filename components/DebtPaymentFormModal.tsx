@@ -47,10 +47,12 @@ const DebtPaymentFormModal: React.FC<DebtPaymentFormModalProps> = ({
     const numAmountPaid = parseFloat(amountPaid);
     if (isNaN(numAmountPaid) || numAmountPaid <= 0) {
       newErrors.amountPaid = 'Valor pago deve ser positivo.';
-    } else if (numAmountPaid > debt.current_balance) {
-      // Allow overpayment if needed, but maybe warn? For now, just a note.
-      // newErrors.amountPaid = `Valor excede o saldo devedor de ${formatCurrency(debt.current_balance)}.`;
     }
+    // Nota: Permitimos pagamento maior que o saldo devedor, pois pode haver juros não calculados aqui.
+    // Se quiser validar contra debt.current_balance, pode adicionar:
+    // else if (numAmountPaid > debt.current_balance) {
+    //   newErrors.amountPaid = `Valor excede o saldo devedor de ${formatCurrency(debt.current_balance)}.`;
+    // }
     if (!paymentDate) newErrors.paymentDate = 'Data do pagamento é obrigatória.';
     if (createLinkedExpense && !linkedAccountId) newErrors.linkedAccountId = 'Conta de origem da despesa é obrigatória.';
     
@@ -62,5 +64,84 @@ const DebtPaymentFormModal: React.FC<DebtPaymentFormModalProps> = ({
     if (!validate()) return;
 
     const paymentData: Omit<DebtPayment, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id'> = {
-      // id, user_id, profile_id, created_at, updated_at, linked_expense_transaction_id are handled by Supabase/App.tsx
       debt_id: debt.id,
+      amount_paid: parseFloat(amountPaid),
+      payment_date: paymentDate,
+      notes: notes.trim() || undefined,
+    };
+    onSave(paymentData, createLinkedExpense, linkedAccountId);
+    onClose();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={`Registrar Pagamento: ${debt.name}`}>
+      <div className="space-y-4">
+        <Input
+          label="Valor Pago (R$)"
+          id="debtPaymentAmount"
+          type="number"
+          step="0.01"
+          value={amountPaid}
+          onChange={(e) => setAmountPaid(e.target.value)}
+          error={errors.amountPaid}
+          required
+        />
+        <Input
+          label="Data do Pagamento"
+          id="debtPaymentDate"
+          type="date"
+          value={paymentDate}
+          onChange={(e) => setPaymentDate(e.target.value)}
+          error={errors.paymentDate}
+          required
+        />
+        <Textarea
+          label="Notas (Opcional)"
+          id="debtPaymentNotes"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          placeholder="Ex: Pagamento parcial, acordo..."
+        />
+
+        {accounts.length > 0 && (
+          <div className="pt-2">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={createLinkedExpense}
+                onChange={(e) => setCreateLinkedExpense(e.target.checked)}
+                className="rounded text-primary dark:text-primaryDark focus:ring-primary dark:focus:ring-primaryDark bg-surface dark:bg-surfaceDark border-borderBase dark:border-borderBaseDark shadow-sm"
+              />
+              <span className="text-sm text-textMuted dark:text-textMutedDark">
+                Registrar como despesa em uma conta?
+              </span>
+            </label>
+            {createLinkedExpense && (
+              <Select
+                containerClassName="mt-2"
+                label="Conta de Origem da Despesa"
+                id="debtPaymentLinkedAccount"
+                options={accounts.map(a => ({ value: a.id, label: a.name }))}
+                value={linkedAccountId}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => setLinkedAccountId(e.target.value)}
+                error={errors.linkedAccountId}
+                placeholder="Selecione uma conta"
+              />
+            )}
+          </div>
+        )}
+
+        {errors.form && <p className="mt-1 text-xs text-destructive dark:text-destructiveDark/90">{errors.form}</p>}
+        <div className="flex justify-end space-x-3 pt-3">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button type="button" variant="primary" onClick={handleSubmit}>
+            Salvar Pagamento
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+export default DebtPaymentFormModal;

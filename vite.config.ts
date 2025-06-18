@@ -1,3 +1,4 @@
+
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 
@@ -7,8 +8,8 @@ export default defineConfig(({ mode }) => {
       base: '/controle-financeiro/',
       define: {
         // Maintaining both for compatibility, though GEMINI_API_KEY is preferred for genai SDK
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY), 
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY), 
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY)
       },
       resolve: {
         alias: {
