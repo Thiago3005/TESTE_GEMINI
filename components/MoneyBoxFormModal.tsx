@@ -5,7 +5,7 @@ import { MoneyBox } from '../types';
 import Modal from './Modal';
 import Input from './Input';
 import Button from './Button';
-import { generateId } from '../utils/helpers'; // getISODateString removed as created_at is Supabase managed
+// generateId removed
 import PiggyBankIcon from './icons/PiggyBankIcon'; // Default icon
 
 const defaultColors = [
@@ -21,7 +21,7 @@ const defaultColors = [
 interface MoneyBoxFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (moneyBox: Omit<MoneyBox, 'user_id' | 'created_at' | 'updated_at'>) => void;
+  onSave: (moneyBox: Omit<MoneyBox, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => void;
   existingMoneyBox?: MoneyBox | null;
 }
 
@@ -58,14 +58,15 @@ const MoneyBoxFormModal: React.FC<MoneyBoxFormModalProps> = ({ isOpen, onClose, 
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const moneyBoxData: Omit<MoneyBox, 'user_id' | 'created_at' | 'updated_at'> = {
-      id: existingMoneyBox?.id || generateId(), // Client-side ID for new items if not handled by Supabase before insert
+    const moneyBoxData: Omit<MoneyBox, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> = {
+      // id, user_id, profile_id, created_at, updated_at are handled by Supabase/App.tsx
       name: name.trim(),
       goal_amount: goalAmount ? parseFloat(goalAmount) : undefined,
       icon: 'piggy-bank', // Default icon for now
       color: color,
     };
-    onSave(moneyBoxData);
+    const finalData = existingMoneyBox ? { ...moneyBoxData, id: existingMoneyBox.id } : moneyBoxData;
+    onSave(finalData as any);
     onClose();
   };
 

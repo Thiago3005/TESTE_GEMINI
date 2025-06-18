@@ -2,7 +2,7 @@
 import { Category, TransactionType, Account } from './types';
 import { generateId } from './utils/helpers';
 
-export const DEFAULT_INCOME_CATEGORIES_SEED: Omit<Category, 'id' | 'type' | 'user_id' | 'created_at' | 'updated_at'>[] = [
+export const DEFAULT_INCOME_CATEGORIES_SEED: Omit<Category, 'id' | 'type' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>[] = [
   { name: 'Salário' },
   { name: 'Vendas' },
   { name: 'Investimentos' },
@@ -10,7 +10,7 @@ export const DEFAULT_INCOME_CATEGORIES_SEED: Omit<Category, 'id' | 'type' | 'use
   { name: 'Outras Receitas' },
 ];
 
-export const DEFAULT_EXPENSE_CATEGORIES_SEED: Omit<Category, 'id' | 'type' | 'user_id' | 'created_at' | 'updated_at'>[] = [
+export const DEFAULT_EXPENSE_CATEGORIES_SEED: Omit<Category, 'id' | 'type' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>[] = [
   { name: 'Alimentação' },
   { name: 'Transporte' },
   { name: 'Moradia' },
@@ -24,7 +24,7 @@ export const DEFAULT_EXPENSE_CATEGORIES_SEED: Omit<Category, 'id' | 'type' | 'us
   { name: 'Outras Despesas' },
 ];
 
-export const DEFAULT_ACCOUNTS_SEED: Omit<Account, 'id' | 'user_id' | 'created_at' | 'updated_at'>[] = [
+export const DEFAULT_ACCOUNTS_SEED: Omit<Account, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>[] = [
   { name: 'Carteira', initial_balance: 0 },
   { name: 'Banco Principal', initial_balance: 1000 },
 ];
@@ -46,12 +46,12 @@ export const PERIOD_FILTER_OPTIONS = [
   // { value: 'custom', label: 'Personalizado' }, // Custom range can be complex, omitting for simplicity
 ];
 
-export const getInitialCategories = (userId: string): Omit<Category, 'id' | 'created_at' | 'updated_at'>[] => {
-  const income = DEFAULT_INCOME_CATEGORIES_SEED.map(cat => ({ ...cat, user_id: userId, type: TransactionType.INCOME as TransactionType.INCOME }));
-  const expense = DEFAULT_EXPENSE_CATEGORIES_SEED.map(cat => ({ ...cat, user_id: userId, type: TransactionType.EXPENSE as TransactionType.EXPENSE }));
+export const getInitialCategories = (userId: string, profileId: string): Omit<Category, 'id' | 'created_at' | 'updated_at'>[] => {
+  const income = DEFAULT_INCOME_CATEGORIES_SEED.map(cat => ({ ...cat, user_id: userId, profile_id: profileId, type: TransactionType.INCOME as TransactionType.INCOME }));
+  const expense = DEFAULT_EXPENSE_CATEGORIES_SEED.map(cat => ({ ...cat, user_id: userId, profile_id: profileId, type: TransactionType.EXPENSE as TransactionType.EXPENSE }));
   return [...income, ...expense];
 };
 
-export const getInitialAccounts = (userId: string): Omit<Account, 'id' | 'created_at' | 'updated_at'>[] => {
-  return DEFAULT_ACCOUNTS_SEED.map(acc => ({ ...acc, user_id: userId }));
+export const getInitialAccounts = (userId: string, profileId: string): Omit<Account, 'id' | 'created_at' | 'updated_at'>[] => {
+  return DEFAULT_ACCOUNTS_SEED.map(acc => ({ ...acc, user_id: userId, profile_id: profileId }));
 };

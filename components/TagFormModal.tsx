@@ -5,7 +5,7 @@ import { Tag } from '../types';
 import Modal from './Modal';
 import Input from './Input';
 import Button from './Button';
-import { generateId } from '../utils/helpers';
+// generateId removed
 
 // Basic palette for tag colors
 const TAG_COLORS = [
@@ -21,7 +21,7 @@ const TAG_COLORS = [
 interface TagFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (tag: Omit<Tag, 'user_id' | 'created_at' | 'updated_at'>) => void;
+  onSave: (tag: Omit<Tag, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => void;
   existingTag?: Tag | null;
   allTagNames?: string[]; // To check for uniqueness if needed
 }
@@ -61,11 +61,14 @@ const TagFormModal: React.FC<TagFormModalProps> = ({ isOpen, onClose, onSave, ex
     }
 
     setError('');
-    onSave({
-      id: existingTag?.id || generateId(),
+    const tagData: Omit<Tag, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> = {
+      // id, user_id, profile_id, created_at, updated_at are handled by Supabase/App.tsx
       name: trimmedName,
       color: color,
-    });
+    };
+    const finalData = existingTag ? { ...tagData, id: existingTag.id } : tagData;
+
+    onSave(finalData as any);
     onClose();
   };
 

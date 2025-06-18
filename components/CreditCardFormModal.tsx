@@ -5,12 +5,12 @@ import { CreditCard } from '../types';
 import Modal from './Modal';
 import Input from './Input';
 import Button from './Button';
-import { generateId } from '../utils/helpers';
+// generateId removed as Supabase handles ID generation
 
 interface CreditCardFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (card: Omit<CreditCard, 'user_id' | 'created_at' | 'updated_at'>) => void;
+  onSave: (card: Omit<CreditCard, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => void;
   existingCard?: CreditCard | null;
 }
 
@@ -53,14 +53,16 @@ const CreditCardFormModal: React.FC<CreditCardFormModalProps> = ({ isOpen, onClo
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const cardData: Omit<CreditCard, 'user_id' | 'created_at' | 'updated_at'> = {
-      id: existingCard?.id || generateId(),
+    const cardData: Omit<CreditCard, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> = {
+      // id, user_id, profile_id, created_at, updated_at are handled by Supabase/App.tsx
       name: name.trim(),
       card_limit: parseFloat(limit),
       closing_day: parseInt(closingDay, 10),
       due_day: parseInt(dueDay, 10),
     };
-    onSave(cardData);
+    // If existingCard is present, its id will be part of it and passed to onUpdateCreditCard in App.tsx
+    const finalData = existingCard ? { ...cardData, id: existingCard.id } : cardData;
+    onSave(finalData as any); // Cast as any because 'id' is conditionally present
     onClose();
   };
 

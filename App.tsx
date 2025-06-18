@@ -65,6 +65,8 @@ import BanknotesIcon from './components/icons/BanknotesIcon'; // Added from Debt
 // Services
 import * as geminiService from './services/geminiService';
 import type { FinancialContext, SimulatedTransactionData } from './services/geminiService';
+// Use relative path for the shim, as importmap is removed for Vite compatibility
+import { GoogleGenAI, GenerateContentResponse, Chat } from "./google-genai-shim";
 
 
 const AppContent: React.FC = () => {
@@ -84,6 +86,7 @@ const AppContent: React.FC = () => {
 
 
   // User Preferences State (synced with Supabase)
+  const [currentUserPreferences, setCurrentUserPreferences] = useState<UserPreferences | null>(null); // Store full preferences object
   const [theme, setThemeState] = useState<Theme>('system');
   const [isPrivacyModeEnabled, setIsPrivacyModeEnabledState] = useState(false);
   const [aiConfig, setAiConfigState] = useState<AIConfig>({
@@ -141,6 +144,7 @@ const AppContent: React.FC = () => {
         if (prefsError && prefsError.code !== 'PGRST116') throw prefsError; // PGRST116 means no rows found, which is fine
         
         if (prefsData) {
+            setCurrentUserPreferences(prefsData as UserPreferences);
             setThemeState(prefsData.theme);
             setIsPrivacyModeEnabledState(prefsData.is_privacy_mode_enabled);
             setAiConfigState({
@@ -151,18 +155,21 @@ const AppContent: React.FC = () => {
             });
         } else {
             // No existing preferences, create them
-            const defaultPrefs: Omit<UserPreferences, 'updated_at' | 'created_at'> = {
-                user_id: userId, // Important: Set user_id
+            const defaultPrefs: Omit<UserPreferences, 'created_at' | 'updated_at'> = {
+                id: generateClientSideId(), // Provide client-side ID
+                user_id: userId, 
                 profile_id: profileId, 
                 theme: 'system', is_privacy_mode_enabled: false,
                 ai_is_enabled: false, ai_monthly_income: null, ai_auto_backup_enabled: false,
             };
-            const { error: insertPrefsError } = await supabase
+            const { data: newPrefsData, error: insertPrefsError } = await supabase
                 .from('user_preferences')
-                .insert(defaultPrefs as UserPreferences) // Cast to full type for insert
-                .select(); 
+                .insert(defaultPrefs as UserPreferences) 
+                .select()
+                .single();
 
             if (insertPrefsError) throw insertPrefsError;
+            if (newPrefsData) setCurrentUserPreferences(newPrefsData as UserPreferences);
             setThemeState(defaultPrefs.theme);
             setIsPrivacyModeEnabledState(defaultPrefs.is_privacy_mode_enabled);
             setAiConfigState({
@@ -215,13 +222,13 @@ const AppContent: React.FC = () => {
         if (debtPaymentsRes.error) throw debtPaymentsRes.error; setDebtPayments(debtPaymentsRes.data as DebtPayment[]);
         
         if (accountsRes.data?.length === 0) {
-            const seedAccs = getSeedAccounts(userId).map(acc => ({ ...acc, user_id: userId, profile_id: profileId })); 
+            const seedAccs = getSeedAccounts(userId, profileId).map(acc => ({ ...acc, user_id: userId, profile_id: profileId })); 
             const { data: newAccs, error: seedAccError } = await supabase.from('accounts').insert(seedAccs).select();
             if (seedAccError) throw seedAccError;
             if (newAccs) setAccounts(newAccs as Account[]);
         }
         if (categoriesRes.data?.length === 0) {
-            const seedCats = getSeedCategories(userId).map(cat => ({ ...cat, user_id: userId, profile_id: profileId })); 
+            const seedCats = getSeedCategories(userId, profileId).map(cat => ({ ...cat, user_id: userId, profile_id: profileId })); 
             const { data: newCats, error: seedCatError } = await supabase.from('categories').insert(seedCats).select();
             if (seedCatError) throw seedCatError;
             if (newCats) setCategories(newCats as Category[]);
@@ -237,18 +244,17 @@ const AppContent: React.FC = () => {
   }, [addToast]);
 
 
-  const handleSelectProfile = useCallback((profileId: string) => {
-    const profile = availableProfiles.find(p => p.id === profileId);
+  const handleSelectProfile = useCallback((profileId: string, profilesToSearch: UserProfile[]) => {
+    const profile = profilesToSearch.find(p => p.id === profileId);
     if (profile && user) {
       setActiveUserProfile(profile);
       localStorage.setItem(`lastActiveProfile_${user.id}`, profileId);
       fetchAndSetAllUserData(user.id, profileId);
     }
-  }, [availableProfiles, user, fetchAndSetAllUserData]);
+  }, [user, fetchAndSetAllUserData]); 
 
   const fetchUserProfiles = useCallback(async (userId: string) => {
     setIsLoadingProfiles(true);
-    setInitialProfilesLoaded(false); // Mark that we are starting a new fetch cycle for profiles
     try {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -256,31 +262,33 @@ const AppContent: React.FC = () => {
         .eq('user_id', userId);
       if (error) throw error;
       
-      setAvailableProfiles(data || []);
+      const profilesData = data || [];
+      setAvailableProfiles(profilesData);
       
-      if (data && data.length > 0) {
+      if (profilesData.length > 0) {
         const lastProfileId = localStorage.getItem(`lastActiveProfile_${userId}`);
-        const lastActive = data.find(p => p.id === lastProfileId);
+        const lastActive = profilesData.find(p => p.id === lastProfileId);
         if (lastActive) {
-          handleSelectProfile(lastActive.id); // This will trigger fetchAndSetAllUserData
+          handleSelectProfile(lastActive.id, profilesData); 
         } else {
-          setActiveUserProfile(null); // No last active or not found, go to selection
-          setIsLoadingData(false); // No data to load yet for a specific profile
+          setActiveUserProfile(null); 
+          setIsLoadingData(false); 
         }
       } else {
-         setActiveUserProfile(null); // No profiles exist
-         setIsLoadingData(false); // No data to load
+         setActiveUserProfile(null); 
+         setIsLoadingData(false); 
       }
     } catch (error: any) {
+      console.error("Error fetching profiles in fetchUserProfiles:", error);
       addToast(`Erro ao carregar perfis: ${error.message}`, 'error');
       setAvailableProfiles([]);
       setActiveUserProfile(null);
-      setIsLoadingData(false); // Error means no data loading
+      setIsLoadingData(false); 
     } finally {
       setIsLoadingProfiles(false);
-      setInitialProfilesLoaded(true); // Mark that the initial attempt to load profiles is complete
+      setInitialProfilesLoaded(true); 
     }
-  }, [addToast, handleSelectProfile]);
+  }, [addToast, handleSelectProfile]); 
 
   useEffect(() => {
     setIsLoadingSession(true);
@@ -293,7 +301,6 @@ const AppContent: React.FC = () => {
       if (currentUser) {
         fetchUserProfiles(currentUser.id);
       } else {
-        // No user, so profile loading is effectively "done" as there are no profiles to load.
         setInitialProfilesLoaded(true); 
         setIsLoadingProfiles(false);
         setIsLoadingData(false);
@@ -309,26 +316,28 @@ const AppContent: React.FC = () => {
         
         setActiveUserProfile(null); 
         setAvailableProfiles([]);
-        
-        // Clear all data states on auth change
         setTransactions([]); setAccounts([]); setCategories([]); setCreditCards([]);
         setInstallmentPurchases([]); setMoneyBoxes([]); setMoneyBoxTransactions([]);
         setFuturePurchases([]); setTags([]); setRecurringTransactions([]);
         setLoans([]); setLoanRepayments([]); setAiInsights([]);
         setDebts([]); setDebtPayments([]);
-        // Reset preferences
         setThemeState('system'); setIsPrivacyModeEnabledState(false);
+        setCurrentUserPreferences(null);
         setAiConfigState({ isEnabled: false, apiKeyStatus: 'unknown', monthlyIncome: null, autoBackupToFileEnabled: false });
+        
+        setInitialProfilesLoaded(false); 
+        setIsLoadingProfiles(true); 
+        setIsLoadingData(true); 
 
         if (_event === 'SIGNED_OUT') {
             setActiveView('LOGIN');
             addToast("Você foi desconectado.", 'info');
-            setInitialProfilesLoaded(true); // No user, "done" with profiles
+            setInitialProfilesLoaded(true); 
             setIsLoadingProfiles(false);
             setIsLoadingData(false);
-        } else if (_event === 'SIGNED_IN' && newUser) {
-            fetchUserProfiles(newUser.id); // This will set initialProfilesLoaded internally
-        } else if (!newUser) { // Handles cases like initial load with no session, or unexpected null session
+        } else if ((_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED' || _event === 'USER_UPDATED') && newUser) {
+            fetchUserProfiles(newUser.id); 
+        } else if (!newUser) { 
             setInitialProfilesLoaded(true);
             setIsLoadingProfiles(false);
             setIsLoadingData(false);
@@ -336,7 +345,7 @@ const AppContent: React.FC = () => {
       }
     );
     return () => subscription.unsubscribe();
-  }, [addToast, fetchUserProfiles]);
+  }, [addToast, fetchUserProfiles]); 
   
   const handleCreateProfile = async (name: string) => {
     if (!user) return;
@@ -348,8 +357,9 @@ const AppContent: React.FC = () => {
         .single();
       if (error) throw error;
       if (data) {
-        setAvailableProfiles(prev => [...prev, data as UserProfile]);
-        handleSelectProfile(data.id); 
+        const newProfile = data as UserProfile;
+        setAvailableProfiles(prev => [...prev, newProfile]);
+        handleSelectProfile(newProfile.id, [...availableProfiles, newProfile]); 
         addToast(`Perfil "${name}" criado com sucesso!`, 'success');
       }
     } catch (error: any) {
@@ -357,7 +367,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const updateUserPreference = useCallback(async (userId: string,  profileId: string, key: keyof Omit<UserPreferences, 'user_id' | 'created_at' | 'updated_at' | 'profile_id'>, value: any) => {
+  const updateUserPreference = useCallback(async (userId: string,  profileId: string, key: keyof Omit<UserPreferences, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>, value: any) => {
       if (!profileId || !userId) return;
       const { error } = await supabase
         .from('user_preferences')
@@ -367,6 +377,9 @@ const AppContent: React.FC = () => {
       if (error) {
         console.error(`Error updating user preference ${key}:`, error);
         addToast(`Erro ao salvar preferência (${key}): ${error.message}`, 'error');
+      } else {
+        // Optimistically update local state if needed, or re-fetch preferences
+         setCurrentUserPreferences(prev => prev ? ({ ...prev, [key]: value, updated_at: new Date().toISOString() }) : null);
       }
   }, [addToast]);
 
@@ -400,6 +413,9 @@ const AppContent: React.FC = () => {
                  if (error) {
                     console.error('Error updating AI config in preferences:', error);
                     addToast(`Erro ao salvar configurações da IA: ${error.message}`, 'error');
+                } else {
+                    // Optimistically update local state or re-fetch
+                    setCurrentUserPreferences(prev => prev ? ({...prev, ...updatedConfigFields, updated_at: new Date().toISOString()}) : null);
                 }
             });
     }
@@ -429,7 +445,7 @@ const AppContent: React.FC = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + (window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/'),
+          redirectTo: `${window.location.origin}${ (import.meta as any).env.BASE_URL || '/'}`,
         },
       });
       if (error) throw error;
@@ -491,7 +507,6 @@ const AppContent: React.FC = () => {
         const tempSimulatedTx: Transaction = {
             id: `simulated-${generateClientSideId()}`, 
             user_id: user.id, 
-            // @ts-ignore - profile_id is not part of base Transaction, handled by Supabase wrapper
             profile_id: activeUserProfile.id,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -549,12 +564,12 @@ const AppContent: React.FC = () => {
       timestamp: new Date().toISOString(), type: 'general_advice', content: "Buscando novo conselho...", is_read: false, isLoading: true,
     };
     const clientSideLoadingId = generateClientSideId(); 
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile.id, created_at: '', updated_at: ''}, ...prev]);
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile!.id, created_at: '', updated_at: ''}, ...prev]);
 
     const advice = await geminiService.fetchGeneralAdvice(context);
     
     setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId)); 
-    if (advice) handleAddAIInsight(advice as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'>); 
+    if (advice) handleAddAIInsight(advice); 
     
   }, [user, activeUserProfile, aiConfig.isEnabled, aiConfig.apiKeyStatus, generateFinancialContext, handleAddAIInsight]);
 
@@ -569,14 +584,14 @@ const AppContent: React.FC = () => {
         related_transaction_id: transaction.id, is_read: false, isLoading: true,
       };
     const clientSideLoadingId = generateClientSideId();
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile.id, created_at: '', updated_at: ''}, ...prev]);
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile!.id, created_at: '', updated_at: ''}, ...prev]);
     
     const categoryName = transaction.category_id ? categories.find(c => c.id === transaction.category_id)?.name : undefined;
     const accountName = accounts.find(a => a.id === transaction.account_id)?.name || creditCards.find(cc => cc.id === transaction.account_id)?.name;
     const comment = await geminiService.fetchCommentForTransaction(transaction, context, categoryName, accountName);
 
     setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
-    if (comment) handleAddAIInsight(comment as Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'>);
+    if (comment) handleAddAIInsight(comment);
   }, [user, activeUserProfile, aiConfig.isEnabled, aiConfig.apiKeyStatus, categories, accounts, creditCards, generateFinancialContext, handleAddAIInsight]);
 
   const handleAnalyzeSpendingForCategory = useCallback(async (transaction: Transaction) => {
@@ -628,7 +643,7 @@ const AppContent: React.FC = () => {
         content: "Analisando possíveis despesas recorrentes não cadastradas...", is_read: false, isLoading: true,
     };
     const clientSideLoadingId = generateClientSideId();
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile.id, created_at: '', updated_at: ''}, ...prev]);
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile!.id, created_at: '', updated_at: ''}, ...prev]);
     
     const insight = await geminiService.fetchRecurringPaymentCandidateInsight(transactions, recurringTransactions, context);
     
@@ -647,7 +662,7 @@ const AppContent: React.FC = () => {
         content: "Buscando oportunidades de economia...", is_read: false, isLoading: true,
     };
     const clientSideLoadingId = generateClientSideId();
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile.id, created_at: '', updated_at: ''}, ...prev]);
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile!.id, created_at: '', updated_at: ''}, ...prev]);
 
     const insight = await geminiService.fetchSavingOpportunityInsight(transactions, categories, moneyBoxes, context);
 
@@ -667,7 +682,7 @@ const AppContent: React.FC = () => {
         is_read: false, isLoading: true,
     };
     const clientSideLoadingId = generateClientSideId();
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile.id, created_at: '', updated_at: ''}, ...prev]);
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile!.id, created_at: '', updated_at: ''}, ...prev]);
 
     const insight = await geminiService.fetchCashFlowProjectionInsight(context, projectionPeriodDays);
     
@@ -689,7 +704,7 @@ const AppContent: React.FC = () => {
         related_category_id: relatedCat?.id, is_read: false, isLoading: true,
     };
     const clientSideLoadingId = generateClientSideId();
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile.id, created_at: '', updated_at: ''}, ...prev]);
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile!.id, created_at: '', updated_at: ''}, ...prev]);
     
     const result = await geminiService.fetchBudgetSuggestion(categoryName, aiConfig.monthlyIncome, currentExpenseBudgets, context);
 
@@ -737,11 +752,11 @@ const AppContent: React.FC = () => {
     }
   }, [user, activeUserProfile, aiConfig, futurePurchases, generateFinancialContext, addToast, handleAddAIInsight]);
   
-  const handleAddTransaction = async (transactionData: Omit<Transaction, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'profile_id'>) => {
+  const handleAddTransaction = async (transactionData: Omit<Transaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => {
     if (!user || !activeUserProfile) return;
     const newTransactionSupabase = { ...transactionData, user_id: user.id, profile_id: activeUserProfile.id };
     
-    const { data: newTransaction, error } = await supabase.from('transactions').insert(newTransactionSupabase as any).select().single(); // Cast to any to bypass strict checks if profile_id isn't in Omit type yet
+    const { data: newTransaction, error } = await supabase.from('transactions').insert(newTransactionSupabase).select().single(); 
     if (error) { addToast(`Erro: ${error.message}`, 'error'); return; } 
     
     if (newTransaction) { 
@@ -753,7 +768,7 @@ const AppContent: React.FC = () => {
 
         const isCreditCardSource = creditCards.some(cc => cc.id === newTransaction.account_id);
         if (isCreditCardSource && newTransaction.type === TransactionType.EXPENSE) {
-            const installmentPurchaseData: Omit<InstallmentPurchase, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'> = {
+            const installmentPurchaseData: Omit<InstallmentPurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
                 credit_card_id: newTransaction.account_id,
                 description: `Débito na Fatura: ${newTransaction.description || categories.find(c=>c.id === newTransaction.category_id)?.name || 'Despesa no Cartão'}`,
                 purchase_date: newTransaction.date,
@@ -805,7 +820,7 @@ const AppContent: React.FC = () => {
       else { setTransactions(prev => prev.filter(t => t.id !== transactionId)); addToast('Transação excluída!', 'success'); }
   };
 
-    const handleAddAccount = async (account: Omit<Account, 'id' | 'user_id' | 'created_at' | 'updated_at'|'profile_id'>) => {
+    const handleAddAccount = async (account: Omit<Account, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => {
     if (!user || !activeUserProfile) return;
     const { data, error } = await supabase.from('accounts').insert({ ...account, user_id: user.id, profile_id: activeUserProfile.id }).select().single();
     if (error) { addToast(`Erro: ${error.message}`, 'error'); }
@@ -826,7 +841,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleAddCategory = async (category: Omit<Category, 'id' | 'user_id' | 'created_at' | 'updated_at'|'profile_id'>) => {
+  const handleAddCategory = async (category: Omit<Category, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => {
     if (!user || !activeUserProfile) return;
     const { data, error } = await supabase.from('categories').insert({ ...category, user_id: user.id, profile_id: activeUserProfile.id }).select().single();
     if (error) { addToast(`Erro: ${error.message}`, 'error'); }
@@ -847,7 +862,7 @@ const AppContent: React.FC = () => {
     }
   };
   
-  const handleAddCreditCard = async (card: Omit<CreditCard, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'>) => {
+  const handleAddCreditCard = async (card: Omit<CreditCard, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>) => {
     if (!user || !activeUserProfile) return;
     const { data, error } = await supabase.from('credit_cards').insert({ ...card, user_id: user.id, profile_id: activeUserProfile.id }).select().single();
     if (error) { addToast(`Erro: ${error.message}`, 'error'); }
@@ -868,7 +883,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleAddInstallmentPurchase = async (purchase: Omit<InstallmentPurchase, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'>, showToast = true) => {
+  const handleAddInstallmentPurchase = async (purchase: Omit<InstallmentPurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>, showToast = true) => {
     if (!user || !activeUserProfile) return;
     const { data, error } = await supabase.from('installment_purchases').insert({ ...purchase, user_id: user.id, profile_id: activeUserProfile.id }).select().single();
     if (error) { addToast(`Erro: ${error.message}`, 'error'); }
@@ -933,7 +948,7 @@ const AppContent: React.FC = () => {
     results.filter(res => res.error).forEach(res => addToast(`Erro ao pagar parcela: ${res.error?.message}`, 'error'));
   };
   
-  const handleAddMoneyBox = async (moneyBox: Omit<MoneyBox, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'>) => {
+  const handleAddMoneyBox = async (moneyBox: Omit<MoneyBox, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>) => {
     if (!user || !activeUserProfile) return;
     const { data, error } = await supabase.from('money_boxes').insert({ ...moneyBox, user_id: user.id, profile_id: activeUserProfile.id }).select().single();
     if (error) { addToast(`Erro: ${error.message}`, 'error'); }
@@ -954,20 +969,18 @@ const AppContent: React.FC = () => {
       }
   };
 
-  const handleAddMoneyBoxTransaction = async (mbt: Omit<MoneyBoxTransaction, 'id'|'user_id'|'created_at'|'updated_at'|'linked_transaction_id'|'profile_id'>, createLinkedTransaction: boolean, linkedAccId?: string) => {
+  const handleAddMoneyBoxTransaction = async (mbt: Omit<MoneyBoxTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'|'linked_transaction_id'>, createLinkedTransaction: boolean, linkedAccId?: string) => {
     if (!user || !activeUserProfile) return;
     let linkedTxId: string | undefined = undefined;
     if (createLinkedTransaction && linkedAccId) {
-        const mainTxData = {
+        const mainTxData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
             type: mbt.type === MoneyBoxTransactionType.DEPOSIT ? TransactionType.EXPENSE : TransactionType.INCOME,
             amount: mbt.amount,
             date: mbt.date,
             description: `${mbt.type === MoneyBoxTransactionType.DEPOSIT ? 'Depósito' : 'Saque'} Caixinha: ${moneyBoxes.find(mb => mb.id === mbt.money_box_id)?.name || 'N/A'} ${mbt.description ? `- ${mbt.description}` : ''}`,
             account_id: linkedAccId,
-            user_id: user.id, 
-            profile_id: activeUserProfile.id,
         };
-        const {data: mainTx, error: mainTxError} = await supabase.from('transactions').insert(mainTxData).select().single();
+        const {data: mainTx, error: mainTxError} = await supabase.from('transactions').insert({...mainTxData, user_id: user.id, profile_id: activeUserProfile.id}).select().single();
         if (mainTxError || !mainTx) { addToast(`Erro ao criar transação principal: ${mainTxError?.message}`, 'error'); return; }
         linkedTxId = mainTx.id;
         setTransactions(prev => [mainTx as Transaction, ...prev]);
@@ -990,7 +1003,7 @@ const AppContent: React.FC = () => {
       }
   };
 
-  const handleAddTag = async (tag: Omit<Tag, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'>) => {
+  const handleAddTag = async (tag: Omit<Tag, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>) => {
     if (!user || !activeUserProfile) return;
     const { data, error } = await supabase.from('tags').insert({ ...tag, user_id: user.id, profile_id: activeUserProfile.id }).select().single();
     if (error) { addToast(`Erro: ${error.message}`, 'error'); }
@@ -1011,7 +1024,7 @@ const AppContent: React.FC = () => {
     }
   };
   
-  const handleAddRecurringTransaction = async (rt: Omit<RecurringTransaction, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'>) => {
+  const handleAddRecurringTransaction = async (rt: Omit<RecurringTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>) => {
     if (!user || !activeUserProfile) return;
     const { data, error } = await supabase.from('recurring_transactions').insert({ ...rt, user_id: user.id, profile_id: activeUserProfile.id }).select().single();
     if (error) { addToast(`Erro: ${error.message}`, 'error'); }
@@ -1038,7 +1051,7 @@ const AppContent: React.FC = () => {
     const errors: string[] = [];
 
     for (const rt of toProcess) {
-        const transactionData: Omit<Transaction, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'> = {
+        const transactionData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
             type: rt.type,
             amount: rt.amount,
             category_id: rt.category_id,
@@ -1047,7 +1060,6 @@ const AppContent: React.FC = () => {
             account_id: rt.account_id,
             to_account_id: rt.to_account_id,
         };
-        // handleAddTransaction will now correctly use activeUserProfile.id
         await handleAddTransaction(transactionData); 
 
         const updatedRTData = { 
@@ -1059,7 +1071,6 @@ const AppContent: React.FC = () => {
         if(updateError) errors.push(`Erro ao atualizar ${rt.description}: ${updateError.message}`);
         else count++;
     }
-    // Refetch recurring transactions to get updated state
     if (user && activeUserProfile) {
         const { data, error } = await supabase.from('recurring_transactions').select('*').eq('user_id', user.id).eq('profile_id', activeUserProfile.id).order('next_due_date');
         if (error) addToast("Erro ao recarregar recorrências.", "error");
@@ -1068,11 +1079,11 @@ const AppContent: React.FC = () => {
     return { count, errors };
   };
 
-  const handleAddLoan = async (loanData: Omit<Loan, 'id'|'user_id'|'created_at'|'updated_at'|'linked_expense_transaction_id'|'linked_installment_purchase_id'|'profile_id'>, ccInstallmentsFromForm?: number) => {
+  const handleAddLoan = async (loanData: Omit<Loan, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'|'linked_expense_transaction_id'|'linked_installment_purchase_id'>, ccInstallmentsFromForm?: number) => {
     if (!user || !activeUserProfile) return;
     let linkedExpenseTxId: string | undefined = undefined;
     if (loanData.funding_source === 'account' && loanData.amount_delivered_from_account && loanData.linked_account_id) {
-        const expenseTxData: Omit<Transaction, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'> = {
+        const expenseTxData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
             type: TransactionType.EXPENSE, amount: loanData.amount_delivered_from_account, date: loanData.loan_date,
             description: `Empréstimo para ${loanData.person_name}`, account_id: loanData.linked_account_id,
         };
@@ -1083,7 +1094,7 @@ const AppContent: React.FC = () => {
     }
     let linkedInstallmentPurchaseId: string | undefined = undefined;
     if (loanData.funding_source === 'creditCard' && loanData.cost_on_credit_card && loanData.linked_credit_card_id && ccInstallmentsFromForm) {
-        const ipData: Omit<InstallmentPurchase, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'> = {
+        const ipData: Omit<InstallmentPurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
             credit_card_id: loanData.linked_credit_card_id, description: `Empréstimo (crédito) para ${loanData.person_name}`,
             purchase_date: loanData.loan_date, total_amount: loanData.cost_on_credit_card,
             number_of_installments: ccInstallmentsFromForm, installments_paid: 0,
@@ -1099,7 +1110,7 @@ const AppContent: React.FC = () => {
     if(error) { addToast(`Erro ao adicionar empréstimo: ${error.message}`, 'error');}
     else if (data) { setLoans(prev => [data as Loan, ...prev]); addToast('Empréstimo adicionado!', 'success');}
   };
-  const handleUpdateLoan = async (updatedLoanData: Omit<Loan, 'user_id'|'created_at'|'updated_at'|'linked_expense_transaction_id'|'linked_installment_purchase_id'|'profile_id'> & { id: string }) => {
+  const handleUpdateLoan = async (updatedLoanData: Omit<Loan, 'user_id'|'profile_id'|'created_at'|'updated_at'|'linked_expense_transaction_id'|'linked_installment_purchase_id'> & { id: string }) => {
     if (!user || !activeUserProfile) return;
     const { data, error } = await supabase.from('loans').update({...updatedLoanData, profile_id: activeUserProfile.id}).eq('id', updatedLoanData.id).eq('user_id', user.id).eq('profile_id', activeUserProfile.id).select().single();
     if(error) { addToast(`Erro ao atualizar empréstimo: ${error.message}`, 'error');}
@@ -1116,9 +1127,9 @@ const AppContent: React.FC = () => {
     if(error) { addToast(`Erro ao excluir empréstimo: ${error.message}`, 'error');}
     else { setLoans(prev => prev.filter(l => l.id !== loanId)); setLoanRepayments(prev => prev.filter(rp => rp.loan_id !== loanId)); addToast('Empréstimo excluído!', 'success');}
   };
-  const handleAddLoanRepayment = async (repaymentData: Omit<LoanRepayment, 'id'|'user_id'|'created_at'|'updated_at'|'linked_income_transaction_id'|'profile_id'>, loanId: string) => {
+  const handleAddLoanRepayment = async (repaymentData: Omit<LoanRepayment, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'|'linked_income_transaction_id'|'loan_id'>, loanId: string) => {
     if (!user || !activeUserProfile) return;
-    const incTxData: Omit<Transaction, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'> = {
+    const incTxData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
         type: TransactionType.INCOME, amount: repaymentData.amount_paid, date: repaymentData.repayment_date,
         description: `Recebimento empréstimo de ${loans.find(l=>l.id===loanId)?.person_name}`, account_id: repaymentData.credited_account_id,
     };
@@ -1132,14 +1143,14 @@ const AppContent: React.FC = () => {
     else if (data) { setLoanRepayments(prev => [data as LoanRepayment, ...prev]); addToast('Pagamento recebido registrado!', 'success');}
   };
 
-  const handleAddFuturePurchase = async (purchaseData: Omit<FuturePurchase, 'id'|'user_id'|'created_at'|'updated_at'|'status' | 'ai_analysis' | 'ai_analyzed_at'|'profile_id'>) => {
+  const handleAddFuturePurchase = async (purchaseData: Omit<FuturePurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'|'status' | 'ai_analysis' | 'ai_analyzed_at'>) => {
     if (!user || !activeUserProfile) return;
     const newPurchase = { ...purchaseData, user_id: user.id, profile_id: activeUserProfile.id, status: 'PLANNED' as FuturePurchaseStatus };
     const { data, error } = await supabase.from('future_purchases').insert(newPurchase).select().single();
     if(error) { addToast(`Erro: ${error.message}`, 'error');}
     else if(data) { setFuturePurchases(prev => [data as FuturePurchase, ...prev]); addToast('Compra futura adicionada!', 'success');}
   };
-  const handleUpdateFuturePurchase = async (updatedPurchaseData: Omit<FuturePurchase, 'user_id'|'created_at'|'updated_at'|'status' | 'ai_analysis' | 'ai_analyzed_at'|'profile_id'> & { id: string }) => {
+  const handleUpdateFuturePurchase = async (updatedPurchaseData: Omit<FuturePurchase, 'user_id'|'profile_id'|'created_at'|'updated_at'|'status' | 'ai_analysis' | 'ai_analyzed_at'> & { id: string }) => {
     if (!user || !activeUserProfile) return;
     const finalUpdateData = {...updatedPurchaseData, profile_id: activeUserProfile.id };
     const { data, error } = await supabase.from('future_purchases').update(finalUpdateData).eq('id', finalUpdateData.id).eq('user_id', user.id).eq('profile_id', activeUserProfile.id).select().single();
@@ -1162,7 +1173,7 @@ const AppContent: React.FC = () => {
     else if (data) { setAiInsights(prev => prev.map(i => i.id === data.id ? data as AIInsight : i).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));}
   };
   
-  const handleAddDebt = async (debtData: Omit<Debt, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived'|'profile_id'>) => {
+  const handleAddDebt = async (debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived'>) => {
     if (!user || !activeUserProfile) return;
     const newDebt = { ...debtData, user_id: user.id, profile_id: activeUserProfile.id, current_balance: debtData.initial_balance, is_archived: false };
     const { data, error } = await supabase.from('debts').insert(newDebt).select().single();
@@ -1187,7 +1198,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleAddDebtPayment = async (
-    paymentData: Omit<DebtPayment, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id'|'profile_id'>,
+    paymentData: Omit<DebtPayment, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id'>,
     createLinkedExpense: boolean,
     linkedAccountId?: string
   ) => {
@@ -1195,7 +1206,7 @@ const AppContent: React.FC = () => {
     let linkedTxId: string | undefined = undefined;
     if(createLinkedExpense && linkedAccountId) {
         const debtDetails = debts.find(d => d.id === paymentData.debt_id);
-        const expenseTxData: Omit<Transaction, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'> = {
+        const expenseTxData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
             type: TransactionType.EXPENSE, amount: paymentData.amount_paid, date: paymentData.payment_date,
             description: `Pagamento Dívida: ${debtDetails?.name || 'Dívida'}`, account_id: linkedAccountId,
             category_id: categories.find(c => c.name.toLowerCase().includes("pagamento de dívida") || c.name.toLowerCase().includes("empréstimo"))?.id
@@ -1222,13 +1233,13 @@ const AppContent: React.FC = () => {
 
   const handleFetchDebtStrategyExplanation = useCallback(async (strategy: DebtStrategy) => {
     if (!user || !activeUserProfile || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
-    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'> = {
+    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
       timestamp: new Date().toISOString(), type: 'debt_strategy_explanation',
       content: `Buscando explicação para a estratégia: ${strategy}...`,
       related_debt_strategy: strategy, is_read: false, isLoading: true,
     };
     const clientSideLoadingId = generateClientSideId();
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile.id, created_at: '', updated_at: ''}, ...prev]);
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile!.id, created_at: '', updated_at: ''}, ...prev]);
 
     const insight = await geminiService.fetchDebtStrategyExplanation(strategy);
     setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
@@ -1240,13 +1251,13 @@ const AppContent: React.FC = () => {
     if (!user || !activeUserProfile || !aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
     const context = generateFinancialContext();
     if (!context) return;
-    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'created_at'|'updated_at'|'profile_id'> = {
+    const loadingInsight: Omit<AIInsight, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
       timestamp: new Date().toISOString(), type: 'debt_projection_summary',
       content: `Gerando resumo da projeção de dívidas...`,
        related_debt_strategy: strategy, is_read: false, isLoading: true,
     };
     const clientSideLoadingId = generateClientSideId();
-    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile.id, created_at: '', updated_at: ''}, ...prev]);
+    setAiInsights(prev => [{...loadingInsight, id: clientSideLoadingId, user_id: user.id, profile_id: activeUserProfile!.id, created_at: '', updated_at: ''}, ...prev]);
     
     const insight = await geminiService.fetchDebtProjectionSummary(projection, debtsForSummary, context);
     setAiInsights(prev => prev.filter(i => i.id !== clientSideLoadingId));
@@ -1308,8 +1319,10 @@ const AppContent: React.FC = () => {
         </Button>
         <Button variant="ghost" onClick={() => { 
             setActiveUserProfile(null); 
-            setInitialProfilesLoaded(true); // Allow re-selection or creation view
-            setIsLoadingData(true); // To show main loading if selection is quick
+            setInitialProfilesLoaded(false); 
+            setIsLoadingProfiles(true); 
+            setIsLoadingData(true); 
+            if(user) fetchUserProfiles(user.id); 
         }} className="w-full !justify-start text-textMuted dark:text-textMutedDark">
             <UserCircleIcon className="w-5 h-5 mr-2" /> Trocar Perfil
         </Button>
@@ -1345,7 +1358,9 @@ const AppContent: React.FC = () => {
       case 'DEBT_PLANNER': return <DebtPlannerView debts={debts} debtPayments={debtPayments} accounts={accounts} onAddDebt={handleAddDebt} onUpdateDebt={handleUpdateDebt} onDeleteDebt={handleDeleteDebt} onAddDebtPayment={handleAddDebtPayment} onFetchDebtStrategyExplanation={handleFetchDebtStrategyExplanation} onFetchDebtProjectionSummary={handleFetchDebtProjectionSummary} isPrivacyModeEnabled={isPrivacyModeEnabled} />;
       case 'AI_COACH': return <AICoachView aiConfig={aiConfig} setAiConfig={updateAiConfig} insights={aiInsights} onFetchGeneralAdvice={handleFetchGeneralAIAdvice} onUpdateInsight={handleUpdateAIInsight} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates} onFetchSavingOpportunities={handleFetchSavingOpportunities} onFetchCashFlowProjection={handleFetchCashFlowProjection} />;
       case 'DATA_MANAGEMENT':
-        const userPrefsToExport: Omit<UserPreferences, 'user_id' | 'created_at' | 'updated_at' | 'profile_id'> = { // Exclude profile_id from export if it's not meant to be part of this particular export structure
+        const userPrefsToExport: Omit<UserPreferences, 'user_id' | 'created_at' | 'updated_at'> = {
+            id: currentUserPreferences?.id || '', // Ensure ID is present
+            profile_id: activeUserProfile!.id, 
             theme: theme,
             is_privacy_mode_enabled: isPrivacyModeEnabled,
             ai_is_enabled: aiConfig.isEnabled,
@@ -1377,13 +1392,18 @@ const AppContent: React.FC = () => {
   
   if (!user) return <LoginView onLoginWithGoogle={handleSignInWithGoogle} isLoading={isLoadingSession} />;
   
-  if (user && !activeUserProfile && initialProfilesLoaded) { 
-      return <ProfileSelectionView profiles={availableProfiles} onSelectProfile={handleSelectProfile} onCreateProfile={handleCreateProfile} />;
+  if (user && !activeUserProfile && initialProfilesLoaded && !isLoadingProfiles) { 
+      return <ProfileSelectionView profiles={availableProfiles} onSelectProfile={(profileId) => handleSelectProfile(profileId, availableProfiles)} onCreateProfile={handleCreateProfile} />;
   }
   
   if (user && activeUserProfile && isLoadingData) {
     return <LoadingScreen message={`Carregando dados para ${activeUserDisplayName}...`} />;
   }
+  
+  if (user && !activeUserProfile) {
+     return <ProfileSelectionView profiles={availableProfiles} onSelectProfile={(profileId) => handleSelectProfile(profileId, availableProfiles)} onCreateProfile={handleCreateProfile} />;
+  }
+
 
   return (
     <div className={`flex h-screen bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark print:block`}>

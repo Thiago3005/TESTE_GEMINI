@@ -4,8 +4,10 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
+      base: '/controle-financeiro/',
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        // Maintaining both for compatibility, though GEMINI_API_KEY is preferred for genai SDK
+        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY), 
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
       },
       resolve: {

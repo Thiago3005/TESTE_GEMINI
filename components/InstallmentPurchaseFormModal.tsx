@@ -5,12 +5,12 @@ import { InstallmentPurchase, CreditCard } from '../types';
 import Modal from './Modal';
 import Input from './Input';
 import Button from './Button';
-import { generateId, getISODateString } from '../utils/helpers';
+import { getISODateString } from '../utils/helpers'; // generateId removed
 
 interface InstallmentPurchaseFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (purchase: Omit<InstallmentPurchase, 'user_id' | 'created_at' | 'updated_at'>) => void;
+  onSave: (purchase: Omit<InstallmentPurchase, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => void;
   creditCard: CreditCard; // The card this purchase belongs to
   existingPurchase?: InstallmentPurchase | null;
 }
@@ -67,8 +67,8 @@ const InstallmentPurchaseFormModal: React.FC<InstallmentPurchaseFormModalProps> 
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const purchaseData: Omit<InstallmentPurchase, 'user_id' | 'created_at' | 'updated_at'> = {
-      id: existingPurchase?.id || generateId(),
+    const purchaseData: Omit<InstallmentPurchase, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> = {
+      // id, user_id, profile_id, created_at, updated_at are handled by Supabase/App.tsx
       credit_card_id: creditCard.id,
       description: description.trim(),
       purchase_date: purchaseDate,
@@ -76,7 +76,8 @@ const InstallmentPurchaseFormModal: React.FC<InstallmentPurchaseFormModalProps> 
       number_of_installments: parseInt(numberOfInstallments, 10),
       installments_paid: parseInt(installmentsPaid, 10),
     };
-    onSave(purchaseData);
+    const finalData = existingPurchase ? { ...purchaseData, id: existingPurchase.id } : purchaseData;
+    onSave(finalData as any);
     onClose();
   };
 

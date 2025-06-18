@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useState, useEffect, ChangeEvent } from 'react';
 import { Debt, DebtType } from '../types';
@@ -5,7 +6,7 @@ import Modal from './Modal';
 import Input from './Input';
 import Select from './Select';
 import Button from './Button';
-import { generateId } from '../utils/helpers';
+// generateId removed
 
 const debtTypeOptions: { value: DebtType; label: string }[] = [
   { value: 'credit_card_balance', label: 'Saldo de Cartão de Crédito' },
@@ -19,7 +20,7 @@ const debtTypeOptions: { value: DebtType; label: string }[] = [
 interface DebtFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (debt: Omit<Debt, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived'>) => void;
+  onSave: (debt: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived'>) => void;
   existingDebt?: Debt | null;
 }
 
@@ -80,7 +81,8 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({ isOpen, onClose, onSave, 
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const debtData: Omit<Debt, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived'> = {
+    const debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived'> = {
+      // id, user_id, profile_id, created_at, updated_at, current_balance, is_archived are handled by Supabase/App.tsx
       name: name.trim(),
       type,
       initial_balance: parseFloat(initialBalance),
@@ -89,11 +91,11 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({ isOpen, onClose, onSave, 
       due_date_day_of_month: dueDateDayOfMonth ? parseInt(dueDateDayOfMonth, 10) : undefined,
     };
     
-    const dataToSave = existingDebt 
+    const finalData = existingDebt 
       ? { ...debtData, id: existingDebt.id } 
-      : { ...debtData, id: generateId() }; // Supabase will generate ID on insert, this is for client-side consistency if needed
+      : debtData;
 
-    onSave(dataToSave);
+    onSave(finalData as any);
     onClose();
   };
 

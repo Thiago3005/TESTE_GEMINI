@@ -7,12 +7,12 @@ import Input from './Input';
 import Select from './Select';
 import Button from './Button';
 import Textarea from './Textarea';
-import { generateId, getISODateString, formatCurrency } from '../utils/helpers';
+import { getISODateString, formatCurrency } from '../utils/helpers'; // generateId removed
 
 interface LoanFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (loan: Omit<Loan, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id' | 'linked_installment_purchase_id'>, ccInstallments?: number) => void;
+  onSave: (loan: Omit<Loan, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id' | 'linked_installment_purchase_id'>, ccInstallments?: number) => void;
   accounts: Account[];
   creditCards: CreditCard[];
   existingLoan?: Loan | null;
@@ -66,17 +66,12 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
           setAmountDeliveredFromCredit(existingLoan.amount_delivered_from_credit?.toString() || '');
           setCostOnCreditCard(existingLoan.cost_on_credit_card?.toString() || '');
           setLinkedCreditCardId(existingLoan.linked_credit_card_id || '');
-          // Note: numberOfInstallments is not stored in Loan.
-          // If editing a loan that created an InstallmentPurchase, this modal doesn't directly edit that InstallmentPurchase's installments count.
-          // This field here is primarily for creating a *new* InstallmentPurchase if a new loan via CC is made.
-          // For existing CC loans, if the linked InstallmentPurchase needs changing, it's a separate operation.
         } else {
           setAmountDeliveredFromCredit('');
           setCostOnCreditCard('');
           setLinkedCreditCardId('');
         }
       } else {
-        // Reset for new loan
         setPersonName('');
         setLoanDate(getISODateString());
         setDescription('');
@@ -113,8 +108,6 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
       if (numAmountDeliveredCC > numCostOnCC) newErrors.amountDeliveredFromCredit = 'Valor entregue não pode ser maior que o custo no cartão.';
       const numInstallments = parseInt(numberOfInstallments, 10);
       if (isNaN(numInstallments) || numInstallments <= 0) newErrors.numberOfInstallments = 'Número de parcelas deve ser positivo.';
-      // Relaxing this constraint as editing might involve different reimbursement amounts than original cost.
-      // if (numCostOnCC !== numTotalReimburse && !existingLoan) newErrors.totalAmountToReimburse = 'Para empréstimos via cartão, o valor a reembolsar deve ser igual ao custo no cartão.';
     }
     
     setErrors(newErrors);
@@ -125,7 +118,6 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
     if (!validate()) return;
 
     const baseLoanData = {
-      // id will be handled by App.tsx
       person_name: personName.trim(),
       loan_date: loanDate,
       description: description.trim() || undefined,
@@ -133,7 +125,7 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
       funding_source: fundingSource,
     };
 
-    let fullLoanData: Omit<Loan, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id' | 'linked_installment_purchase_id'>;
+    let fullLoanData: Omit<Loan, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id' | 'linked_installment_purchase_id'>;
 
     if (fundingSource === 'account') {
       fullLoanData = {
@@ -150,10 +142,9 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
       };
     }
     
-    // Pass existingLoan.id if editing, otherwise it's a new loan
     const loanToSave = existingLoan ? { ...fullLoanData, id: existingLoan.id } : fullLoanData;
 
-    onSave(loanToSave, fundingSource === 'creditCard' ? parseInt(numberOfInstallments) : undefined);
+    onSave(loanToSave as any, fundingSource === 'creditCard' ? parseInt(numberOfInstallments) : undefined);
     onClose();
   };
   
@@ -252,7 +243,6 @@ const LoanFormModal: React.FC<LoanFormModalProps> = ({
               value={costOnCreditCard}
               onChange={(e) => {
                 setCostOnCreditCard(e.target.value);
-                // Auto-fill total to reimburse if it's a new loan and user is typing cost on card
                 if (!existingLoan && !totalAmountToReimburse) {
                     setTotalAmountToReimburse(e.target.value);
                 }

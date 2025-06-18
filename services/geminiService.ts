@@ -474,11 +474,10 @@ const safeGenerateContent = async (
     }
 };
 
-export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
   if (!ai || !isGeminiApiKeyAvailable()) {
     console.warn("Gemini API not available for fetchGeneralAdvice.");
     return {
-        id: generateId(),
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: "AI Coach desativado ou API Key (GEMINI_API_KEY) não configurada.",
@@ -496,7 +495,6 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omi
 
     if (text) {
       return {
-        id: generateId(),
         timestamp: new Date().toISOString(), 
         type: 'general_advice',
         content: text,
@@ -504,7 +502,6 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omi
       };
     }
     return { 
-        id: generateId(),
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: "Não foi possível obter um conselho geral no momento (resposta vazia).",
@@ -517,7 +514,6 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omi
         errorMessage += ` Detalhe: ${error.message}`;
     }
     return {
-        id: generateId(),
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: errorMessage,
@@ -526,11 +522,10 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omi
   }
 };
 
-export const fetchCommentForTransaction = async (transaction: Transaction, context: FinancialContext, categoryName?: string, accountName?: string): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+export const fetchCommentForTransaction = async (transaction: Transaction, context: FinancialContext, categoryName?: string, accountName?: string): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
   if (!ai || !isGeminiApiKeyAvailable()) {
     console.warn("Gemini API not available for fetchCommentForTransaction.");
      return { 
-        id: generateId(),
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: "AI Coach desativado ou API Key (GEMINI_API_KEY) não configurada para comentar transação.",
@@ -549,7 +544,6 @@ export const fetchCommentForTransaction = async (transaction: Transaction, conte
     
     if (text) {
       return {
-        id: generateId(),
         timestamp: new Date().toISOString(), 
         type: 'transaction_comment',
         content: text,
@@ -558,7 +552,6 @@ export const fetchCommentForTransaction = async (transaction: Transaction, conte
       };
     }
     return { 
-        id: generateId(),
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: "Não foi possível gerar um comentário para esta transação (resposta vazia).",
@@ -572,7 +565,6 @@ export const fetchCommentForTransaction = async (transaction: Transaction, conte
         errorMessage += ` Detalhe: ${error.message}`;
     }
      return {
-        id: generateId(),
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: errorMessage,
@@ -588,11 +580,10 @@ export const fetchBudgetSuggestion = async (
     monthlyIncome: number,
     existingBudgets: {name: string, budget?: number}[],
     context: FinancialContext
-): Promise<{ suggestedBudget: number } | Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+): Promise<{ suggestedBudget: number } | Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     if (!ai || !isGeminiApiKeyAvailable()) {
         console.warn("Gemini API not available for fetchBudgetSuggestion.");
         return {
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'error_message',
             content: "AI Coach desativado ou API Key (GEMINI_API_KEY) não configurada para sugerir orçamentos.",
@@ -601,7 +592,6 @@ export const fetchBudgetSuggestion = async (
     }
     if (!monthlyIncome || monthlyIncome <= 0) {
          return {
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'error_message',
             content: "Por favor, informe sua renda mensal na tela do AI Coach para receber sugestões de orçamento.",
@@ -630,7 +620,6 @@ export const fetchBudgetSuggestion = async (
             return { suggestedBudget: parsed.suggestedBudget };
         }
         return { 
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'error_message',
             content: "Não foi possível obter uma sugestão de orçamento válida no momento (resposta inválida da IA).",
@@ -643,7 +632,6 @@ export const fetchBudgetSuggestion = async (
             errorMessage += ` Detalhe: ${error.message}`;
         }
         return {
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'error_message',
             content: errorMessage,
@@ -655,10 +643,10 @@ export const fetchBudgetSuggestion = async (
 export const fetchFuturePurchaseAnalysis = async (
   purchase: FuturePurchase,
   context: FinancialContext
-): Promise<{ analysisText: string; recommendedStatus: FuturePurchaseStatus } | Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+): Promise<{ analysisText: string; recommendedStatus: FuturePurchaseStatus } | Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
   if (!ai || !isGeminiApiKeyAvailable()) {
     return {
-      id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+      timestamp: new Date().toISOString(), type: 'error_message',
       content: "AI Coach desativado ou API Key não configurada para analisar compra futura.",
       related_future_purchase_id: purchase.id, is_read: false,
     };
@@ -690,7 +678,7 @@ export const fetchFuturePurchaseAnalysis = async (
       };
     }
     return {
-        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+        timestamp: new Date().toISOString(), type: 'error_message',
         content: "Não foi possível obter uma análise válida da IA para esta compra (resposta inválida).",
         related_future_purchase_id: purchase.id, is_read: false,
     };
@@ -699,7 +687,7 @@ export const fetchFuturePurchaseAnalysis = async (
     let errorMessage = "Desculpe, não consegui analisar esta compra futura no momento.";
     if (error instanceof Error) errorMessage += ` Detalhe: ${error.message}`;
     return {
-        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+        timestamp: new Date().toISOString(), type: 'error_message',
         content: errorMessage, related_future_purchase_id: purchase.id, is_read: false,
     };
   }
@@ -773,12 +761,11 @@ export const fetchSpendingAnomalyInsight = async (
     budget: number | undefined, 
     context: FinancialContext | undefined,
     categoryId: string
-): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     const prompt = constructPromptForSpendingAnomaly(categoryName, currentSpend, proRataBudget, budget, context);
     const content = await safeGenerateContent(prompt, 'spending_anomaly_category', categoryId);
     if (content) {
         return {
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'spending_anomaly_category',
             content: content,
@@ -797,12 +784,11 @@ export const fetchBudgetOverspendProjectionInsight = async (
     projectedSpend: number,
     context: FinancialContext | undefined,
     categoryId: string
-): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     const prompt = constructPromptForBudgetOverspendProjection(categoryName, currentSpend, budget, daysRemaining, projectedSpend, context);
     const content = await safeGenerateContent(prompt, 'budget_overspend_projection', categoryId);
      if (content) {
         return {
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'budget_overspend_projection',
             content: content,
@@ -817,12 +803,11 @@ export const fetchRecurringPaymentCandidateInsight = async (
     transactions: Transaction[],
     existingRecurringTransactions: RecurringTransaction[],
     context: FinancialContext
-): Promise<Omit<AIInsight, 'user_id'|'created_at'|'updated_at'> | null> => {
+): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     const prompt = constructPromptForRecurringPaymentCandidate(transactions, existingRecurringTransactions.map(rt => ({description: rt.description, amount: rt.amount, type:rt.type, frequency: rt.frequency, category_id: rt.category_id})), context);
     const content = await safeGenerateContent(prompt, 'recurring_payment_candidate');
     if (content) {
         return {
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'recurring_payment_candidate',
             content: content,
@@ -837,12 +822,11 @@ export const fetchSavingOpportunityInsight = async (
     categories: Category[],
     moneyBoxes: MoneyBox[],
     context: FinancialContext
-): Promise<Omit<AIInsight, 'user_id'|'created_at'|'updated_at'> | null> => {
+): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     const prompt = constructPromptForSavingOpportunity(transactions, categories.map(c=> ({id:c.id, name: c.name, type:c.type})), moneyBoxes.map(m=>({id: m.id, name:m.name, goal_amount: m.goal_amount})), context);
     const content = await safeGenerateContent(prompt, 'saving_opportunity_suggestion');
     if (content) {
         return {
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'saving_opportunity_suggestion',
             content: content,
@@ -857,12 +841,11 @@ export const fetchUnusualTransactionInsight = async (
     categoryName: string,
     recentCategoryTransactions: Transaction[],
     context: FinancialContext
-): Promise<Omit<AIInsight, 'user_id'|'created_at'|'updated_at'> | null> => {
+): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     const prompt = constructPromptForUnusualTransactionValue(transaction, categoryName, recentCategoryTransactions, context);
     const content = await safeGenerateContent(prompt, 'unusual_transaction_value', transaction.category_id);
     if (content) {
         return {
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'unusual_transaction_value',
             content: content,
@@ -877,12 +860,11 @@ export const fetchUnusualTransactionInsight = async (
 export const fetchCashFlowProjectionInsight = async (
     context: FinancialContext,
     projectionPeriodDays: number
-): Promise<Omit<AIInsight, 'user_id'|'created_at'|'updated_at'> | null> => {
+): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     const prompt = constructPromptForCashFlowProjection(context, projectionPeriodDays);
     const content = await safeGenerateContent(prompt, 'cash_flow_projection');
     if (content) {
         return {
-            id: generateId(),
             timestamp: new Date().toISOString(),
             type: 'cash_flow_projection',
             content: content,
@@ -890,7 +872,6 @@ export const fetchCashFlowProjectionInsight = async (
         };
     }
      return { 
-        id: generateId(),
         timestamp: new Date().toISOString(),
         type: 'error_message',
         content: "Não foi possível gerar uma projeção de fluxo de caixa com os dados atuais.",
@@ -899,10 +880,10 @@ export const fetchCashFlowProjectionInsight = async (
 };
 
 
-export const fetchDebtStrategyExplanation = async (strategy: DebtStrategy): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+export const fetchDebtStrategyExplanation = async (strategy: DebtStrategy): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     if (!ai || !isGeminiApiKeyAvailable()) {
         return {
-            id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+            timestamp: new Date().toISOString(), type: 'error_message',
             content: "AI Coach desativado ou API Key não configurada para explicar estratégia de dívida.",
             related_debt_strategy: strategy, is_read: false,
         };
@@ -911,21 +892,21 @@ export const fetchDebtStrategyExplanation = async (strategy: DebtStrategy): Prom
     const content = await safeGenerateContent(prompt, 'debt_strategy_explanation');
     if (content) {
         return {
-            id: generateId(), timestamp: new Date().toISOString(), type: 'debt_strategy_explanation',
+            timestamp: new Date().toISOString(), type: 'debt_strategy_explanation',
             content: content, related_debt_strategy: strategy, is_read: false,
         };
     }
     return {
-        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+        timestamp: new Date().toISOString(), type: 'error_message',
         content: `Não foi possível obter uma explicação para a estratégia ${strategy} no momento.`,
         related_debt_strategy: strategy, is_read: false,
     };
 };
 
-export const fetchDebtProjectionSummary = async (projection: DebtProjection, debtsContext: Debt[], context: FinancialContext): Promise<Omit<AIInsight, 'user_id' | 'created_at' | 'updated_at'> | null> => {
+export const fetchDebtProjectionSummary = async (projection: DebtProjection, debtsContext: Debt[], context: FinancialContext): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     if (!ai || !isGeminiApiKeyAvailable()) {
         return {
-            id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+            timestamp: new Date().toISOString(), type: 'error_message',
             content: "AI Coach desativado ou API Key não configurada para resumir projeção de dívida.",
             is_read: false,
         };
@@ -935,12 +916,12 @@ export const fetchDebtProjectionSummary = async (projection: DebtProjection, deb
     const content = await safeGenerateContent(prompt, 'debt_projection_summary');
     if (content) {
         return {
-            id: generateId(), timestamp: new Date().toISOString(), type: 'debt_projection_summary',
+            timestamp: new Date().toISOString(), type: 'debt_projection_summary',
             content: content, related_debt_strategy: projection.strategy, is_read: false,
         };
     }
      return {
-        id: generateId(), timestamp: new Date().toISOString(), type: 'error_message',
+        timestamp: new Date().toISOString(), type: 'error_message',
         content: "Não foi possível obter um resumo da projeção de dívida no momento.",
         is_read: false,
     };

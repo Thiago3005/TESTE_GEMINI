@@ -7,12 +7,12 @@ import Input from './Input';
 import Select from './Select';
 import Textarea from './Textarea';
 import Button from './Button';
-import { generateId } from '../utils/helpers'; // getISODateString removed
+// generateId removed
 
 interface FuturePurchaseFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (purchase: Omit<FuturePurchase, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'>) => void;
+  onSave: (purchase: Omit<FuturePurchase, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'>) => void;
   existingPurchase?: FuturePurchase | null;
 }
 
@@ -63,18 +63,17 @@ const FuturePurchaseFormModal: React.FC<FuturePurchaseFormModalProps> = ({
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const purchaseData: Omit<FuturePurchase, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'> = {
-      // id, user_id, created_at, updated_at, status, ai_analysis, ai_analyzed_at are handled by Supabase/App.tsx
+    const purchaseData: Omit<FuturePurchase, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'> = {
+      // id, user_id, profile_id, created_at, updated_at, status, ai_analysis, ai_analyzed_at are handled by Supabase/App.tsx
       name: name.trim(),
       estimated_cost: parseFloat(estimatedCost),
       priority,
       notes: notes.trim() || undefined,
     };
-     // If it's an existing purchase, we pass its ID so App.tsx knows to update it
-    const saveData = existingPurchase ? { ...purchaseData, id: existingPurchase.id } : { ...purchaseData, id: generateId() };
+    const finalData = existingPurchase ? { ...purchaseData, id: existingPurchase.id } : purchaseData;
 
 
-    onSave(saveData);
+    onSave(finalData as any);
     onClose();
   };
 

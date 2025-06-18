@@ -7,12 +7,12 @@ import Input from './Input';
 import Select from './Select';
 import Button from './Button';
 import Textarea from './Textarea';
-import { generateId, getISODateString } from '../utils/helpers';
+import { getISODateString } from '../utils/helpers'; // generateId removed
 
 interface LoanRepaymentFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (repayment: Omit<LoanRepayment, 'id' | 'loan_id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_income_transaction_id'>, loanId: string) => void;
+  onSave: (repayment: Omit<LoanRepayment, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'linked_income_transaction_id' | 'loan_id'>, loanId: string) => void;
   loan: Loan;
   accounts: Account[];
 }
@@ -46,9 +46,6 @@ const LoanRepaymentFormModal: React.FC<LoanRepaymentFormModalProps> = ({
     if (isNaN(numAmountPaid) || numAmountPaid <= 0) {
       newErrors.amountPaid = 'Valor pago deve ser positivo.';
     }
-    // Potentially check if amountPaid exceeds remaining loan balance, but allow overpayment for simplicity for now.
-    // const remainingBalance = calculateRemainingBalance();
-    // if (numAmountPaid > remainingBalance) newErrors.amountPaid = `Valor excede o saldo devedor (${formatCurrency(remainingBalance)}).`;
 
     if (!repaymentDate) newErrors.repaymentDate = 'Data do pagamento é obrigatória.';
     if (!creditedAccountId) newErrors.creditedAccountId = 'Conta de crédito é obrigatória.';
@@ -60,7 +57,8 @@ const LoanRepaymentFormModal: React.FC<LoanRepaymentFormModalProps> = ({
   const handleSubmit = () => {
     if (!validate()) return;
 
-    const repaymentData: Omit<LoanRepayment, 'id' | 'loan_id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_income_transaction_id'> = {
+    const repaymentData: Omit<LoanRepayment, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'linked_income_transaction_id' | 'loan_id'> = {
+      // id, user_id, profile_id, created_at, updated_at, linked_income_transaction_id, loan_id are handled by Supabase/App.tsx
       repayment_date: repaymentDate,
       amount_paid: parseFloat(amountPaid),
       notes: notes.trim() || undefined,
