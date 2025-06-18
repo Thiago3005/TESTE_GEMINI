@@ -187,6 +187,7 @@ export interface BestPurchaseDayInfo {
 // User Preferences stored in Supabase
 export interface UserPreferences { // This is the direct DB model
   user_id: string; // PK, FK to auth.users.id
+  profile_id: string; // UUID, FK to user_profiles.id -> Added this line
   theme: Theme;
   is_privacy_mode_enabled: boolean;
   ai_is_enabled: boolean;
@@ -294,6 +295,7 @@ export interface ToastMessage {
 
 export interface UserProfile {
   id: string;
+  user_id: string; // Added to match expected structure from DB
   name: string;
   // Add other profile-specific fields if necessary
 }
