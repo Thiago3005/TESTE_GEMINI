@@ -949,3 +949,12 @@ export const calculateNextDueDate = (currentDueDate: string, frequency: Recurrin
   }
   return getISODateString(date);
 };
+
+declare global {
+  interface ImportMeta {
+    env: {
+      VITE_GEMINI_API_KEY?: string;
+      [key: string]: any;
+    };
+  }
+}
