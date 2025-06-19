@@ -6,7 +6,6 @@ import Button from './Button';
 import EditIcon from './icons/EditIcon';
 import TrashIcon from './icons/TrashIcon';
 import ArrowPathIcon from './icons/ArrowPathIcon'; 
-import CreditCardIcon from './icons/CreditCardIcon'; // For card icon
 
 interface RecurringTransactionItemProps {
   rt: RecurringTransaction;
@@ -22,12 +21,19 @@ interface RecurringTransactionItemProps {
 const RecurringTransactionItem: React.FC<RecurringTransactionItemProps> = ({ 
     rt, accounts, creditCards, categories, onEdit, onDelete, onTogglePause, isPrivacyModeEnabled
 }) => {
-  const account = accounts.find(a => a.id === rt.account_id);
-  const creditCard = creditCards.find(cc => cc.id === rt.account_id);
+  // Find source in accounts or credit cards
+  let sourceName = 'N/A';
+  const accountSource = accounts.find(a => a.id === rt.account_id);
+  if (accountSource) {
+    sourceName = `Conta: ${accountSource.name}`;
+  } else {
+    const cardSource = creditCards.find(cc => cc.id === rt.account_id);
+    if (cardSource) {
+      sourceName = `Cartão: ${cardSource.name}`;
+    }
+  }
+  
   const category = rt.category_id ? categories.find(c => c.id === rt.category_id) : null;
-
-  const isCardSource = !!creditCard;
-  const sourceName = isCardSource ? creditCard.name : account?.name;
 
   let amountColor = 'text-textBase dark:text-textBaseDark';
   let sign = '';
@@ -44,7 +50,7 @@ const RecurringTransactionItem: React.FC<RecurringTransactionItemProps> = ({
     weekly: 'Semanalmente',
     monthly: 'Mensalmente',
     yearly: 'Anualmente',
-    custom_days: `A cada ${rt.custom_interval_days} dias`
+    custom_days: `A cada ${rt.custom_interval_days || '?'} dias`
   };
 
   return (
@@ -52,12 +58,7 @@ const RecurringTransactionItem: React.FC<RecurringTransactionItemProps> = ({
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0">
         <div className="flex-grow">
           <div className="flex items-center space-x-3 mb-1">
-            <ArrowPathIcon className={`w-5 h-5 ${rt.is_paused ? 'text-textMuted dark:text-textMutedDark' : 'text-primary dark:text-primaryDark'} flex-shrink-0`} />
-            {isCardSource && rt.type === TransactionType.EXPENSE && (
-                <span title={`Recorrência no Cartão: ${sourceName}`}>
-                    <CreditCardIcon className="w-5 h-5 text-neutral dark:text-neutralDark flex-shrink-0" />
-                </span>
-            )}
+            <ArrowPathIcon className={`w-5 h-5 ${rt.is_paused ? 'text-textMuted dark:text-textMutedDark' : 'text-primary dark:text-primaryDark'}`} />
             <span className={`font-semibold text-lg ${amountColor}`}>{sign}{formatCurrency(rt.amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
             <h3 className="text-md font-medium text-textBase dark:text-textBaseDark">{rt.description}</h3>
           </div>
@@ -67,7 +68,7 @@ const RecurringTransactionItem: React.FC<RecurringTransactionItemProps> = ({
             {rt.remaining_occurrences !== undefined && rt.occurrences && ` &bull; (${rt.remaining_occurrences}/${rt.occurrences} restantes)`}
           </p>
           <p className="text-xs text-textMuted dark:text-textMutedDark ml-8">
-            {isCardSource ? 'Cartão' : 'Conta'}: {sourceName || 'N/A'}
+            Origem: {sourceName}
             {category && ` &bull; Categoria: ${category.name}`}
             {rt.is_paused && <span className="font-semibold text-amber-600 dark:text-amber-500"> (Pausado)</span>}
           </p>

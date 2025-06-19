@@ -1,11 +1,11 @@
 
 import React from 'react';
-import { useState, useEffect, ChangeEvent, useMemo } from 'react';
+import { useState, useEffect, ChangeEvent, useMemo } from 'react'; // Added useMemo
 import { 
-    RecurringTransaction, TransactionType, Account, Category, RecurringTransactionFrequency, CreditCard
+    RecurringTransaction, TransactionType, Account, Category, RecurringTransactionFrequency, CreditCard // Added CreditCard
 } from '../types';
 import { TRANSACTION_TYPE_OPTIONS } from '../constants';
-import { getISODateString, formatDate } from '../utils/helpers'; // generateId removed
+import { getISODateString, formatDate } from '../utils/helpers';
 import Modal from './Modal';
 import Input from './Input';
 import Select from './Select';
@@ -22,7 +22,7 @@ const frequencyOptions: { value: RecurringTransactionFrequency; label: string }[
 
 const calculateNextDueDateInternal = (startDateStr: string, frequency: RecurringTransactionFrequency, lastPostedDateStr?: string, customInterval?: number): string => {
     if (lastPostedDateStr) {
-        const lastPosted = new Date(lastPostedDateStr + 'T00:00:00'); // Ensure local date
+        const lastPosted = new Date(lastPostedDateStr + 'T00:00:00'); 
         let nextDue = new Date(lastPosted);
 
         switch (frequency) {
@@ -46,7 +46,8 @@ const calculateNextDueDateInternal = (startDateStr: string, frequency: Recurring
         }
         return getISODateString(nextDue);
     }
-    return getISODateString(new Date(startDateStr + 'T00:00:00')); // Default to startDate if no lastPostedDate
+    // Ensure new Date is created with local timezone interpretation from YYYY-MM-DD
+    return getISODateString(new Date(startDateStr + 'T00:00:00')); 
 };
 
 
@@ -67,7 +68,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<TransactionType>(TransactionType.EXPENSE);
   const [categoryId, setCategoryId] = useState('');
-  const [sourceId, setSourceId] = useState(''); // Renamed from accountId
+  const [sourceId, setSourceId] = useState(''); // Renamed from accountId to sourceId
   const [toAccountId, setToAccountId] = useState('');
   
   const [frequency, setFrequency] = useState<RecurringTransactionFrequency>('monthly');
@@ -82,13 +83,9 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
 
   const sourceOptions = useMemo(() => {
     const accOpts = accounts.map(a => ({ value: a.id, label: `Conta: ${a.name}`, type: 'account' }));
-    if (type === TransactionType.EXPENSE) {
-        const cardOpts = creditCards.map(cc => ({ value: cc.id, label: `Cartão: ${cc.name}`, type: 'creditCard' }));
-        return [...accOpts, ...cardOpts];
-    }
-    return accOpts; // For INCOME and TRANSFER, only accounts are valid sources/destinations
-  }, [accounts, creditCards, type]);
-
+    const cardOpts = creditCards.map(cc => ({ value: cc.id, label: `Cartão: ${cc.name}`, type: 'creditCard' }));
+    return [...accOpts, ...cardOpts];
+  }, [accounts, creditCards]);
 
   useEffect(() => {
     if (isOpen) {
@@ -97,7 +94,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
         setAmount(existingRT.amount.toString());
         setType(existingRT.type);
         setCategoryId(existingRT.category_id || '');
-        setSourceId(existingRT.account_id);
+        setSourceId(existingRT.account_id); // account_id now holds sourceId
         setToAccountId(existingRT.to_account_id || '');
         setFrequency(existingRT.frequency);
         setCustomIntervalDays(existingRT.custom_interval_days?.toString() || '30');
@@ -112,7 +109,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
         setType(TransactionType.EXPENSE);
         setCategoryId(categories.filter(c => c.type === TransactionType.EXPENSE)[0]?.id || '');
         setSourceId(sourceOptions.length > 0 ? sourceOptions[0].value : '');
-        setToAccountId(accounts[1]?.id || accounts[0]?.id || '');
+        setToAccountId(accounts.length > 1 ? accounts[1].id : (accounts.length > 0 ? accounts[0].id : ''));
         setFrequency('monthly');
         setCustomIntervalDays('30');
         setStartDate(getISODateString());
@@ -123,23 +120,24 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
       }
       setErrors({});
     }
-  }, [existingRT, isOpen, accounts, categories, sourceOptions]); // Added sourceOptions
+  }, [existingRT, isOpen, accounts, categories, sourceOptions]);
+
 
   useEffect(() => {
-    // Reset sourceId if type changes and current sourceId is not valid for new type
-    const selectedSourceOpt = sourceOptions.find(s => s.value === sourceId);
-    if (type === TransactionType.INCOME || type === TransactionType.TRANSFER) {
-      if (selectedSourceOpt?.type === 'creditCard') {
-        setSourceId(accounts[0]?.id || ''); // Default to first account if card was selected
-      }
+    // If type changes, ensure category matches or reset
+    if (type !== TransactionType.TRANSFER) {
+        const currentCategory = categories.find(c => c.id === categoryId);
+        if (!currentCategory || currentCategory.type !== type) {
+            const defaultCategoryForType = categories.find(c => c.type === type);
+            setCategoryId(defaultCategoryForType?.id || '');
+        }
     }
-    // If type changes to EXPENSE, and sourceId was an account, it's still valid.
-    // If sourceId is empty or not in new sourceOptions, reset to first available.
-    if (!selectedSourceOpt && sourceOptions.length > 0) {
-        setSourceId(sourceOptions[0].value);
+    // If type is INCOME or TRANSFER, and a credit card was selected, switch to first account.
+    const selectedSourceDetails = sourceOptions.find(s => s.value === sourceId);
+    if (selectedSourceDetails?.type === 'creditCard' && (type === TransactionType.INCOME || type === TransactionType.TRANSFER)) {
+        setSourceId(accounts[0]?.id || ''); 
     }
-
-  }, [type, sourceId, sourceOptions, accounts]);
+  }, [type, categoryId, categories, sourceId, accounts, sourceOptions]);
 
 
   const validate = (): boolean => {
@@ -147,31 +145,22 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
     if (!description.trim()) newErrors.description = 'Descrição é obrigatória.';
     if (!amount || parseFloat(amount) <= 0) newErrors.amount = 'Valor deve ser positivo.';
     
-    const selectedSourceOpt = sourceOptions.find(s => s.value === sourceId);
-
-    if (type !== TransactionType.TRANSFER && !categoryId && selectedSourceOpt?.type !== 'creditCard') {
-        newErrors.categoryId = 'Categoria é obrigatória.';
-    } else if (type !== TransactionType.TRANSFER && selectedSourceOpt?.type === 'creditCard' && !categoryId) {
-        // Category can be optional for recurring card expenses if description is very clear,
-        // but for consistency, let's still prompt for it, perhaps with a softer requirement.
-        // For now, keep it "required" for simplicity in the error message.
-        // newErrors.categoryId = 'Categoria é recomendada para despesas no cartão.';
+    const selectedSourceDetails = sourceOptions.find(s => s.value === sourceId);
+    if (type !== TransactionType.TRANSFER && !categoryId && selectedSourceDetails?.type !== 'creditCard') {
+      newErrors.categoryId = 'Categoria é obrigatória.';
     }
 
-    if (!sourceId) newErrors.sourceId = 'Fonte (Conta/Cartão) é obrigatória.';
+    if (!sourceId) newErrors.sourceId = 'Origem (Conta/Cartão) é obrigatória.';
     if (type === TransactionType.TRANSFER && !toAccountId) newErrors.toAccountId = 'Conta de destino é obrigatória.';
-    if (type === TransactionType.TRANSFER && sourceId === toAccountId) newErrors.toAccountId = 'Contas não podem ser iguais.';
-    
-    if (selectedSourceOpt?.type === 'creditCard' && type !== TransactionType.EXPENSE) {
-        newErrors.sourceId = 'Cartões de crédito só podem ser usados para Despesas recorrentes.';
+    if (type === TransactionType.TRANSFER && sourceId === toAccountId) newErrors.toAccountId = 'Conta de origem e destino não podem ser iguais.';
+    if (type === TransactionType.TRANSFER && selectedSourceDetails?.type === 'creditCard') {
+        newErrors.sourceId = 'Transferências não podem originar de um cartão de crédito.';
     }
-
 
     if (!startDate) newErrors.startDate = 'Data de início é obrigatória.';
     if (endDate && startDate > endDate) newErrors.endDate = 'Data final deve ser após data inicial.';
     if (occurrences && parseInt(occurrences) <=0) newErrors.occurrences = 'Ocorrências deve ser positivo.';
     if (frequency === 'custom_days' && (!customIntervalDays || parseInt(customIntervalDays) <= 0)) newErrors.customIntervalDays = "Intervalo de dias deve ser positivo.";
-
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -187,7 +176,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
       amount: parseFloat(amount),
       type,
       category_id: type === TransactionType.TRANSFER ? undefined : categoryId,
-      account_id: sourceId, // This now holds account OR credit card ID
+      account_id: sourceId, // This now holds the ID of account OR credit card
       to_account_id: type === TransactionType.TRANSFER ? toAccountId : undefined,
       frequency,
       custom_interval_days: frequency === 'custom_days' ? parseInt(customIntervalDays) : undefined,
@@ -195,7 +184,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
       end_date: endDate || undefined,
       occurrences: numOccurrences,
       remaining_occurrences: existingRT?.id ? existingRT.remaining_occurrences : numOccurrences,
-      next_due_date: existingRT?.id ? existingRT.next_due_date : calculateNextDueDateInternal(startDate, frequency, undefined, frequency === 'custom_days' ? parseInt(customIntervalDays) : undefined),
+      next_due_date: existingRT?.id && existingRT.next_due_date ? existingRT.next_due_date : calculateNextDueDateInternal(startDate, frequency, existingRT?.last_posted_date, frequency === 'custom_days' ? parseInt(customIntervalDays) : undefined),
       last_posted_date: existingRT?.last_posted_date,
       is_paused: isPaused || false,
       notes: notes.trim() || undefined,
@@ -206,13 +195,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
   };
   
   const filteredCategories = categories.filter(cat => cat.type === type);
-  const selectedSourceIsCard = sourceOptions.find(s => s.value === sourceId)?.type === 'creditCard';
-
-  let sourceLabel = "Conta";
-  if (type === TransactionType.EXPENSE) sourceLabel = "Debitar de (Conta / Cartão)";
-  else if (type === TransactionType.INCOME) sourceLabel = "Creditar em (Conta)";
-  else if (type === TransactionType.TRANSFER) sourceLabel = "Conta de Origem";
-
+  const currentSourceIsCard = sourceOptions.find(opt => opt.value === sourceId)?.type === 'creditCard';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={existingRT ? 'Editar Transação Recorrente' : 'Nova Transação Recorrente'} size="lg">
@@ -220,37 +203,25 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
         <Input label="Descrição" id="rtDescription" value={description} onChange={e => setDescription(e.target.value)} error={errors.description} required />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="Valor" id="rtAmount" type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} error={errors.amount} required />
-            <Select label="Tipo" id="rtType" options={TRANSACTION_TYPE_OPTIONS} value={type} 
-              onChange={e => {
-                const newType = e.target.value as TransactionType;
-                setType(newType);
-                // Reset category if it's not compatible with the new type
-                const currentCategory = categories.find(c => c.id === categoryId);
-                if (!currentCategory || currentCategory.type !== newType) {
-                    setCategoryId(categories.find(c => c.type === newType)?.id || '');
-                }
-              }} 
-            />
+            <Select label="Tipo" id="rtType" options={TRANSACTION_TYPE_OPTIONS} value={type} onChange={e => setType(e.target.value as TransactionType)} />
         </div>
         
         {type !== TransactionType.TRANSFER && (
             <Select 
-              label={selectedSourceIsCard ? "Categoria (Referência para fatura)" : "Categoria"} 
-              id="rtCategory" 
-              options={filteredCategories.map(c => ({ value: c.id, label: c.name }))} 
-              value={categoryId} 
-              onChange={e => setCategoryId(e.target.value)} 
-              error={errors.categoryId} 
-              placeholder="Selecione uma categoria" 
-              disabled={filteredCategories.length === 0} 
-              // required={!selectedSourceIsCard} // Category is less critical if it's a direct card charge
+                label={currentSourceIsCard && type === TransactionType.EXPENSE ? "Categoria (Opcional para Débito Direto no Cartão)" : "Categoria"}
+                id="rtCategory" 
+                options={filteredCategories.map(c => ({ value: c.id, label: c.name }))} 
+                value={categoryId} onChange={e => setCategoryId(e.target.value)} 
+                error={errors.categoryId} 
+                placeholder="Selecione uma categoria" 
+                disabled={filteredCategories.length === 0} 
             />
         )}
         
         <Select 
-            label={sourceLabel}
+            label={type === TransactionType.TRANSFER ? "Origem (Conta)" : "Origem (Conta / Cartão)"} 
             id="rtSourceId" 
-            options={sourceOptions} 
+            options={type === TransactionType.TRANSFER ? sourceOptions.filter(so => so.type === 'account') : sourceOptions}
             value={sourceId} 
             onChange={e => setSourceId(e.target.value)} 
             error={errors.sourceId} 
@@ -259,7 +230,15 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
         />
         
         {type === TransactionType.TRANSFER && (
-            <Select label="Conta de Destino" id="rtToAccountId" options={accounts.map(a => ({ value: a.id, label: a.name }))} value={toAccountId} onChange={e => setToAccountId(e.target.value)} error={errors.toAccountId} placeholder="Selecione conta de destino" disabled={accounts.length === 0} />
+            <Select 
+                label="Conta de Destino" 
+                id="rtToAccountId" 
+                options={accounts.map(a => ({ value: a.id, label: a.name }))} 
+                value={toAccountId} 
+                onChange={e => setToAccountId(e.target.value)} 
+                error={errors.toAccountId} 
+                placeholder="Selecione conta de destino" 
+                disabled={accounts.length === 0} />
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -271,7 +250,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="Data de Início" id="rtStartDate" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} error={errors.startDate} required />
-            <Input label="Data Final (Opcional)" id="rtEndDate" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} error={errors.endDate} />
+            <Input label="Data Final (Opcional)" id="rtEndDate" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} error={errors.endDate} min={startDate} />
         </div>
         
         <Input label="Número de Ocorrências (Opcional)" id="rtOccurrences" type="number" min="1" value={occurrences} onChange={e => setOccurrences(e.target.value)} error={errors.occurrences} placeholder="Deixe em branco para indefinido (use Data Final)" />

@@ -1,6 +1,11 @@
 
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { defineConfig, loadEnv } from 'vite';
+
+// Helper to get __dirname in ES module scope
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -13,7 +18,7 @@ export default defineConfig(({ mode }) => {
       },
       resolve: {
         alias: {
-          '@': path.resolve(process.cwd(), '.')
+          '@': path.resolve(__dirname, '.'), // path.resolve with '.' on __dirname just results in __dirname
         }
       }
     };

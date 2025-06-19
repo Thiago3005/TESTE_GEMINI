@@ -589,7 +589,7 @@ const AppContent: React.FC = () => {
                 installments_paid: 0, 
                 linked_transaction_id: newTransaction.id,
             };
-            await handleAddInstallmentPurchase(installmentPurchaseData, false); // false to not show toast for this automatic IP
+            await handleAddInstallmentPurchase(installmentPurchaseData, false);
         }
     }
   };
@@ -613,7 +613,16 @@ const AppContent: React.FC = () => {
   // Account Handlers
   const handleAddAccount = (data: Omit<Account, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => addOrUpdateRecord('accounts', data, setAccounts, (a: Account,b: Account) => a.name.localeCompare(b.name));
   const handleUpdateAccount = (data: Account) => addOrUpdateRecord('accounts', data, setAccounts, (a: Account,b: Account) => a.name.localeCompare(b.name), true);
-  const handleDeleteAccount = (id: string) => { if (window.confirm('Excluir esta conta?')) deleteRecord('accounts', id, setAccounts); };
+  const handleDeleteAccount = (id: string) => {
+    const isUsedInRecurring = recurringTransactions.some(rt => rt.account_id === id || rt.to_account_id === id);
+    if (isUsedInRecurring) {
+        addToast('Não é possível excluir. Esta conta está sendo usada em transações recorrentes.', 'error');
+        return;
+    }
+    if (window.confirm('Excluir esta conta? Todas as transações associadas permanecerão, mas podem ficar órfãs se não houver mais contas.')) {
+      deleteRecord('accounts', id, setAccounts);
+    }
+  };
 
   // Category Handlers
   const handleAddCategory = (data: Omit<Category, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => addOrUpdateRecord('categories', data, setCategories, (a: Category,b: Category) => a.name.localeCompare(b.name));
@@ -623,7 +632,16 @@ const AppContent: React.FC = () => {
   // Credit Card Handlers
   const handleAddCreditCard = (data: Omit<CreditCard, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>) => addOrUpdateRecord('credit_cards', data, setCreditCards, (a: CreditCard,b: CreditCard) => a.name.localeCompare(b.name));
   const handleUpdateCreditCard = (data: CreditCard) => addOrUpdateRecord('credit_cards', data, setCreditCards, (a: CreditCard,b: CreditCard) => a.name.localeCompare(b.name), true);
-  const handleDeleteCreditCard = (id: string) => { if (window.confirm('Excluir este cartão?')) deleteRecord('credit_cards', id, setCreditCards); };
+  const handleDeleteCreditCard = (id: string) => {
+    const isUsedInRecurring = recurringTransactions.some(rt => rt.account_id === id);
+    if (isUsedInRecurring) {
+        addToast('Não é possível excluir. Este cartão de crédito está sendo usado em transações recorrentes.', 'error');
+        return;
+    }
+    if (window.confirm('Excluir este cartão? Compras parceladas associadas não serão excluídas.')) {
+        deleteRecord('credit_cards', id, setCreditCards);
+    }
+  };
 
   // Installment Purchase Handlers
   const handleAddInstallmentPurchase = async (purchase: Omit<InstallmentPurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>, showToast = true) => {
@@ -729,39 +747,16 @@ const AppContent: React.FC = () => {
             description: `Recorrência: ${rt.description}`, date: rt.next_due_date,
             account_id: rt.account_id, to_account_id: rt.to_account_id,
         };
-        const newTx = await addOrUpdateRecord( // Using addOrUpdateRecord to get the created transaction
-            'transactions',
-            transactionData,
-            setTransactions,
-            (a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-        );
+        await handleAddTransaction(transactionData); 
 
-        if (newTx) {
-            const isCreditCardSource = creditCards.some(cc => cc.id === rt.account_id);
-            if (isCreditCardSource && rt.type === TransactionType.EXPENSE) {
-                const installmentPurchaseData: Omit<InstallmentPurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
-                    credit_card_id: rt.account_id,
-                    description: `Recorrência Fatura: ${rt.description}`,
-                    purchase_date: rt.next_due_date,
-                    total_amount: rt.amount,
-                    number_of_installments: 1,
-                    installments_paid: 0, 
-                    linked_transaction_id: newTx.id,
-                };
-                await handleAddInstallmentPurchase(installmentPurchaseData, false); 
-            }
-
-            const updatedRTData = {
-                last_posted_date: rt.next_due_date,
-                next_due_date: geminiService.calculateNextDueDate(rt.next_due_date, rt.frequency, rt.custom_interval_days),
-                remaining_occurrences: rt.remaining_occurrences !== undefined ? rt.remaining_occurrences -1 : undefined,
-            };
-            const {error: updateError} = await supabase.from('recurring_transactions').update(updatedRTData).eq('id', rt.id).eq('user_id', user.id).eq('profile_id', activeUserProfile.id);
-            if(updateError) errors.push(`Erro ao atualizar ${rt.description}: ${updateError.message}`);
-            else count++;
-        } else {
-            errors.push(`Erro ao criar transação para ${rt.description}.`);
-        }
+        const updatedRTData = {
+            last_posted_date: rt.next_due_date,
+            next_due_date: geminiService.calculateNextDueDate(rt.next_due_date, rt.frequency, rt.custom_interval_days),
+            remaining_occurrences: rt.remaining_occurrences !== undefined ? rt.remaining_occurrences -1 : undefined,
+        };
+        const {error: updateError} = await supabase.from('recurring_transactions').update(updatedRTData).eq('id', rt.id).eq('user_id', user.id).eq('profile_id', activeUserProfile.id);
+        if(updateError) errors.push(`Erro ao atualizar ${rt.description}: ${updateError.message}`);
+        else count++;
     }
     if (user && activeUserProfile) { 
         const { data, error } = await supabase.from('recurring_transactions').select('*').eq('user_id', user.id).eq('profile_id', activeUserProfile.id).order('next_due_date');

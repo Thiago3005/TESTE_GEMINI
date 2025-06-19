@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { useState, useMemo } from 'react';
-import { RecurringTransaction, Account, Category, Transaction, CreditCard } from '../types'; // Added CreditCard
+import { RecurringTransaction, Account, Category, CreditCard } from '../types'; // Added CreditCard
 import RecurringTransactionItem from './RecurringTransactionItem';
 import RecurringTransactionFormModal from './RecurringTransactionFormModal';
 import Button from './Button';
@@ -13,7 +13,7 @@ interface RecurringTransactionsViewProps {
   accounts: Account[];
   creditCards: CreditCard[]; // Added creditCards
   categories: Category[];
-  onAddRecurringTransaction: (rt: Omit<RecurringTransaction, 'user_id' | 'created_at' | 'updated_at'>) => void;
+  onAddRecurringTransaction: (rt: Omit<RecurringTransaction, 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => void;
   onUpdateRecurringTransaction: (rt: RecurringTransaction) => void;
   onDeleteRecurringTransaction: (rtId: string) => void;
   onProcessRecurringTransactions: () => Promise<{ count: number; errors: string[] }>; 
@@ -136,13 +136,12 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
         </>
       )}
 
-      
       <RecurringTransactionFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={editingRT ? onUpdateRecurringTransaction : onAddRecurringTransaction}
         accounts={accounts}
-        creditCards={creditCards} 
+        creditCards={creditCards} // Pass creditCards here
         categories={categories}
         existingRT={editingRT}
       />
