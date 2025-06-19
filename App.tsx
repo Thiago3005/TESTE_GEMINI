@@ -589,7 +589,7 @@ const AppContent: React.FC = () => {
                 installments_paid: 0, 
                 linked_transaction_id: newTransaction.id,
             };
-            await handleAddInstallmentPurchase(installmentPurchaseData, false);
+            await handleAddInstallmentPurchase(installmentPurchaseData, false); // false to not show toast for this automatic IP
         }
     }
   };
@@ -729,16 +729,39 @@ const AppContent: React.FC = () => {
             description: `Recorrência: ${rt.description}`, date: rt.next_due_date,
             account_id: rt.account_id, to_account_id: rt.to_account_id,
         };
-        await handleAddTransaction(transactionData); 
+        const newTx = await addOrUpdateRecord( // Using addOrUpdateRecord to get the created transaction
+            'transactions',
+            transactionData,
+            setTransactions,
+            (a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
 
-        const updatedRTData = {
-            last_posted_date: rt.next_due_date,
-            next_due_date: geminiService.calculateNextDueDate(rt.next_due_date, rt.frequency, rt.custom_interval_days),
-            remaining_occurrences: rt.remaining_occurrences !== undefined ? rt.remaining_occurrences -1 : undefined,
-        };
-        const {error: updateError} = await supabase.from('recurring_transactions').update(updatedRTData).eq('id', rt.id).eq('user_id', user.id).eq('profile_id', activeUserProfile.id);
-        if(updateError) errors.push(`Erro ao atualizar ${rt.description}: ${updateError.message}`);
-        else count++;
+        if (newTx) {
+            const isCreditCardSource = creditCards.some(cc => cc.id === rt.account_id);
+            if (isCreditCardSource && rt.type === TransactionType.EXPENSE) {
+                const installmentPurchaseData: Omit<InstallmentPurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
+                    credit_card_id: rt.account_id,
+                    description: `Recorrência Fatura: ${rt.description}`,
+                    purchase_date: rt.next_due_date,
+                    total_amount: rt.amount,
+                    number_of_installments: 1,
+                    installments_paid: 0, 
+                    linked_transaction_id: newTx.id,
+                };
+                await handleAddInstallmentPurchase(installmentPurchaseData, false); 
+            }
+
+            const updatedRTData = {
+                last_posted_date: rt.next_due_date,
+                next_due_date: geminiService.calculateNextDueDate(rt.next_due_date, rt.frequency, rt.custom_interval_days),
+                remaining_occurrences: rt.remaining_occurrences !== undefined ? rt.remaining_occurrences -1 : undefined,
+            };
+            const {error: updateError} = await supabase.from('recurring_transactions').update(updatedRTData).eq('id', rt.id).eq('user_id', user.id).eq('profile_id', activeUserProfile.id);
+            if(updateError) errors.push(`Erro ao atualizar ${rt.description}: ${updateError.message}`);
+            else count++;
+        } else {
+            errors.push(`Erro ao criar transação para ${rt.description}.`);
+        }
     }
     if (user && activeUserProfile) { 
         const { data, error } = await supabase.from('recurring_transactions').select('*').eq('user_id', user.id).eq('profile_id', activeUserProfile.id).order('next_due_date');
@@ -1177,7 +1200,7 @@ const AppContent: React.FC = () => {
         {activeView === 'MONEY_BOXES' && <MoneyBoxesView moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions} accounts={accounts} onAddMoneyBox={handleAddMoneyBox} onUpdateMoneyBox={handleUpdateMoneyBox} onDeleteMoneyBox={handleDeleteMoneyBox} onAddMoneyBoxTransaction={handleAddMoneyBoxTransaction} onDeleteMoneyBoxTransaction={handleDeleteMoneyBoxTransaction} calculateMoneyBoxBalance={calculateMoneyBoxBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'FUTURE_PURCHASES' && <FuturePurchasesView futurePurchases={futurePurchases} onAddFuturePurchase={handleAddFuturePurchase} onUpdateFuturePurchase={handleUpdateFuturePurchase} onDeleteFuturePurchase={handleDeleteFuturePurchase} onAnalyzeFuturePurchase={handleAnalyzeFuturePurchase} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'TAGS' && <TagsView tags={tags} transactions={transactions} onAddTag={handleAddTag} onUpdateTag={handleUpdateTag} onDeleteTag={handleDeleteTag} />}
-        {activeView === 'RECURRING_TRANSACTIONS' && <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+        {activeView === 'RECURRING_TRANSACTIONS' && <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} creditCards={creditCards} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'LOANS' && <LoansView loans={loans} loanRepayments={loanRepayments} accounts={accounts} creditCards={creditCards} onAddLoan={handleAddLoan} onUpdateLoan={handleUpdateLoan} onDeleteLoan={handleDeleteLoan} onAddLoanRepayment={handleAddLoanRepayment} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'DEBT_PLANNER' && <DebtPlannerView debts={debts} debtPayments={debtPayments} accounts={accounts} onAddDebt={handleAddDebt} onUpdateDebt={handleUpdateDebt} onDeleteDebt={handleDeleteDebt} onAddDebtPayment={handleAddDebtPayment} onFetchDebtStrategyExplanation={handleFetchDebtStrategyExplanation} onFetchDebtProjectionSummary={handleFetchDebtProjectionSummary} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'AI_COACH' && <AICoachView aiConfig={aiConfig} setAiConfig={updateAiConfig} insights={aiInsights} onFetchGeneralAdvice={() => {const ctx=generateFinancialContext(); if(ctx) geminiService.fetchGeneralAdvice(ctx).then(res => res && handleAddAIInsight(res,true))}} onUpdateInsight={handleUpdateAIInsight} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates} onFetchSavingOpportunities={handleFetchSavingOpportunities} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}

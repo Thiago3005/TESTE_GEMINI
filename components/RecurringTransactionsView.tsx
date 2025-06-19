@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { useState, useMemo } from 'react';
-import { RecurringTransaction, Account, Category, Transaction } from '../types';
+import { RecurringTransaction, Account, Category, Transaction, CreditCard } from '../types'; // Added CreditCard
 import RecurringTransactionItem from './RecurringTransactionItem';
 import RecurringTransactionFormModal from './RecurringTransactionFormModal';
 import Button from './Button';
@@ -11,17 +11,19 @@ import { getISODateString } from '../utils/helpers';
 interface RecurringTransactionsViewProps {
   recurringTransactions: RecurringTransaction[];
   accounts: Account[];
+  creditCards: CreditCard[]; // Added creditCards
   categories: Category[];
   onAddRecurringTransaction: (rt: Omit<RecurringTransaction, 'user_id' | 'created_at' | 'updated_at'>) => void;
   onUpdateRecurringTransaction: (rt: RecurringTransaction) => void;
   onDeleteRecurringTransaction: (rtId: string) => void;
   onProcessRecurringTransactions: () => Promise<{ count: number; errors: string[] }>; 
-  isPrivacyModeEnabled?: boolean; // New prop
+  isPrivacyModeEnabled?: boolean; 
 }
 
 const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
   recurringTransactions,
   accounts,
+  creditCards, // Destructure creditCards
   categories,
   onAddRecurringTransaction,
   onUpdateRecurringTransaction,
@@ -104,7 +106,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
               <h2 className="text-lg font-semibold text-destructive dark:text-destructiveDark mb-2">Pendentes / Atrasadas ({pastDueRTs.length})</h2>
               <ul className="space-y-3">
                 {pastDueRTs.map(rt => (
-                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />
+                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} creditCards={creditCards} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />
                 ))}
               </ul>
             </div>
@@ -115,7 +117,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
               <h2 className="text-lg font-semibold text-textBase dark:text-textBaseDark mt-6 mb-2">Próximas ({upcomingRTs.length})</h2>
               <ul className="space-y-3">
                 {upcomingRTs.map(rt => (
-                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />
+                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} creditCards={creditCards} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />
                 ))}
               </ul>
             </div>
@@ -126,7 +128,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
               <h2 className="text-lg font-semibold text-textMuted dark:text-textMutedDark mt-6 mb-2">Pausadas ({pausedRTs.length})</h2>
               <ul className="space-y-3">
                 {pausedRTs.map(rt => (
-                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />
+                  <RecurringTransactionItem key={rt.id} rt={rt} accounts={accounts} creditCards={creditCards} categories={categories} onEdit={openModalForEdit} onDelete={onDeleteRecurringTransaction} isPrivacyModeEnabled={isPrivacyModeEnabled} />
                 ))}
               </ul>
             </div>
@@ -134,15 +136,15 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
         </>
       )}
 
-      {/* Pass isPrivacyModeEnabled to modal if it shows currency */}
+      
       <RecurringTransactionFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={editingRT ? onUpdateRecurringTransaction : onAddRecurringTransaction}
         accounts={accounts}
+        creditCards={creditCards} 
         categories={categories}
         existingRT={editingRT}
-        // isPrivacyModeEnabled={isPrivacyModeEnabled} // Pass if needed for amount placeholder
       />
     </div>
   );
