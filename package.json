@@ -15,7 +15,8 @@
     "recharts": "^2.15.3",
     "@google/genai": "^1.5.1",
     "vite": "^6.3.5",
-    "path": "^0.12.7"
+    "path": "^0.12.7",
+    "url": "^0.11.4"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

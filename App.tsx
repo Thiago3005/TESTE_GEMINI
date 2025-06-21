@@ -107,7 +107,8 @@ const AppContent: React.FC = () => {
   const [isLoadingData, setIsLoadingData] = useState(true); // Initially true for fetching profile data
   const [activeView, setActiveView] = useState<AppView>('DASHBOARD');
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | Partial<Transaction> | null>(null);
+
 
   const isFetchingDataRef = useRef(false);
 
@@ -575,6 +576,7 @@ const AppContent: React.FC = () => {
     );
     if (newTransaction) {
         setIsTransactionModalOpen(false);
+        setEditingTransaction(null);
         handleGenerateCommentForTransaction(newTransaction);
         handleAnalyzeSpendingForCategory(newTransaction);
 
@@ -701,6 +703,7 @@ const AppContent: React.FC = () => {
   const handleAddMoneyBoxTransaction = async (mbt: Omit<MoneyBoxTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'|'linked_transaction_id'>, createLinkedTransaction: boolean, linkedAccId?: string) => {
     if (!user || !activeUserProfile) return;
     let linkedTxId: string | undefined = undefined;
+
     if (createLinkedTransaction && linkedAccId) {
         const mainTxData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
             type: mbt.type === MoneyBoxTransactionType.DEPOSIT ? TransactionType.EXPENSE : TransactionType.INCOME,
@@ -708,7 +711,30 @@ const AppContent: React.FC = () => {
             date: mbt.date,
             description: `${mbt.type === MoneyBoxTransactionType.DEPOSIT ? 'Depósito' : 'Saque'} Caixinha: ${moneyBoxes.find(mb => mb.id === mbt.money_box_id)?.name || 'N/A'} ${mbt.description ? `- ${mbt.description}` : ''}`,
             account_id: linkedAccId,
+            category_id: '', // Will be populated below
         };
+
+        if (mainTxData.type === TransactionType.INCOME) { // Withdrawal from MoneyBox to Account
+            let incomeCategoryId = categories.find(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes("outras receitas"))?.id;
+            if (!incomeCategoryId) incomeCategoryId = categories.find(c => c.type === TransactionType.INCOME)?.id;
+            
+            if (!incomeCategoryId) {
+                addToast("Nenhuma categoria de receita encontrada para vincular a movimentação da caixinha.", "error");
+                return; 
+            }
+            mainTxData.category_id = incomeCategoryId;
+        } else { // Deposit to MoneyBox from Account (Expense)
+            let expenseCategoryId = categories.find(c => c.type === TransactionType.EXPENSE && (c.name.toLowerCase().includes("caixinha") || c.name.toLowerCase().includes("investimento") || c.name.toLowerCase().includes("poupança")) )?.id;
+            if (!expenseCategoryId) expenseCategoryId = categories.find(c => c.type === TransactionType.EXPENSE && c.name.toLowerCase().includes("outras despesas"))?.id;
+            if (!expenseCategoryId) expenseCategoryId = categories.find(c => c.type === TransactionType.EXPENSE)?.id;
+
+            if (!expenseCategoryId) {
+                addToast("Nenhuma categoria de despesa encontrada para vincular o depósito na caixinha.", "error");
+                return;
+            }
+            mainTxData.category_id = expenseCategoryId;
+        }
+        
         const mainTx = await addOrUpdateRecord('transactions', mainTxData, setTransactions, (a,b)=> new Date(b.date).getTime() - new Date(a.date).getTime());
         if(!mainTx) { addToast(`Erro ao criar transação principal para caixinha.`, 'error'); return; }
         linkedTxId = mainTx.id;
@@ -947,6 +973,20 @@ const AppContent: React.FC = () => {
   };
   const handleUpdateFuturePurchase = (data: FuturePurchase) => addOrUpdateRecord('future_purchases', data, setFuturePurchases, (a: FuturePurchase,b: FuturePurchase) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(), true);
   const handleDeleteFuturePurchase = (id: string) => { if (window.confirm('Excluir esta compra futura?')) deleteRecord('future_purchases', id, setFuturePurchases); };
+  
+  const handleInitiateTransactionFromFuturePurchase = (purchase: FuturePurchase) => {
+    if (!user || !activeUserProfile) return;
+    const prefillData: Partial<Transaction> = {
+        type: TransactionType.EXPENSE,
+        amount: purchase.estimated_cost,
+        description: `Compra: ${purchase.name}`,
+        date: getISODateString(),
+        // category_id and account_id will be selected by user in the form
+    };
+    setEditingTransaction(prefillData); // Use existing state, no need for a new one
+    setIsTransactionModalOpen(true);
+  };
+
   const handleAnalyzeFuturePurchase = async (purchaseId: string) => {
     if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') {
       addToast("AI Coach desativado ou API Key não configurada.", 'warning'); return;
@@ -1193,7 +1233,7 @@ const AppContent: React.FC = () => {
         {activeView === 'CATEGORIES' && <CategoriesView categories={categories} transactions={transactions} aiConfig={aiConfig} onAddCategory={handleAddCategory} onUpdateCategory={handleUpdateCategory} onDeleteCategory={handleDeleteCategory} onSuggestBudget={handleSuggestBudgetForCategory} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'CREDIT_CARDS' && <CreditCardsView creditCards={creditCards} installmentPurchases={installmentPurchases} aiConfig={aiConfig} onAddCreditCard={handleAddCreditCard} onUpdateCreditCard={handleUpdateCreditCard} onDeleteCreditCard={handleDeleteCreditCard} onAddInstallmentPurchase={handleAddInstallmentPurchase} onUpdateInstallmentPurchase={handleUpdateInstallmentPurchase} onDeleteInstallmentPurchase={handleDeleteInstallmentPurchase} onMarkInstallmentPaid={handleMarkInstallmentPaid} onPayMonthlyInstallments={handlePayMonthlyInstallments} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'MONEY_BOXES' && <MoneyBoxesView moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions} accounts={accounts} onAddMoneyBox={handleAddMoneyBox} onUpdateMoneyBox={handleUpdateMoneyBox} onDeleteMoneyBox={handleDeleteMoneyBox} onAddMoneyBoxTransaction={handleAddMoneyBoxTransaction} onDeleteMoneyBoxTransaction={handleDeleteMoneyBoxTransaction} calculateMoneyBoxBalance={calculateMoneyBoxBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'FUTURE_PURCHASES' && <FuturePurchasesView futurePurchases={futurePurchases} onAddFuturePurchase={handleAddFuturePurchase} onUpdateFuturePurchase={handleUpdateFuturePurchase} onDeleteFuturePurchase={handleDeleteFuturePurchase} onAnalyzeFuturePurchase={handleAnalyzeFuturePurchase} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+        {activeView === 'FUTURE_PURCHASES' && <FuturePurchasesView futurePurchases={futurePurchases} onAddFuturePurchase={handleAddFuturePurchase} onUpdateFuturePurchase={handleUpdateFuturePurchase} onDeleteFuturePurchase={handleDeleteFuturePurchase} onAnalyzeFuturePurchase={handleAnalyzeFuturePurchase} onInitiateTransaction={handleInitiateTransactionFromFuturePurchase} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'TAGS' && <TagsView tags={tags} transactions={transactions} onAddTag={handleAddTag} onUpdateTag={handleUpdateTag} onDeleteTag={handleDeleteTag} />}
         {activeView === 'RECURRING_TRANSACTIONS' && <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} creditCards={creditCards} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'LOANS' && <LoansView loans={loans} loanRepayments={loanRepayments} accounts={accounts} creditCards={creditCards} onAddLoan={handleAddLoan} onUpdateLoan={handleUpdateLoan} onDeleteLoan={handleDeleteLoan} onAddLoanRepayment={handleAddLoanRepayment} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
@@ -1203,15 +1243,15 @@ const AppContent: React.FC = () => {
       </main>
 
       {isTransactionModalOpen && (
-        <Modal isOpen={isTransactionModalOpen} onClose={() => setIsTransactionModalOpen(false)} title={editingTransaction ? 'Editar Transação' : 'Nova Transação'} size="lg">
+        <Modal isOpen={isTransactionModalOpen} onClose={() => { setIsTransactionModalOpen(false); setEditingTransaction(null);}} title={editingTransaction && 'id' in editingTransaction ? 'Editar Transação' : 'Nova Transação'} size="lg">
           <TransactionForm
-            onSubmit={editingTransaction ? handleUpdateTransaction : handleAddTransaction}
-            onCancel={() => setIsTransactionModalOpen(false)}
+            onSubmit={editingTransaction && 'id' in editingTransaction ? handleUpdateTransaction : handleAddTransaction}
+            onCancel={() => { setIsTransactionModalOpen(false); setEditingTransaction(null); }}
             accounts={accounts}
             creditCards={creditCards}
             categories={categories}
             tags={tags}
-            initialTransaction={editingTransaction}
+            initialTransaction={editingTransaction as Transaction | null} // Cast because prefill data is Partial<Transaction>
             isPrivacyModeEnabled={isPrivacyModeEnabled}
           />
         </Modal>

@@ -15,7 +15,8 @@ interface FuturePurchasesViewProps {
   onUpdateFuturePurchase: (purchase: Omit<FuturePurchase, 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'status' | 'ai_analysis' | 'ai_analyzed_at'> & { id: string }) => void;
   onDeleteFuturePurchase: (purchaseId: string) => void;
   onAnalyzeFuturePurchase: (purchaseId: string) => void;
-  isPrivacyModeEnabled?: boolean; // New prop
+  onInitiateTransaction: (purchase: FuturePurchase) => void; // New prop
+  isPrivacyModeEnabled?: boolean; 
 }
 
 const priorityFilterOptions: { value: string; label: string }[] = [
@@ -41,6 +42,7 @@ const FuturePurchasesView: React.FC<FuturePurchasesViewProps> = ({
   onUpdateFuturePurchase,
   onDeleteFuturePurchase,
   onAnalyzeFuturePurchase,
+  onInitiateTransaction, // Destructure new prop
   isPrivacyModeEnabled,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -124,6 +126,7 @@ const FuturePurchasesView: React.FC<FuturePurchasesViewProps> = ({
               onEdit={openModalForEdit}
               onDelete={onDeleteFuturePurchase}
               onAnalyze={onAnalyzeFuturePurchase}
+              onInitiateTransaction={onInitiateTransaction} // Pass new prop
               isPrivacyModeEnabled={isPrivacyModeEnabled}
             />
           ))}

@@ -1,8 +1,9 @@
+
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
 import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
-const GEMINI_API_KEY_FROM_ENV = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY;
 
 let ai: GoogleGenAI | null = null;
 
@@ -14,7 +15,7 @@ if (GEMINI_API_KEY_FROM_ENV) {
     ai = null; 
   }
 } else {
-  console.warn("Gemini API Key (import.meta.env.VITE_GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
+  console.warn("Gemini API Key (process.env.GEMINI_API_KEY) is not set. AI Coach features will be disabled.");
 }
 
 export const isGeminiApiKeyAvailable = (): boolean => {
@@ -949,12 +950,3 @@ export const calculateNextDueDate = (currentDueDate: string, frequency: Recurrin
   }
   return getISODateString(date);
 };
-
-declare global {
-  interface ImportMeta {
-    env: {
-      VITE_GEMINI_API_KEY?: string;
-      [key: string]: any;
-    };
-  }
-}

@@ -7,13 +7,15 @@ import EditIcon from './icons/EditIcon';
 import TrashIcon from './icons/TrashIcon';
 import LightBulbIcon from './icons/LightBulbIcon'; 
 import ShoppingCartIcon from './icons/ShoppingCartIcon';
+import CheckBadgeIcon from './icons/CheckBadgeIcon'; // Import the new icon
 
 interface FuturePurchaseItemProps {
   purchase: FuturePurchase;
   onEdit: (purchase: FuturePurchase) => void;
   onDelete: (purchaseId: string) => void;
   onAnalyze: (purchaseId: string) => void;
-  isPrivacyModeEnabled?: boolean; // New prop
+  onInitiateTransaction: (purchase: FuturePurchase) => void; // New prop for "Comprar Item"
+  isPrivacyModeEnabled?: boolean; 
 }
 
 const getStatusInfo = (status: FuturePurchaseStatus): { text: string; colorClasses: string; icon?: JSX.Element } => {
@@ -40,7 +42,7 @@ const priorityText: Record<FuturePurchasePriority, string> = {
 };
 
 const FuturePurchaseItem: React.FC<FuturePurchaseItemProps> = ({ 
-  purchase, onEdit, onDelete, onAnalyze, isPrivacyModeEnabled 
+  purchase, onEdit, onDelete, onAnalyze, onInitiateTransaction, isPrivacyModeEnabled 
 }) => {
   const { name, estimated_cost, priority, notes, status, created_at, ai_analysis, ai_analyzed_at } = purchase;
   const statusInfo = getStatusInfo(status);
@@ -90,16 +92,26 @@ const FuturePurchaseItem: React.FC<FuturePurchaseItemProps> = ({
         </div>
       )}
       
-      <div className="pt-2 border-t border-borderBase/30 dark:border-borderBaseDark/30 mt-auto">
+      <div className="pt-2 border-t border-borderBase/30 dark:border-borderBaseDark/30 mt-auto flex flex-wrap gap-2">
         <Button 
             variant="secondary" 
             size="sm" 
             onClick={() => onAnalyze(purchase.id)} 
             disabled={status === 'AI_ANALYZING'}
-            className="w-full sm:w-auto"
+            className="flex-1 min-w-[140px]"
         >
           <LightBulbIcon className="w-4 h-4 mr-1.5" />
           {status === 'AI_ANALYZING' ? 'Analisando...' : 'Analisar com IA'}
+        </Button>
+        <Button
+            variant="primary"
+            size="sm"
+            onClick={() => onInitiateTransaction(purchase)}
+            className="flex-1 min-w-[140px]"
+            title={`Registrar compra de ${name}`}
+        >
+            <CheckBadgeIcon className="w-4 h-4 mr-1.5" /> 
+            Comprar Item
         </Button>
       </div>
     </li>
