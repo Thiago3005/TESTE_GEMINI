@@ -73,13 +73,11 @@ const AppContent: React.FC = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + import.meta.env.BASE_URL, 
+          redirectTo: window.location.href, 
         },
       });
       if (error) throw error;
       // Supabase handles the redirect. onAuthStateChange will pick up the new session.
-      // setAuthProcessIsLoading(false) is not strictly needed here due to redirect, 
-      // but good practice if error occurs before redirect.
     } catch (error: any) {
       console.error("Error signing in with Google:", error);
       const message = error.message || "Falha ao fazer login com Google.";
@@ -133,7 +131,7 @@ const AppContent: React.FC = () => {
         email, 
         password,
         options: {
-           emailRedirectTo: window.location.origin + import.meta.env.BASE_URL 
+           emailRedirectTo: window.location.href 
         }
       });
       if (error) throw error;
@@ -165,11 +163,9 @@ const AppContent: React.FC = () => {
     }
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + import.meta.env.BASE_URL, // User will be redirected here after clicking the link
+        redirectTo: window.location.href, 
       });
       if (error) throw error;
-      // Toast will be shown by onAuthStateChange listener for 'PASSWORD_RECOVERY'
-      // addToast("Instruções de recuperação de senha enviadas para seu e-mail.", 'info');
     } catch (error: any) {
       console.error("Error on forgot password:", error);
       const message = error.message || "Falha ao enviar e-mail de recuperação.";
