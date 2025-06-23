@@ -73,7 +73,7 @@ const AppContent: React.FC = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin, 
+          redirectTo: window.location.origin + import.meta.env.BASE_URL, 
         },
       });
       if (error) throw error;
@@ -133,7 +133,7 @@ const AppContent: React.FC = () => {
         email, 
         password,
         options: {
-          // emailRedirectTo: `${window.location.origin}/welcome` // Optional: if you have a welcome page
+           emailRedirectTo: window.location.origin + import.meta.env.BASE_URL 
         }
       });
       if (error) throw error;
@@ -165,7 +165,7 @@ const AppContent: React.FC = () => {
     }
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}`, // User will be redirected here after clicking the link
+        redirectTo: window.location.origin + import.meta.env.BASE_URL, // User will be redirected here after clicking the link
       });
       if (error) throw error;
       // Toast will be shown by onAuthStateChange listener for 'PASSWORD_RECOVERY'
