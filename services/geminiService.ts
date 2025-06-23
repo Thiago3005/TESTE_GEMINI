@@ -1,5 +1,4 @@
-
-import { GoogleGenAI, GenerateContentResponse, Chat } from "../google-genai-shim"; // Changed import
+import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
 import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
@@ -528,12 +527,12 @@ const safeGenerateContent = async (
     insightTypeForError: AIInsightType, 
     relatedId?: string 
 ): Promise<string | null> => {
-    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
-        console.warn(`Gemini API or ai.models not available for ${insightTypeForError}.`);
+    if (!ai || !isGeminiApiKeyAvailable() || !ai.models) {
+        console.warn(`Gemini API not available for ${insightTypeForError}.`);
         return null; 
     }
     try {
-        const response: GenerateContentResponse = await ai.models.generateContent({
+        const response: GenerateContentResponse = await ai.models!.generateContent({
             model: "gemini-2.5-flash-preview-04-17",
             contents: prompt,
         });
@@ -560,7 +559,7 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omi
   }
   const prompt = constructPromptForGeneralAdvice(context);
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models!.generateContent({
         model: "gemini-2.5-flash-preview-04-17",
         contents: prompt,
     });
@@ -609,7 +608,7 @@ export const fetchCommentForTransaction = async (transaction: Transaction, conte
   }
   const prompt = constructPromptForTransactionComment(transaction, context, categoryName, accountName);
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models!.generateContent({
         model: "gemini-2.5-flash-preview-04-17",
         contents: prompt,
     });
@@ -675,7 +674,7 @@ export const fetchBudgetSuggestion = async (
 
     const prompt = constructPromptForBudgetSuggestion(categoryName, monthlyIncome, existingBudgets, context);
     try {
-        const response: GenerateContentResponse = await ai.models.generateContent({
+        const response: GenerateContentResponse = await ai.models!.generateContent({
             model: "gemini-2.5-flash-preview-04-17",
             contents: prompt,
             config: { responseMimeType: "application/json" }
@@ -728,7 +727,7 @@ export const fetchFuturePurchaseAnalysis = async (
 
   const prompt = constructPromptForFuturePurchaseAnalysis(purchase, context);
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models!.generateContent({
         model: "gemini-2.5-flash-preview-04-17",
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -783,7 +782,7 @@ export const fetchBestPurchaseDayAdvice = async (
 
   const prompt = constructPromptForBestPurchaseDay(card, currentDateISO);
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models!.generateContent({
         model: "gemini-2.5-flash-preview-04-17",
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -1025,7 +1024,7 @@ export const fetchSafeToSpendTodayAdvice = async (
 
   const prompt = constructPromptForSafeToSpendToday(context);
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models!.generateContent({
         model: "gemini-2.5-flash-preview-04-17",
         contents: prompt,
         config: { responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } }
