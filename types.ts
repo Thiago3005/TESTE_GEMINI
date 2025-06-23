@@ -255,6 +255,13 @@ export interface DebtProjection {
   payoffDetails: DebtPayoffDetail[];
 }
 
+export interface SimulatedTransactionForProjection {
+  description?: string;
+  amount: number;
+  type: TransactionType;
+  date: string;
+}
+
 
 export type AppView =
   | 'LOGIN'

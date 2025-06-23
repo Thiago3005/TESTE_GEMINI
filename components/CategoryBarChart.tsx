@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { Transaction, TransactionType, ChartData } from '../types';
@@ -83,7 +84,6 @@ const DailySummaryBarChart: React.FC<DailySummaryBarChartProps> = ({ transaction
            />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(128, 128, 128, 0.1)' }}/>
           <Legend 
-            payload={[{ value: type === TransactionType.INCOME ? 'Receitas' : 'Despesas', type: 'square', color: barColor }]}
             formatter={(value) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} 
           />
           <Bar dataKey="value" name={type === TransactionType.INCOME ? "Receitas" : "Despesas"} fill={barColor} radius={[4, 4, 0, 0]} />

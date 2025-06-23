@@ -12,9 +12,9 @@ import {
   AIConfig, AIInsight, AIInsightType,
   FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile,
   Debt, DebtPayment, DebtStrategy, DebtProjection, AuthModalType,
-  MoneyBoxRelatedTransactionData // Added
+  MoneyBoxRelatedTransactionData, SimulatedTransactionForProjection // Added SimulatedTransactionForProjection
 } from './types';
-import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts } from './constants';
+import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts, TRANSACTION_TYPE_OPTIONS } from './constants'; // Added TRANSACTION_TYPE_OPTIONS
 import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency, getEligibleInstallmentsForBillingCycle } from './utils/helpers';
 
 
@@ -67,7 +67,7 @@ import HeartIcon from './components/icons/HeartIcon';
 
 // Services
 import * as geminiService from './services/geminiService';
-import type { FinancialContext, SimulatedTransactionData } from './services/geminiService';
+import type { FinancialContext } from './services/geminiService'; // Removed SimulatedTransactionData as it's now in types.ts
 import { GoogleGenAI, GenerateContentResponse, Chat } from "./google-genai-shim";
 
 
@@ -555,7 +555,7 @@ const AppContent: React.FC = () => {
     }, 0);
   }, [moneyBoxTransactions, user, activeUserProfile]);
   
-  const generateFinancialContext = useCallback((simulatedTx?: SimulatedTransactionData): FinancialContext | null => {
+  const generateFinancialContext = useCallback((simulatedTx?: SimulatedTransactionForProjection): FinancialContext | null => {
     if (!user || !activeUserProfile) return null;
     const currentDateObj = new Date();
     const currentDate = getISODateString(currentDateObj);
@@ -642,7 +642,7 @@ const AppContent: React.FC = () => {
             return sortFn ? newItems.sort(sortFn) : newItems;
         });
         // Toast for MoneyBoxTransaction is handled specifically where it's called.
-        if (table !== 'money_box_transactions') {
+        if (table !== 'money_box_transactions' && table !== 'ai_insights') { // Also exclude ai_insights from generic toast
              addToast(`${isUpdate ? 'Atualizado' : 'Adicionado'} com sucesso!`, 'success');
         }
         return newRecord;
@@ -700,15 +700,7 @@ const AppContent: React.FC = () => {
                 description: `Movimentação de ${mainTransaction.type === TransactionType.INCOME ? 'entrada' : 'saída'} via formulário: ${mainTransaction.description || categories.find(c=>c.id === mainTransaction.category_id)?.name || ''}`,
                 linked_transaction_id: mainTransaction.id,
             };
-            // Here we might want to update an existing MoneyBoxTransaction if editing.
-            // For simplicity now, we'll always add a new one. A more robust edit would find and update or delete/recreate.
-            // This simplification means editing a MB-linked transaction from main form might create duplicate MBTs if not handled carefully or if user edits multiple times.
-            // For now, we'll add. If an existingMainTxId was present, this might be an update scenario for the MBT too.
-            // Let's assume for now, if it's an update of main TX, we don't try to update MBT, only create new if it was a *new* MB link.
-            // This part needs more thought for robust editing of MB-linked transactions.
-            // Current simplified approach: if it's a moneybox transaction, it creates the main and the MBT. Editing this "compound" transaction is not fully supported through this handler yet.
-            // We will assume MoneyBoxRelatedTransactionData only comes for NEW additions for now to avoid MBT duplication on edit.
-            if (!existingMainTxId) { // Only create new MBT if it's a new main transaction
+            if (!existingMainTxId) { 
                  await addOrUpdateRecord<MoneyBoxTransaction>(
                     'money_box_transactions',
                     mbtData,
@@ -743,13 +735,10 @@ const AppContent: React.FC = () => {
         const isAlreadyInstallment = installmentPurchases.some(ip => ip.linked_transaction_id === mainTransaction!.id);
 
         if (isCreditCardSource && mainTransaction!.type === TransactionType.EXPENSE && !isAlreadyInstallment && !('isMoneyBoxTransaction' in data && data.isMoneyBoxTransaction)) {
-            // Check if it's an update where the account_id might have changed from non-card to card
-            // Or if it's a new transaction.
-            // We should only create a 1-installment purchase if it's a new direct debit on card.
             const originalTransaction = isUpdate ? transactions.find(t => t.id === mainTransaction!.id) : null;
             const becameCardDebit = isUpdate && originalTransaction && !creditCards.some(cc => cc.id === originalTransaction.account_id) && isCreditCardSource;
 
-            if (!isUpdate || becameCardDebit) { // Create for new transactions or if it just became a card debit
+            if (!isUpdate || becameCardDebit) { 
                 const installmentPurchaseData: Omit<InstallmentPurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
                     credit_card_id: mainTransaction!.account_id,
                     description: `Débito Direto: ${mainTransaction!.description || categories.find(c=>c.id === mainTransaction!.category_id)?.name || 'Despesa no Cartão'}`,
@@ -759,7 +748,7 @@ const AppContent: React.FC = () => {
                     installments_paid: 0, 
                     linked_transaction_id: mainTransaction!.id,
                 };
-                await handleAddInstallmentPurchase(installmentPurchaseData, false); // false for showToast
+                await handleAddInstallmentPurchase(installmentPurchaseData, false); 
             }
         }
     }
@@ -925,7 +914,6 @@ const AppContent: React.FC = () => {
             description: `Recorrência: ${rt.description}`, date: rt.next_due_date,
             account_id: rt.account_id, to_account_id: rt.to_account_id,
         };
-        // Use handleAddOrUpdateTransaction for consistency, though it's always add here.
         await handleAddOrUpdateTransaction(transactionData); 
 
         const updatedRTData = {
@@ -999,25 +987,60 @@ const AppContent: React.FC = () => {
   };
 
   // AI Insight Handlers
-  const handleAddAIInsight = async (insightData: Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'isLoading'>, showToastMsg: boolean = false) => {
+  const handleAddAIInsight = async (insightData: Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'isLoading'>) => {
     const newInsight = await addOrUpdateRecord(
         'ai_insights', 
         insightData, 
         setAiInsights,
         (a: AIInsight,b: AIInsight) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-    if (newInsight && showToastMsg && newInsight.type !== 'error_message') {
-      addToast("Nova dica do AI Coach! Confira na aba AI Coach.", "info", 7000);
-    } else if (newInsight && newInsight.type === 'error_message') {
-      addToast(`AI Coach: ${newInsight.content}`, "warning", 7000);
+    if (newInsight) {
+      if (newInsight.type === 'error_message') {
+        addToast(`${newInsight.content}`, 'error', 7000);
+      } else {
+        addToast(`${newInsight.content}`, 'info', 7000);
+      }
     }
     return newInsight;
+  };
+  const handleDeleteAllAIInsights = async () => {
+    if (!user || !activeUserProfile) {
+        addToast("Usuário não autenticado.", 'error');
+        return;
+    }
+    if (!window.confirm("Tem certeza que deseja limpar TODO o histórico de insights do AI Coach? Esta ação não pode ser desfeita.")) {
+        return;
+    }
+    try {
+        const { error } = await supabase
+            .from('ai_insights')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('profile_id', activeUserProfile.id);
+
+        if (error) throw error;
+
+        setAiInsights([]);
+        addToast("Histórico de insights do AI Coach foi limpo.", 'success');
+    } catch (error: any) {
+        addToast(`Erro ao limpar histórico de insights: ${error.message}`, 'error');
+        console.error("Error deleting all AI insights:", error);
+    }
   };
 
   const handleUpdateAIInsight = (updatedInsight: AIInsight) => {
     addOrUpdateRecord('ai_insights', {...updatedInsight, isLoading: undefined}, setAiInsights, (a: AIInsight,b: AIInsight) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(), true);
   };
   
+  const handleFetchGeneralAdvice = async () => {
+    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
+    const context = generateFinancialContext();
+    if (context) {
+        const insight = await geminiService.fetchGeneralAdvice(context);
+        if (insight) handleAddAIInsight(insight);
+    }
+  };
+
   const handleGenerateCommentForTransaction = async (transaction: Transaction) => {
     if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
     const context = generateFinancialContext();
@@ -1025,7 +1048,7 @@ const AppContent: React.FC = () => {
     const account = accounts.find(a => a.id === transaction.account_id);
     const category = categories.find(c => c.id === transaction.category_id);
     const insightData = await geminiService.fetchCommentForTransaction(transaction, context, category?.name, account?.name);
-    if (insightData) handleAddAIInsight(insightData, true);
+    if (insightData) handleAddAIInsight(insightData);
   };
 
   const handleSuggestBudgetForCategory = async (categoryName: string, currentBudgets: {name: string, budget?: number}[]): Promise<number | null> => {
@@ -1041,7 +1064,7 @@ const AppContent: React.FC = () => {
       addToast(`AI Coach sugeriu um orçamento de ${formatCurrency(result.suggestedBudget)} para ${categoryName}.`, 'info');
       return result.suggestedBudget;
     } else if (result) { 
-        handleAddAIInsight(result as Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>, true);
+        handleAddAIInsight(result as Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>);
     }
     return null;
   };
@@ -1057,7 +1080,7 @@ const AppContent: React.FC = () => {
     const recentCategoryTxs = transactions.filter(t => t.category_id === category.id && t.type === TransactionType.EXPENSE && t.id !== transaction.id).slice(0,20);
     if (recentCategoryTxs.length > 3) { 
         const unusualTxInsight = await geminiService.fetchUnusualTransactionInsight(transaction, category.name, recentCategoryTxs, context);
-        if(unusualTxInsight) handleAddAIInsight(unusualTxInsight, true);
+        if(unusualTxInsight) handleAddAIInsight(unusualTxInsight);
     }
     
     if (category.monthly_budget && category.monthly_budget > 0) {
@@ -1075,21 +1098,24 @@ const AppContent: React.FC = () => {
 
         if (monthlySpending > proRataBudget * 1.2) { 
             const anomalyInsight = await geminiService.fetchSpendingAnomalyInsight(category.name, monthlySpending, proRataBudget, category.monthly_budget, context, category.id);
-            if(anomalyInsight) handleAddAIInsight(anomalyInsight, true);
+            if(anomalyInsight) handleAddAIInsight(anomalyInsight);
         }
         if (projectedSpend > category.monthly_budget * 1.05) { 
             const projectionInsight = await geminiService.fetchBudgetOverspendProjectionInsight(category.name, monthlySpending, category.monthly_budget, daysRemaining, projectedSpend, context, category.id);
-            if(projectionInsight) handleAddAIInsight(projectionInsight, true);
+            if(projectionInsight) handleAddAIInsight(projectionInsight);
         }
     }
   };
   
   const handleFetchRecurringPaymentCandidates = async () => {
-    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
+    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') {
+        addToast("AI Coach desativado ou API Key não configurada.", 'warning');
+        return;
+    }
     const context = generateFinancialContext();
     if(!context) return;
     const insightData = await geminiService.fetchRecurringPaymentCandidateInsight(transactions, recurringTransactions, context);
-    if(insightData) handleAddAIInsight(insightData, true); else addToast("Nenhum candidato óbvio para recorrência encontrado pela IA.", "info");
+    if(insightData) handleAddAIInsight(insightData); else addToast("Nenhum candidato óbvio para recorrência encontrado pela IA.", "info");
   };
   
   const handleFetchSavingOpportunities = async () => {
@@ -1097,10 +1123,10 @@ const AppContent: React.FC = () => {
     const context = generateFinancialContext();
     if(!context) return;
     const insightData = await geminiService.fetchSavingOpportunityInsight(transactions, categories, moneyBoxes, context);
-    if(insightData) handleAddAIInsight(insightData, true); else addToast("Nenhuma oportunidade clara de economia encontrada pela IA no momento.", "info");
+    if(insightData) handleAddAIInsight(insightData); else addToast("Nenhuma oportunidade clara de economia encontrada pela IA no momento.", "info");
   };
   
-  const handleFetchCashFlowProjection = async (projectionPeriodDays: number = 30, simulatedTransaction?: SimulatedTransactionData) => {
+  const handleFetchCashFlowProjection = async (projectionPeriodDays: number = 30, simulatedTransaction?: SimulatedTransactionForProjection) => {
     if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') {
         addToast("AI Coach desativado ou API Key não configurada.", 'warning');
         return;
@@ -1113,7 +1139,7 @@ const AppContent: React.FC = () => {
     
     const insightData = await geminiService.fetchCashFlowProjectionInsight(context, projectionPeriodDays);
     if (insightData) {
-        handleAddAIInsight(insightData, true);
+        handleAddAIInsight(insightData);
     } else {
         addToast("Erro ao gerar projeção de fluxo de caixa.", 'error');
     }
@@ -1169,10 +1195,10 @@ const AppContent: React.FC = () => {
         handleAddAIInsight({
             timestamp: new Date().toISOString(), type: 'future_purchase_advice',
             content: insightContent, related_future_purchase_id: purchase.id, is_read: false,
-        }, true);
+        });
 
     } else if (result) { 
-        handleAddAIInsight(result as Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>, true);
+        handleAddAIInsight(result as Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>);
         setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? {...p, status: originalStatus, ai_analysis: (result as any).content || 'Erro na análise.'} : p));
     } else {
          setFuturePurchases(prev => prev.map(p => p.id === purchaseId ? {...p, status: originalStatus, ai_analysis: 'Falha ao obter análise da IA.'} : p));
@@ -1246,7 +1272,7 @@ const AppContent: React.FC = () => {
         addToast("AI Coach desativado ou API Key não configurada.", 'warning'); return;
     }
     const insight = await geminiService.fetchDebtStrategyExplanation(strategy);
-    if (insight) handleAddAIInsight(insight, true);
+    if (insight) handleAddAIInsight(insight);
   };
   
   const handleFetchDebtProjectionSummary = async (projection: DebtProjection, debtsForSummary: Debt[], strategy: DebtStrategy) => {
@@ -1257,7 +1283,7 @@ const AppContent: React.FC = () => {
       if (!context) { addToast("Contexto financeiro não disponível para resumo.", 'error'); return; }
 
       const insight = await geminiService.fetchDebtProjectionSummary(projection, debtsForSummary, context);
-      if (insight) handleAddAIInsight(insight, true);
+      if (insight) handleAddAIInsight(insight);
   };
 
 
@@ -1424,8 +1450,8 @@ const AppContent: React.FC = () => {
       </aside>
 
       <main className="flex-1 ml-64 overflow-y-auto bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark">
-        {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+        {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} />}
+        {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}
         {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'ACCOUNTS' && <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'CATEGORIES' && <CategoriesView categories={categories} transactions={transactions} aiConfig={aiConfig} onAddCategory={handleAddCategory} onUpdateCategory={handleUpdateCategory} onDeleteCategory={handleDeleteCategory} onSuggestBudget={handleSuggestBudgetForCategory} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
@@ -1433,10 +1459,10 @@ const AppContent: React.FC = () => {
         {activeView === 'MONEY_BOXES' && <MoneyBoxesView moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions} accounts={accounts} onAddMoneyBox={handleAddMoneyBox} onUpdateMoneyBox={handleUpdateMoneyBox} onDeleteMoneyBox={handleDeleteMoneyBox} onAddMoneyBoxTransaction={handleAddMoneyBoxTransaction} onDeleteMoneyBoxTransaction={handleDeleteMoneyBoxTransaction} calculateMoneyBoxBalance={calculateMoneyBoxBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'FUTURE_PURCHASES' && <FuturePurchasesView futurePurchases={futurePurchases} onAddFuturePurchase={handleAddFuturePurchase} onUpdateFuturePurchase={handleUpdateFuturePurchase} onDeleteFuturePurchase={handleDeleteFuturePurchase} onAnalyzeFuturePurchase={handleAnalyzeFuturePurchase} onInitiateTransaction={handleInitiateTransactionFromFuturePurchase} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'TAGS' && <TagsView tags={tags} transactions={transactions} onAddTag={handleAddTag} onUpdateTag={handleUpdateTag} onDeleteTag={handleDeleteTag} />}
-        {activeView === 'RECURRING_TRANSACTIONS' && <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} creditCards={creditCards} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+        {activeView === 'RECURRING_TRANSACTIONS' && <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} creditCards={creditCards} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates}/>}
         {activeView === 'LOANS' && <LoansView loans={loans} loanRepayments={loanRepayments} accounts={accounts} creditCards={creditCards} onAddLoan={handleAddLoan} onUpdateLoan={handleUpdateLoan} onDeleteLoan={handleDeleteLoan} onAddLoanRepayment={handleAddLoanRepayment} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'DEBT_PLANNER' && <DebtPlannerView debts={debts} debtPayments={debtPayments} accounts={accounts} onAddDebt={handleAddDebt} onUpdateDebt={handleUpdateDebt} onDeleteDebt={handleDeleteDebt} onAddDebtPayment={handleAddDebtPayment} onFetchDebtStrategyExplanation={handleFetchDebtStrategyExplanation} onFetchDebtProjectionSummary={handleFetchDebtProjectionSummary} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'AI_COACH' && <AICoachView aiConfig={aiConfig} setAiConfig={updateAiConfig} insights={aiInsights} onFetchGeneralAdvice={() => {const ctx=generateFinancialContext(); if(ctx) geminiService.fetchGeneralAdvice(ctx).then(res => res && handleAddAIInsight(res,true))}} onUpdateInsight={handleUpdateAIInsight} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates} onFetchSavingOpportunities={handleFetchSavingOpportunities} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}
+        {activeView === 'AI_COACH' && <AICoachView aiConfig={aiConfig} setAiConfig={updateAiConfig} insights={aiInsights} onUpdateInsight={handleUpdateAIInsight} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchSavingOpportunities={handleFetchSavingOpportunities} onDeleteAllInsights={handleDeleteAllAIInsights}/>}
         {activeView === 'AJUDE_PROJETO' && <AjudeProjetoView />}
       </main>
 

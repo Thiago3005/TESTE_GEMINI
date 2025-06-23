@@ -1,53 +1,127 @@
 
 import React from 'react';
-import { useState, ChangeEvent } from 'react';
-import { AIConfig, AIInsight, AIInsightType, TransactionType } from '../types';
-import Button from './Button';
-import Input from './Input';
+import { useState, useMemo, useCallback, ChangeEvent } from 'react';
+import { Transaction, Account, Category, TransactionType, SimulatedTransactionForProjection } from '../types';
+import { TRANSACTION_TYPE_OPTIONS } from '../constants'; // For simulation form
+import { formatCurrency, getISODateString, formatDate } from '../utils/helpers';
 import Select from './Select';
-import { formatDate, formatCurrency, getISODateString } from '../utils/helpers';
-import ChatBubbleLeftRightIcon from './icons/ChatBubbleLeftRightIcon';
-import LightBulbIcon from './icons/LightBulbIcon';
-import ExclamationTriangleIcon from './icons/ExclamationTriangleIcon'; 
-import ArrowPathIcon from './icons/ArrowPathIcon'; 
-import SparklesIcon from './icons/SparklesIcon'; 
-import CalendarClockIcon from './icons/CalendarClockIcon';
-import { TRANSACTION_TYPE_OPTIONS } from '../constants'; // For simulation type
+import Input from './Input';
+import Button from './Button'; // Added Button for AI action
+import PresentationChartLineIcon from './icons/PresentationChartLineIcon';
+import CalendarClockIcon from './icons/CalendarClockIcon'; // For AI button
+import { LineChart, BarChart, PieChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar, Pie, Cell } from 'recharts';
 
-interface SimulatedTransactionForProjection {
-  description?: string;
-  amount: number;
-  type: TransactionType;
-  date: string;
-}
-
-interface AICoachViewProps {
-  aiConfig: AIConfig;
-  setAiConfig: (configUpdater: Partial<Omit<AIConfig, 'apiKeyStatus'>>) => void;
-  insights: AIInsight[];
-  onFetchGeneralAdvice: () => void;
-  onUpdateInsight: (insight: AIInsight) => void; 
+interface CashFlowViewProps {
+  transactions: Transaction[];
+  accounts: Account[];
+  categories: Category[]; // Keep for potential future use, though not directly used by charts now
   isPrivacyModeEnabled?: boolean;
-  onFetchRecurringPaymentCandidates: () => void; 
-  onFetchSavingOpportunities: () => void; 
-  onFetchCashFlowProjection: (projectionPeriodDays?: number, simulatedTransaction?: SimulatedTransactionForProjection) => void;
+  onFetchCashFlowProjection: (projectionPeriodDays?: number, simulatedTransaction?: SimulatedTransactionForProjection) => void; // New prop
 }
 
-const AICoachView: React.FC<AICoachViewProps> = ({
-  aiConfig,
-  setAiConfig,
-  insights,
-  onFetchGeneralAdvice,
-  onUpdateInsight,
-  isPrivacyModeEnabled,
-  onFetchRecurringPaymentCandidates, 
-  onFetchSavingOpportunities, 
-  onFetchCashFlowProjection,
-}) => {
-  const [monthlyIncomeInput, setMonthlyIncomeInput] = useState<string>(aiConfig.monthlyIncome?.toString() || '');
-  const [incomeEditMode, setIncomeEditMode] = useState(false);
+// Helper to calculate account balance up to a specific date
+const calculateBalanceAsOfDate = (
+  targetDate: string, // YYYY-MM-DD
+  initialAccounts: Account[],
+  allTransactions: Transaction[]
+): number => {
+  let totalBalance = initialAccounts.reduce((sum, acc) => sum + acc.initial_balance, 0);
 
-  // State for simulation
+  for (const transaction of allTransactions) {
+    if (transaction.date > targetDate) continue;
+
+    const isAccountRelevant = initialAccounts.some(acc => acc.id === transaction.account_id || acc.id === transaction.to_account_id);
+    if (!isAccountRelevant && transaction.type !== TransactionType.TRANSFER) continue; 
+
+    if (initialAccounts.some(acc => acc.id === transaction.account_id)) { 
+        if (transaction.type === TransactionType.INCOME) {
+            totalBalance += transaction.amount;
+        } else if (transaction.type === TransactionType.EXPENSE) {
+            totalBalance -= transaction.amount;
+        } else if (transaction.type === TransactionType.TRANSFER) {
+            if (!transaction.to_account_id || !initialAccounts.some(acc => acc.id === transaction.to_account_id)) {
+                 totalBalance -= transaction.amount;
+            }
+        }
+    }
+    
+    if (transaction.to_account_id && initialAccounts.some(acc => acc.id === transaction.to_account_id)) {
+        if (transaction.type === TransactionType.TRANSFER) {
+            if (!initialAccounts.some(acc => acc.id === transaction.account_id)) {
+                totalBalance += transaction.amount;
+            }
+        }
+    }
+  }
+  return totalBalance;
+};
+
+
+// Custom Tooltip for Line Chart
+const CustomLineTooltipContent: React.FC<any> = ({ active, payload, label, isPrivacyModeEnabled }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-surface dark:bg-surfaceDark p-3 border border-borderBase dark:border-borderBaseDark rounded-lg shadow-lg">
+        <p className="text-sm font-semibold text-textBase dark:text-textBaseDark">{`Data: ${label}`}</p>
+        <p className="text-sm text-blue-500 dark:text-blue-400">{`Saldo: ${formatCurrency(payload[0].value, 'BRL', 'pt-BR', isPrivacyModeEnabled)}`}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
+// Custom Tooltip for Bar Chart
+const CustomBarTooltipContent: React.FC<any> = ({ active, payload, label, isPrivacyModeEnabled }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-surface dark:bg-surfaceDark p-3 border border-borderBase dark:border-borderBaseDark rounded-lg shadow-lg">
+        <p className="text-sm font-semibold text-textBase dark:text-textBaseDark">{`Período: ${label}`}</p>
+        {payload.map((entry: any, index: number) => (
+          <p key={`item-${index}`} style={{ color: entry.color }} className="text-sm">
+            {`${entry.name}: ${formatCurrency(entry.value, 'BRL', 'pt-BR', isPrivacyModeEnabled)}`}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
+// Custom Tooltip for Pie Chart
+const CustomPieTooltipContent: React.FC<any> = ({ active, payload, isPrivacyModeEnabled }) => {
+  if (active && payload && payload.length) {
+    const name = payload[0].name;
+    const value = payload[0].value;
+    const percent = payload[0].payload.percent || (payload[0].payload.value / payload.reduce((s:number, p:any) => s + p.payload.value, 0));
+
+    return (
+      <div className="bg-surface dark:bg-surfaceDark p-3 border border-borderBase dark:border-borderBaseDark rounded-lg shadow-lg">
+        <p className="text-sm font-semibold" style={{ color: payload[0].payload.fill }}>
+          {`${name}: ${formatCurrency(value, 'BRL', 'pt-BR', isPrivacyModeEnabled)} (${(percent * 100).toFixed(1)}%)`}
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
+
+const CashFlowView: React.FC<CashFlowViewProps> = ({
+  transactions,
+  accounts,
+  categories,
+  isPrivacyModeEnabled,
+  onFetchCashFlowProjection, // Destructure new prop
+}) => {
+  const today = new Date();
+  const currentMonthStart = getISODateString(new Date(today.getFullYear(), today.getMonth(), 1));
+  const currentMonthEnd = getISODateString(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+
+  const [filterPeriod, setFilterPeriod] = useState<'current_month' | 'last_3_months' | 'current_year' | 'last_year' | 'custom'>('current_month');
+  const [customStartDate, setCustomStartDate] = useState(currentMonthStart);
+  const [customEndDate, setCustomEndDate] = useState(currentMonthEnd);
+
+  // State for simulation form (moved from AICoachView)
   const [simulatedDescription, setSimulatedDescription] = useState('');
   const [simulatedAmount, setSimulatedAmount] = useState('');
   const [simulatedType, setSimulatedType] = useState<TransactionType>(TransactionType.EXPENSE);
@@ -55,86 +129,139 @@ const AICoachView: React.FC<AICoachViewProps> = ({
   const [showSimulationForm, setShowSimulationForm] = useState(false);
 
 
-  const handleToggleAICoach = () => {
-    setAiConfig({ isEnabled: !aiConfig.isEnabled });
-  };
+  const { startDate, endDate } = useMemo(() => {
+    const now = new Date();
+    let startDt = new Date(now.getFullYear(), now.getMonth(), 1);
+    let endDt = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-  const handleSaveMonthlyIncome = () => {
-    const income = parseFloat(monthlyIncomeInput);
-    if (!isNaN(income) && income > 0) {
-      setAiConfig({ monthlyIncome: income });
-      setIncomeEditMode(false);
-    } else if (monthlyIncomeInput === '') {
-      setAiConfig({ monthlyIncome: null });
-      setIncomeEditMode(false);
-    } else {
-      alert("Por favor, insira um valor de renda válido ou deixe em branco.");
-    }
-  };
-
-  React.useEffect(() => {
-    setMonthlyIncomeInput(aiConfig.monthlyIncome?.toString() || '');
-  }, [aiConfig.monthlyIncome]);
-
-
-  const sortedInsights = [...insights].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  const renderInsightContent = (insight: AIInsight) => {
-    return <p className="text-textBase dark:text-textBaseDark whitespace-pre-wrap">{insight.content}</p>;
-  };
-
-  const getInsightDisplayInfo = (type: AIInsightType): { icon: JSX.Element; borderColorClass: string; bgColorClass: string } => {
-    switch(type) {
-      case 'budget_recommendation':
-      case 'saving_opportunity_suggestion':
-        return { 
-            icon: <LightBulbIcon className="w-5 h-5 mr-2 text-yellow-500 dark:text-yellow-400 flex-shrink-0" />,
-            borderColorClass: 'border-yellow-500 dark:border-yellow-400',
-            bgColorClass: 'bg-yellow-400/10 dark:bg-yellow-400/15'
-        };
-      case 'recurring_payment_candidate':
-        return {
-            icon: <ArrowPathIcon className="w-5 h-5 mr-2 text-teal-500 dark:text-teal-400 flex-shrink-0" />,
-            borderColorClass: 'border-teal-500 dark:border-teal-400',
-            bgColorClass: 'bg-teal-500/10 dark:bg-teal-400/15'
-        };
-      case 'cash_flow_projection':
-        return {
-            icon: <CalendarClockIcon className="w-5 h-5 mr-2 text-indigo-500 dark:text-indigo-400 flex-shrink-0" />,
-            borderColorClass: 'border-indigo-500 dark:border-indigo-400',
-            bgColorClass: 'bg-indigo-500/10 dark:bg-indigo-400/15'
-        };
-      case 'spending_anomaly_category':
-      case 'budget_overspend_projection':
-      case 'unusual_transaction_value':
-      case 'budget_warning': 
-        return {
-            icon: <ExclamationTriangleIcon className="w-5 h-5 mr-2 text-amber-600 dark:text-amber-500 flex-shrink-0" />,
-            borderColorClass: 'border-amber-600 dark:border-amber-500',
-            bgColorClass: 'bg-amber-600/10 dark:bg-amber-500/15'
-        };
-      case 'error_message':
-        return {
-            icon: <ExclamationTriangleIcon className="w-5 h-5 mr-2 text-destructive dark:text-destructiveDark flex-shrink-0" />,
-            borderColorClass: 'border-destructive dark:border-destructiveDark',
-            bgColorClass: 'bg-destructive/10 dark:bg-destructiveDark/15'
-        };
+    switch (filterPeriod) {
+      case 'last_3_months':
+        endDt = new Date(now.getFullYear(), now.getMonth() + 1, 0); 
+        startDt = new Date(now.getFullYear(), now.getMonth() -2, 1); 
+        break;
+      case 'current_year':
+        startDt = new Date(now.getFullYear(), 0, 1);
+        endDt = new Date(now.getFullYear(), 11, 31);
+        break;
+      case 'last_year':
+        startDt = new Date(now.getFullYear() - 1, 0, 1);
+        endDt = new Date(now.getFullYear() - 1, 11, 31);
+        break;
+      case 'custom':
+        return { startDate: customStartDate, endDate: customEndDate };
+      case 'current_month':
       default:
-        return {
-            icon: <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2 text-primary dark:text-primaryDark flex-shrink-0" />,
-            borderColorClass: 'border-primary dark:border-primaryDark',
-            bgColorClass: 'bg-primary/5 dark:bg-primaryDark/10'
-        };
+        break;
     }
-  }
-  
-  const handleMarkAsRead = (insight: AIInsight) => {
-    if (!insight.is_read) {
-        onUpdateInsight({...insight, is_read: true});
-    }
-  }
+    return { startDate: getISODateString(startDt), endDate: getISODateString(endDt) };
+  }, [filterPeriod, customStartDate, customEndDate]);
 
-  const handleGenerateCashFlowProjection = () => {
+  const periodTransactions = useMemo(() => {
+    return transactions.filter(t => t.date >= startDate && t.date <= endDate);
+  }, [transactions, startDate, endDate]);
+  
+  const kpis = useMemo(() => {
+      const dayBeforeStartDateObj = new Date(startDate + 'T00:00:00');
+      dayBeforeStartDateObj.setDate(dayBeforeStartDateObj.getDate() -1);
+      const dayBeforeStartDate = getISODateString(dayBeforeStartDateObj);
+      const initialBalance = calculateBalanceAsOfDate(dayBeforeStartDate, accounts, transactions);
+      
+      let totalIncome = 0;
+      let totalExpenses = 0;
+      periodTransactions.forEach(t => {
+        if (t.type === TransactionType.INCOME) totalIncome += t.amount;
+        else if (t.type === TransactionType.EXPENSE) totalExpenses += t.amount;
+      });
+      const netCashFlow = totalIncome - totalExpenses;
+      const finalBalance = initialBalance + netCashFlow;
+      return { initialBalance, totalIncome, totalExpenses, netCashFlow, finalBalance };
+  }, [startDate, periodTransactions, accounts, transactions]);
+
+  // Data for Cumulative Balance Line Chart
+  const cumulativeBalanceData = useMemo(() => {
+    if (!accounts.length) return [];
+    const daysInRange: string[] = [];
+    let current = new Date(startDate + 'T00:00:00'); 
+    const end = new Date(endDate + 'T00:00:00');
+    while (current <= end) {
+        daysInRange.push(getISODateString(current));
+        current.setDate(current.getDate() + 1);
+    }
+
+    return daysInRange.map(day => ({
+        date: formatDate(day, 'pt-BR', { day: '2-digit', month: 'short' }), 
+        fullDate: day, 
+        balance: calculateBalanceAsOfDate(day, accounts, transactions),
+    }));
+  }, [startDate, endDate, accounts, transactions]);
+
+  // Data for Income vs. Expense Bar Chart
+  const incomeExpenseBarData = useMemo(() => {
+    const diffTime = Math.abs(new Date(endDate).getTime() - new Date(startDate).getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
+    const groupByMonth = diffDays > 45;
+
+    const grouped: { [key: string]: { income: number; expense: number; label: string, sortKey: string } } = {};
+
+    periodTransactions.forEach(t => {
+      const periodKey = groupByMonth ? t.date.substring(0, 7) : t.date; 
+      const label = groupByMonth 
+        ? formatDate(periodKey + '-01T00:00:00', 'pt-BR', { month: 'short', year: '2-digit' }) 
+        : formatDate(periodKey + 'T00:00:00', 'pt-BR', { day: '2-digit', month: 'short' }); 
+
+      if (!grouped[periodKey]) {
+        grouped[periodKey] = { income: 0, expense: 0, label: label, sortKey: periodKey };
+      }
+      if (t.type === TransactionType.INCOME) grouped[periodKey].income += t.amount;
+      else if (t.type === TransactionType.EXPENSE) grouped[periodKey].expense += t.amount;
+    });
+
+    return Object.values(grouped).sort((a,b) => a.sortKey.localeCompare(b.sortKey));
+  }, [periodTransactions, startDate, endDate]);
+
+  // Data for Top Expense Categories Pie Chart
+  const PIE_CHART_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#A78BFA', '#F472B6', '#A3A3A3'];
+  const expenseByCategoryPieData = useMemo(() => {
+    const expenses = periodTransactions.filter(t => t.type === TransactionType.EXPENSE && t.category_id);
+    const grouped: { [key: string]: { name: string; value: number } } = {};
+
+    expenses.forEach(t => {
+      const category = categories.find(c => c.id === t.category_id);
+      const catName = category ? category.name : 'Outras Despesas';
+      if (!grouped[catName]) {
+        grouped[catName] = { name: catName, value: 0 };
+      }
+      grouped[catName].value += t.amount;
+    });
+    
+    let sortedData = Object.values(grouped).sort((a, b) => b.value - a.value);
+    
+    const MAX_SLICES = 6; 
+    if (sortedData.length > MAX_SLICES) { 
+        const topItems = sortedData.slice(0, MAX_SLICES -1);
+        const othersValue = sortedData.slice(MAX_SLICES -1).reduce((sum, item) => sum + item.value, 0);
+        if (othersValue > 0) {
+            return [...topItems, { name: 'Outras', value: othersValue }];
+        }
+        return topItems;
+    }
+    return sortedData;
+
+  }, [periodTransactions, categories]);
+
+  const periodOptions = [
+    { value: 'current_month', label: 'Este Mês' },
+    { value: 'last_3_months', label: 'Últimos 3 Meses' },
+    { value: 'current_year', label: 'Este Ano' },
+    { value: 'last_year', label: 'Ano Passado' },
+    { value: 'custom', label: 'Personalizado' },
+  ];
+  
+  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFilterPeriod(e.target.value as typeof filterPeriod);
+  };
+
+  const handleGenerateCashFlowProjectionClick = () => {
     let simTx: SimulatedTransactionForProjection | undefined = undefined;
     if (showSimulationForm && simulatedAmount && parseFloat(simulatedAmount) > 0 && simulatedDate) {
         simTx = {
@@ -147,180 +274,198 @@ const AICoachView: React.FC<AICoachViewProps> = ({
     onFetchCashFlowProjection(30, simTx);
   };
 
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center space-x-3">
-            <ChatBubbleLeftRightIcon className="w-8 h-8 text-primary dark:text-primaryDark" />
-            <h1 className="text-2xl font-bold text-textBase dark:text-textBaseDark">AI Coach Financeiro</h1>
+          <PresentationChartLineIcon className="w-8 h-8 text-primary dark:text-primaryDark" />
+          <h1 className="text-2xl font-bold text-textBase dark:text-textBaseDark">Fluxo de Caixa</h1>
         </div>
-        {aiConfig.apiKeyStatus !== 'unavailable' && (
-            <label className="flex items-center space-x-2 cursor-pointer">
-            <span className="text-sm font-medium text-textMuted dark:text-textMutedDark">
-                {aiConfig.isEnabled ? 'Coach Ativado' : 'Coach Desativado'}
-            </span>
-            <div className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${aiConfig.isEnabled ? 'bg-primary dark:bg-primaryDark' : 'bg-neutral/30 dark:bg-neutralDark/40'}`}>
-                <span
-                className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${aiConfig.isEnabled ? 'translate-x-6' : 'translate-x-1'}`}
-                />
-                <input
-                type="checkbox"
-                className="absolute opacity-0 w-0 h-0"
-                checked={aiConfig.isEnabled}
-                onChange={handleToggleAICoach}
-                />
-            </div>
-            </label>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-surface dark:bg-surfaceDark rounded-lg shadow dark:shadow-neutralDark/30">
+        <Select
+          label="Período"
+          options={periodOptions}
+          value={filterPeriod}
+          onChange={handleFilterChange}
+        />
+        {filterPeriod === 'custom' && (
+          <>
+            <Input
+              label="Data Inicial"
+              type="date"
+              value={customStartDate}
+              onChange={(e) => setCustomStartDate(e.target.value)}
+              max={customEndDate}
+            />
+            <Input
+              label="Data Final"
+              type="date"
+              value={customEndDate}
+              onChange={(e) => setCustomEndDate(e.target.value)}
+              min={customStartDate}
+            />
+          </>
         )}
       </div>
 
-      {aiConfig.apiKeyStatus === 'unavailable' && (
-        <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg relative" role="alert">
-          <strong className="font-bold">API Key Indisponível! </strong>
-          <span className="block sm:inline">A funcionalidade do AI Coach está desativada. A chave da API Gemini (process.env.GEMINI_API_KEY) não foi configurada no ambiente. Sem ela, o AI Coach não pode operar.</span>
-        </div>
-      )}
+      {/* AI Cash Flow Projection Section */}
+      <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+        <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-3">Previsão de Fluxo de Caixa com IA</h2>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => setShowSimulationForm(!showSimulationForm)}
+          className="mb-3 text-sm text-primary dark:text-primaryDark hover:underline"
+        >
+          {showSimulationForm ? 'Esconder Simulação Opcional' : 'Adicionar Simulação à Previsão (Opcional)'}
+        </Button>
 
-      {aiConfig.apiKeyStatus === 'error' && (
-        <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg relative" role="alert">
-          <strong className="font-bold">Erro na API! </strong>
-          <span className="block sm:inline">Ocorreu um erro ao tentar inicializar ou usar a API Gemini. Verifique o console para mais detalhes.</span>
-        </div>
-      )}
+        {showSimulationForm && (
+          <div className="space-y-3 p-3 mb-4 border border-dashed border-neutral/50 dark:border-neutralDark/50 rounded-md bg-background dark:bg-backgroundDark/30">
+            <h4 className="text-sm font-medium text-textMuted dark:text-textMutedDark">Simular Transação Futura</h4>
+            <Input label="Descrição (Opcional)" value={simulatedDescription} onChange={e => setSimulatedDescription(e.target.value)} placeholder="Ex: Bônus Inesperado, Compra de Presente" />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Input label="Valor Simulado" type="number" value={simulatedAmount} onChange={e => setSimulatedAmount(e.target.value)} placeholder="Ex: 500" />
+              <Select label="Tipo" options={TRANSACTION_TYPE_OPTIONS.filter(opt => opt.value !== TransactionType.TRANSFER)} value={simulatedType} onChange={(e: ChangeEvent<HTMLSelectElement>) => setSimulatedType(e.target.value as TransactionType)} />
+              <Input label="Data Simulado" type="date" value={simulatedDate} onChange={e => setSimulatedDate(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <Button onClick={handleGenerateCashFlowProjectionClick} variant="secondary" size="md" className="w-full sm:w-auto">
+            <CalendarClockIcon className="w-5 h-5 mr-1.5" />
+            Gerar Previsão de Caixa (30 dias) {showSimulationForm && simulatedAmount ? 'com Simulação' : ''}
+        </Button>
+        <p className="text-xs text-textMuted dark:text-textMutedDark mt-2">
+            Os resultados da previsão da IA aparecerão como um novo insight na aba "AI Coach".
+        </p>
+      </div>
 
-      {aiConfig.apiKeyStatus === 'available' && (
-        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-          <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-3">Renda Mensal (para Sugestões)</h2>
-          {aiConfig.monthlyIncome && !incomeEditMode ? (
-            <div className="flex items-center justify-between">
-              <p className="text-textBase dark:text-textBaseDark">
-                Sua renda mensal salva:
-                <span className="font-bold text-lg text-primary dark:text-primaryDark ml-2">
-                  {formatCurrency(aiConfig.monthlyIncome, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
-                </span>
-              </p>
-              <Button variant="ghost" size="sm" onClick={() => setIncomeEditMode(true)}>Editar Renda</Button>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow">
+          <h3 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">SALDO INICIAL</h3>
+          <p className="text-2xl font-bold text-textBase dark:text-textBaseDark">{formatCurrency(kpis.initialBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+        </div>
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow">
+          <h3 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">TOTAL ENTRADAS</h3>
+          <p className="text-2xl font-bold text-secondary dark:text-secondaryDark">{formatCurrency(kpis.totalIncome, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+        </div>
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow">
+          <h3 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">TOTAL SAÍDAS</h3>
+          <p className="text-2xl font-bold text-destructive dark:text-destructiveDark">{formatCurrency(kpis.totalExpenses, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+        </div>
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow">
+          <h3 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">FLUXO LÍQUIDO</h3>
+          <p className={`text-2xl font-bold ${kpis.netCashFlow >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
+            {formatCurrency(kpis.netCashFlow, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </p>
+        </div>
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow">
+          <h3 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">SALDO FINAL</h3>
+          <p className={`text-2xl font-bold ${kpis.finalBalance >= 0 ? 'text-textBase dark:text-textBaseDark' : 'text-destructive dark:text-destructiveDark'}`}>
+            {formatCurrency(kpis.finalBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </p>
+        </div>
+      </div>
+
+      {/* Cumulative Balance Line Chart */}
+      <div className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow">
+        <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Fluxo de Caixa Acumulado</h2>
+        {isPrivacyModeEnabled ? (
+          <p className="text-center text-textMuted dark:text-textMutedDark py-8">Gráfico oculto em Modo Privacidade.</p>
+        ) : cumulativeBalanceData.length > 0 ? (
+          <div style={{ width: '100%', height: 300 }}>
+            <ResponsiveContainer>
+              <LineChart data={cumulativeBalanceData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} className="stroke-neutral/50 dark:stroke-neutralDark/50" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'currentColor' }} className="text-textMuted dark:text-textMutedDark" />
+                <YAxis tickFormatter={(value) => formatCurrency(value, 'BRL', 'pt-BR', isPrivacyModeEnabled)} tick={{ fontSize: 10, fill: 'currentColor' }} className="text-textMuted dark:text-textMutedDark" width={isPrivacyModeEnabled ? 60 : 80} />
+                <Tooltip content={<CustomLineTooltipContent isPrivacyModeEnabled={isPrivacyModeEnabled} />} />
+                <Legend formatter={(value) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} />
+                <Line type="monotone" dataKey="balance" name="Saldo Acumulado" stroke="#3b82f6" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <p className="text-center text-textMuted dark:text-textMutedDark py-8">Nenhum dado para exibir o fluxo acumulado.</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Income vs. Expense Bar Chart */}
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow">
+          <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Receitas vs. Despesas por Período</h2>
+          {isPrivacyModeEnabled ? (
+            <p className="text-center text-textMuted dark:text-textMutedDark py-8">Gráfico oculto em Modo Privacidade.</p>
+          ) : incomeExpenseBarData.length > 0 ? (
+            <div style={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer>
+                <BarChart data={incomeExpenseBarData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} className="stroke-neutral/50 dark:stroke-neutralDark/50" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'currentColor' }} className="text-textMuted dark:text-textMutedDark" />
+                  <YAxis tickFormatter={(value) => formatCurrency(value, 'BRL', 'pt-BR', isPrivacyModeEnabled)} tick={{ fontSize: 10, fill: 'currentColor' }} className="text-textMuted dark:text-textMutedDark" width={isPrivacyModeEnabled ? 60 : 80} />
+                  <Tooltip content={<CustomBarTooltipContent isPrivacyModeEnabled={isPrivacyModeEnabled} />} />
+                  <Legend formatter={(value) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} />
+                  <Bar dataKey="income" name="Receitas" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="expense" name="Despesas" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           ) : (
-            <div className="space-y-3">
-              <Input
-                label="Informe sua renda mensal estimada"
-                id="monthlyIncome"
-                type="number"
-                placeholder={isPrivacyModeEnabled ? formatCurrency(0, 'BRL', 'pt-BR', true).replace('0,00', 'Ex: 3500.00') : "Ex: 3500.00"}
-                value={monthlyIncomeInput}
-                onChange={(e) => setMonthlyIncomeInput(e.target.value)}
-                containerClassName="max-w-xs"
-              />
-              <div className="flex space-x-2">
-                <Button variant="primary" size="sm" onClick={handleSaveMonthlyIncome}>Salvar Renda</Button>
-                {aiConfig.monthlyIncome && <Button variant="ghost" size="sm" onClick={() => setIncomeEditMode(false)}>Cancelar</Button>}
-              </div>
-              <p className="text-xs text-textMuted dark:text-textMutedDark">Esta informação ajuda o AI Coach a fornecer sugestões de orçamento mais personalizadas.</p>
-            </div>
+             <p className="text-center text-textMuted dark:text-textMutedDark py-8">Nenhum dado de receita/despesa para o período.</p>
           )}
         </div>
-      )}
 
-      {aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available' && (
-        <>
-          <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-3">
-                <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark">Conselhos e Análises</h2>
-                <div className="flex flex-wrap gap-2">
-                    <Button onClick={onFetchGeneralAdvice} variant="ghost" size="sm">
-                        <LightBulbIcon className="w-4 h-4 mr-1.5" /> Novo Conselho
-                    </Button>
-                    <Button onClick={onFetchRecurringPaymentCandidates} variant="ghost" size="sm">
-                        <ArrowPathIcon className="w-4 h-4 mr-1.5" /> Analisar Recorrências
-                    </Button>
-                     <Button onClick={onFetchSavingOpportunities} variant="ghost" size="sm">
-                        <SparklesIcon className="w-4 h-4 mr-1.5" /> Oportunidades de Economia
-                    </Button>
-                </div>
+        {/* Top Expense Categories Pie Chart */}
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-lg shadow">
+          <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Principais Categorias de Despesa</h2>
+          {isPrivacyModeEnabled ? (
+            <p className="text-center text-textMuted dark:text-textMutedDark py-8">Gráfico oculto em Modo Privacidade.</p>
+          ) : expenseByCategoryPieData.length > 0 ? (
+            <div style={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie
+                    data={expenseByCategoryPieData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius="80%"
+                    fill="#8884d8"
+                    dataKey="value"
+                    nameKey="name"
+                    label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name }) => {
+                        const RADIAN = Math.PI / 180;
+                        const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
+                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                        if (percent * 100 < 3) return null; 
+                        return (
+                            <text x={x} y={y} fill={document.documentElement.classList.contains('dark') ? '#E2E8F0' : '#1E293B'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="11px" fontWeight="medium">
+                                {`${name} (${(percent * 100).toFixed(0)}%)`}
+                            </text>
+                        );
+                    }}
+                  >
+                    {expenseByCategoryPieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_CHART_COLORS[index % PIE_CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomPieTooltipContent isPrivacyModeEnabled={isPrivacyModeEnabled} />} />
+                  <Legend formatter={(value) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-            
-            {/* Cash Flow Projection with Simulation */}
-            <div className="mt-6 pt-4 border-t border-borderBase dark:border-borderBaseDark">
-              <h3 className="text-lg font-semibold text-textBase dark:text-textBaseDark mb-2">Previsão de Fluxo de Caixa</h3>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setShowSimulationForm(!showSimulationForm)}
-                className="mb-3 text-sm"
-              >
-                {showSimulationForm ? 'Esconder Simulação' : 'Adicionar Simulação à Previsão'}
-              </Button>
-
-              {showSimulationForm && (
-                <div className="space-y-3 p-3 mb-4 border border-dashed border-neutral/50 dark:border-neutralDark/50 rounded-md">
-                  <h4 className="text-sm font-medium text-textMuted dark:text-textMutedDark">Simular Transação Futura (Opcional)</h4>
-                  <Input label="Descrição (Opcional)" value={simulatedDescription} onChange={e => setSimulatedDescription(e.target.value)} placeholder="Ex: Bônus Inesperado, Compra de Presente" />
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Input label="Valor Simulado" type="number" value={simulatedAmount} onChange={e => setSimulatedAmount(e.target.value)} placeholder="Ex: 500" />
-                    <Select label="Tipo" options={TRANSACTION_TYPE_OPTIONS.filter(opt => opt.value !== TransactionType.TRANSFER)} value={simulatedType} onChange={(e: ChangeEvent<HTMLSelectElement>) => setSimulatedType(e.target.value as TransactionType)} />
-                    <Input label="Data Simulado" type="date" value={simulatedDate} onChange={e => setSimulatedDate(e.target.value)} />
-                  </div>
-                </div>
-              )}
-              <Button onClick={handleGenerateCashFlowProjection} variant="secondary" size="sm" className="w-full sm:w-auto">
-                  <CalendarClockIcon className="w-4 h-4 mr-1.5" />
-                  Gerar Previsão de Caixa (30d) {showSimulationForm && simulatedAmount ? 'com Simulação' : ''}
-              </Button>
-            </div>
-
-
-            {sortedInsights.length === 0 ? (
-              <p className="text-center text-textMuted dark:text-textMutedDark py-8 mt-4">
-                Nenhum conselho ou comentário do AI Coach ainda. Interaja com o app ou peça uma nova análise!
-              </p>
-            ) : (
-              <ul className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 mt-4">
-                {sortedInsights.map(insight => {
-                  const displayInfo = getInsightDisplayInfo(insight.type);
-                  return (
-                    <li
-                        key={insight.id}
-                        className={`p-4 rounded-lg shadow-sm border-l-4
-                                    ${displayInfo.borderColorClass} ${displayInfo.bgColorClass}
-                                    ${insight.isLoading ? 'opacity-60 animate-pulse' : ''}
-                                    ${!insight.is_read && !insight.isLoading ? 'cursor-pointer hover:shadow-md' : ''}`}
-                        onClick={() => handleMarkAsRead(insight)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleMarkAsRead(insight);}}
-                        tabIndex={!insight.is_read && !insight.isLoading ? 0 : undefined}
-                        role={!insight.is_read && !insight.isLoading ? "button" : undefined}
-                        aria-label={!insight.is_read && !insight.isLoading ? "Marcar como lido" : undefined}
-                    >
-                        <div className="flex items-start">
-                        {displayInfo.icon}
-                        <div className="flex-1">
-                            {renderInsightContent(insight)}
-                            <p className="text-xs text-textMuted dark:text-textMutedDark mt-1.5">
-                            {formatDate(insight.timestamp, 'pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
-                            {insight.related_transaction_id && <span className="ml-2"> (Ref. Transação)</span>}
-                            {insight.related_category_id && insight.type === 'budget_recommendation' && <span className="ml-2"> (Ref. Categoria)</span>}
-                            {insight.related_category_id && (insight.type === 'spending_anomaly_category' || insight.type === 'budget_overspend_projection' || insight.type === 'unusual_transaction_value') && <span className="ml-2"> (Ref. Categoria)</span>}
-                            {!insight.is_read && !insight.isLoading && <span className="ml-2 px-1.5 py-0.5 text-xs bg-blue-500 text-white rounded-full">Novo</span>}
-                            </p>
-                        </div>
-                        </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </>
-      )}
-
-      {!aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available' && (
-         <div className="bg-yellow-100 dark:bg-yellow-700/20 border border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-300 px-4 py-3 rounded-lg" role="alert">
-          <p>O AI Coach está atualmente desativado. Ative-o acima para receber dicas e comentários personalizados.</p>
+          ) : (
+            <p className="text-center text-textMuted dark:text-textMutedDark py-8">Nenhuma despesa categorizada no período.</p>
+          )}
         </div>
-      )}
-
+      </div>
     </div>
   );
 };
 
-export default AICoachView;
+export default CashFlowView;
