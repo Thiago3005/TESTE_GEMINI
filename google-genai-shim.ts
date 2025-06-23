@@ -1,7 +1,7 @@
 // google-genai-shim.ts
 // Imports the actual GoogleGenerativeAI class and types from the specified CDN URL.
 import {
-    GoogleGenerativeAI as InternalGoogleGenerativeAI,
+    GoogleGenerativeAI as InternalGoogleGenerativeAI_SDK_CLASS,
     type GenerateContentResponse as InternalGenerateContentResponse,
     type Chat as InternalChat,
     // Add other types here if they need to be re-exported by the shim
@@ -19,7 +19,8 @@ import {
  * It also re-exports types to be available under the "@google/genai" path
  * via the import map.
  */
-export const GoogleGenAI = InternalGoogleGenerativeAI;
+export const GoogleGenAI = InternalGoogleGenerativeAI_SDK_CLASS; // Value export
+export type GoogleGenAI = InstanceType<typeof InternalGoogleGenerativeAI_SDK_CLASS>; // Instance type export
 
 // Re-export types so they can be imported like `import { GenerateContentResponse } from '@google/genai'`
 export type GenerateContentResponse = InternalGenerateContentResponse;

@@ -271,7 +271,7 @@ export type AppView =
   | 'DEBT_PLANNER'
   | 'CASH_FLOW'
   | 'AI_COACH'
-  | 'AJUDE_PROJETO'; // Replaced DATA_MANAGEMENT
+  | 'AJUDE_PROJETO';
 
 export interface ChartData {
   name: string; // Typically represents a category name or a date string
@@ -299,3 +299,5 @@ export interface UserProfile { // This table is special, it links user to their 
   created_at?: string; // Supabase managed
   updated_at?: string; // Supabase managed
 }
+
+export type AuthModalType = 'none' | 'signup' | 'forgotPassword' | 'resetPassword';

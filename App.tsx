@@ -11,7 +11,7 @@ import {
   Loan, LoanRepayment, LoanStatus,
   AIConfig, AIInsight, AIInsightType,
   FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile,
-  Debt, DebtPayment, DebtStrategy, DebtProjection
+  Debt, DebtPayment, DebtStrategy, DebtProjection, AuthModalType
 } from './types';
 import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts } from './constants';
 import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency, getEligibleInstallmentsForBillingCycle } from './utils/helpers';
@@ -27,7 +27,6 @@ import CategoriesView from './components/CategoriesView';
 import CreditCardsView from './components/CreditCardsView';
 import MoneyBoxesView from './components/MoneyBoxesView';
 import FuturePurchasesView from './components/FuturePurchasesView';
-// DataManagementView removed
 import TagsView from './components/TagsView';
 import RecurringTransactionsView from './components/RecurringTransactionsView';
 import LoansView from './components/LoansView';
@@ -35,20 +34,21 @@ import AICoachView from './components/AICoachView';
 import LoginView from './components/LoginView';
 import DebtPlannerView from './components/DebtPlannerView';
 import CashFlowView from './components/CashFlowView';
-import AjudeProjetoView from './components/AjudeProjetoView'; // New View
+import AjudeProjetoView from './components/AjudeProjetoView'; 
 
 // Components
 import Modal from './components/Modal';
 import TransactionForm from './components/TransactionForm';
 import ThemeSwitcher from './components/ThemeSwitcher';
 import Button from './components/Button';
+import AuthModal from './components/AuthModal';
+
 
 // Icons
 import ChartPieIcon from './components/icons/ChartPieIcon';
 import ListBulletIcon from './components/icons/ListBulletIcon';
 import CreditCardIcon from './components/icons/CreditCardIcon';
 import TagIcon from './components/icons/TagIcon';
-// CogIcon removed
 import PlusIcon from './components/icons/PlusIcon';
 import PiggyBankIcon from './components/icons/PiggyBankIcon';
 import ShoppingCartIcon from './components/icons/ShoppingCartIcon';
@@ -62,7 +62,7 @@ import EyeSlashIcon from './components/icons/EyeSlashIcon';
 import PowerIcon from './components/icons/PowerIcon';
 import BanknotesIcon from './components/icons/BanknotesIcon';
 import PresentationChartLineIcon from './components/icons/PresentationChartLineIcon';
-import HeartIcon from './components/icons/HeartIcon'; // New Icon
+import HeartIcon from './components/icons/HeartIcon'; 
 
 // Services
 import * as geminiService from './services/geminiService';
@@ -78,9 +78,13 @@ const AppContent: React.FC = () => {
   const [activeUserProfile, setActiveUserProfile] = useState<UserProfile | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState<Record<string, boolean>>({ google: false, email: false, form: false });
+
+  const [authModalType, setAuthModalType] = useState<AuthModalType>('none');
+  const [authActionToken, setAuthActionToken] = useState<string | null>(null); // For password reset
 
   const [currentUserPreferences, setCurrentUserPreferences] = useState<UserPreferences | null>(null);
-  const [theme, setThemeState] = useState<Theme>('dark'); // Default to dark
+  const [theme, setThemeState] = useState<Theme>('dark'); 
   const [isPrivacyModeEnabled, setIsPrivacyModeEnabledState] = useState(false);
   const [aiConfig, setAiConfigState] = useState<AIConfig>({
     isEnabled: false,
@@ -106,7 +110,7 @@ const AppContent: React.FC = () => {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([]);
 
-  const [isLoadingData, setIsLoadingData] = useState(true); // Initially true for fetching profile data
+  const [isLoadingData, setIsLoadingData] = useState(true); 
   const [activeView, setActiveView] = useState<AppView>('DASHBOARD');
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | Partial<Transaction> | null>(null);
@@ -131,9 +135,6 @@ const AppContent: React.FC = () => {
     setDebts([]); setDebtPayments([]);
     setActiveUserProfile(null);
     setCurrentUserPreferences(null);
-    // Keep theme and privacy mode as they are global UI settings potentially, or reset if desired
-    // setThemeState('dark'); 
-    // setIsPrivacyModeEnabledState(false);
     setAiConfigState({ isEnabled: false, apiKeyStatus: 'unknown', monthlyIncome: null, autoBackupToFileEnabled: false });
   };
 
@@ -144,11 +145,10 @@ const AppContent: React.FC = () => {
       return;
     }
     isFetchingDataRef.current = true;
-    setIsLoadingData(true); // Start loading data for this specific user
+    setIsLoadingData(true); 
     let userProfile: UserProfile | null = null;
 
     try {
-      // 1. Fetch or create UserProfile
       const { data: existingUserProfile, error: fetchProfileError } = await supabase
         .from('user_profiles')
         .select('*')
@@ -177,7 +177,6 @@ const AppContent: React.FC = () => {
 
       const dbProfileId = userProfile.id; 
 
-      // 2. Fetch UserPreferences
       const { data: prefsData, error: prefsError } = await supabase
         .from('user_preferences')
         .select('*')
@@ -282,7 +281,6 @@ const AppContent: React.FC = () => {
         addToast(`Erro ao carregar dados: ${error.message || 'TypeError: Failed to fetch'}`, 'error');
         setActiveUserProfile(null); 
         setCurrentUserPreferences(null);
-        // Do not change activeView here, let the main useEffect handle it based on user & activeUserProfile state
     } finally {
         setIsLoadingData(false);
         isFetchingDataRef.current = false;
@@ -296,22 +294,23 @@ const AppContent: React.FC = () => {
       setSession(currentSession);
       const currentUser = currentSession?.user ?? null;
       setUser(currentUser);
-      setIsLoadingSession(false); // Session check is done
+      setIsLoadingSession(false); 
 
       if (currentUser) {
         fetchAndSetAllUserData(currentUser);
       } else {
-        setIsLoadingData(false); // No user, so no data to load
+        setIsLoadingData(false); 
         setActiveView('LOGIN');
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
+      (event, newSession) => {
         const oldUserId = user?.id;
         setSession(newSession);
         const newAuthUser = newSession?.user ?? null;
         setUser(newAuthUser);
+        setAuthActionToken(newSession?.access_token || null);
 
         if (newAuthUser?.id !== oldUserId) { 
             resetAllAppData();
@@ -320,22 +319,20 @@ const AppContent: React.FC = () => {
             } else { 
                 setIsLoadingData(false);
                 setActiveView('LOGIN');
-                if (_event === 'SIGNED_OUT') addToast("Você foi desconectado.", 'info');
+                if (event === 'SIGNED_OUT') addToast("Você foi desconectado.", 'info');
             }
-        } else if (newAuthUser && (_event === 'TOKEN_REFRESHED' || _event === 'USER_UPDATED')) {
-            // If profile was lost or other critical data, re-fetch
+        } else if (newAuthUser && (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')) {
             if (!activeUserProfile && !isFetchingDataRef.current) {
                 fetchAndSetAllUserData(newAuthUser);
             }
+        } else if (event === 'PASSWORD_RECOVERY') {
+            setAuthModalType('resetPassword');
+            addToast("Siga as instruções para definir uma nova senha.", "info");
         }
-         // setIsLoadingSession should generally be false here as auth state change has occurred
         setIsLoadingSession(false);
       }
     );
     return () => subscription.unsubscribe();
-  // Pass isFetchingDataRef.current to dependencies to avoid stale closure issues with its usage inside useEffect,
-  // though it's a ref, its direct usage in conditions might benefit from explicit re-evaluation if the effect logic changes significantly.
-  // For now, user.id is the primary driver.
   }, [fetchAndSetAllUserData, addToast, user?.id, activeUserProfile]);
 
 
@@ -411,8 +408,9 @@ const AppContent: React.FC = () => {
   }, [theme]);
 
   const handleSignInWithGoogle = async () => {
+    setAuthLoading(prev => ({ ...prev, google: true }));
+    setAuthError(null);
     try {
-      setAuthError(null);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -424,8 +422,100 @@ const AppContent: React.FC = () => {
       console.error("Error signing in with Google:", error);
       setAuthError(error.message || "Falha ao fazer login com Google.");
       addToast(error.message || "Falha ao fazer login com Google.", 'error');
+    } finally {
+      setAuthLoading(prev => ({ ...prev, google: false }));
     }
   };
+
+  const handleSignInWithEmail = async (email: string, password: string): Promise<void> => {
+    setAuthLoading(prev => ({ ...prev, email: true }));
+    setAuthError(null);
+    try {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        addToast("Login bem-sucedido!", 'success');
+        // onAuthStateChange will handle setting user and fetching data
+    } catch (error: any) {
+        console.error("Error signing in with email:", error);
+        setAuthError(error.message || "Email ou senha inválidos.");
+        // No need for addToast here, authError is displayed in LoginView
+        throw error; // Rethrow to allow LoginView to handle its specific loading state
+    } finally {
+        setAuthLoading(prev => ({ ...prev, email: false }));
+    }
+  };
+
+  const handleSignUpWithEmail = async (fullName: string, email: string, password: string): Promise<void> => {
+    setAuthLoading(prev => ({ ...prev, form: true }));
+    setAuthError(null);
+    try {
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: { full_name: fullName }
+            }
+        });
+        if (error) throw error;
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          // This typically means email confirmation is required.
+          addToast("Cadastro quase completo! Verifique seu e-mail para confirmar sua conta.", 'info', 10000);
+        } else {
+          addToast("Cadastro realizado com sucesso!", 'success');
+        }
+        // onAuthStateChange will handle user state
+    } catch (error: any) {
+        console.error("Error signing up:", error);
+        setAuthError(error.message || "Erro ao cadastrar. Tente novamente.");
+        throw error;
+    } finally {
+        setAuthLoading(prev => ({ ...prev, form: false }));
+    }
+  };
+
+  const handleSendPasswordResetEmail = async (email: string): Promise<void> => {
+    setAuthLoading(prev => ({ ...prev, form: true }));
+    setAuthError(null);
+    try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}${(import.meta as any).env.BASE_URL || '/'}`, // Supabase will append reset tokens
+        });
+        if (error) throw error;
+        addToast("Link de recuperação enviado! Verifique seu e-mail.", 'info', 10000);
+    } catch (error: any) {
+        console.error("Error sending password reset email:", error);
+        setAuthError(error.message || "Erro ao enviar email de recuperação.");
+        throw error;
+    } finally {
+        setAuthLoading(prev => ({ ...prev, form: false }));
+    }
+  };
+
+  const handleUpdateUserPassword = async (newPassword: string): Promise<void> => {
+    setAuthLoading(prev => ({ ...prev, form: true }));
+    setAuthError(null);
+    if (!authActionToken) { // Should not happen if UI flow is correct
+        setAuthError("Token de redefinição de senha ausente ou inválido.");
+        addToast("Token de redefinição ausente. Por favor, tente o processo de recuperação novamente.", "error");
+        setAuthLoading(prev => ({ ...prev, form: false }));
+        throw new Error("Token de redefinição de senha ausente ou inválido.");
+    }
+    try {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+        addToast("Senha alterada com sucesso! Você pode fazer login com sua nova senha.", 'success');
+        setAuthModalType('none'); 
+        setAuthActionToken(null);
+    } catch (error: any) {
+        console.error("Error updating password:", error);
+        setAuthError(error.message || "Erro ao atualizar senha.");
+        throw error;
+    } finally {
+        setAuthLoading(prev => ({ ...prev, form: false }));
+    }
+  };
+
+
   const handleSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -713,10 +803,10 @@ const AppContent: React.FC = () => {
             date: mbt.date,
             description: `${mbt.type === MoneyBoxTransactionType.DEPOSIT ? 'Depósito' : 'Saque'} Caixinha: ${moneyBoxes.find(mb => mb.id === mbt.money_box_id)?.name || 'N/A'} ${mbt.description ? `- ${mbt.description}` : ''}`,
             account_id: linkedAccId,
-            category_id: '', // Will be populated below
+            category_id: '', 
         };
 
-        if (mainTxData.type === TransactionType.INCOME) { // Withdrawal from MoneyBox to Account
+        if (mainTxData.type === TransactionType.INCOME) { 
             let incomeCategoryId = categories.find(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes("outras receitas"))?.id;
             if (!incomeCategoryId) incomeCategoryId = categories.find(c => c.type === TransactionType.INCOME)?.id;
             
@@ -725,7 +815,7 @@ const AppContent: React.FC = () => {
                 return; 
             }
             mainTxData.category_id = incomeCategoryId;
-        } else { // Deposit to MoneyBox from Account (Expense)
+        } else { 
             let expenseCategoryId = categories.find(c => c.type === TransactionType.EXPENSE && (c.name.toLowerCase().includes("caixinha") || c.name.toLowerCase().includes("investimento") || c.name.toLowerCase().includes("poupança")) )?.id;
             if (!expenseCategoryId) expenseCategoryId = categories.find(c => c.type === TransactionType.EXPENSE && c.name.toLowerCase().includes("outras despesas"))?.id;
             if (!expenseCategoryId) expenseCategoryId = categories.find(c => c.type === TransactionType.EXPENSE)?.id;
@@ -744,9 +834,6 @@ const AppContent: React.FC = () => {
     await addOrUpdateRecord('money_box_transactions', {...mbt, linked_transaction_id: linkedTxId} as Omit<MoneyBoxTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>, setMoneyBoxTransactions, (a: MoneyBoxTransaction,b: MoneyBoxTransaction)=>new Date(b.date).getTime() - new Date(a.date).getTime());
   };
   const handleDeleteMoneyBoxTransaction = (id: string, linkedTransactionId?:string) => {
-      // If there's a linked main transaction, we might want to offer to delete it too,
-      // or inform the user it won't be deleted automatically.
-      // For now, just deleting the MBT. The user should manage the main transaction if needed.
       if(linkedTransactionId && window.confirm("Esta transação de caixinha está vinculada a uma transação principal. Deseja remover APENAS a movimentação da caixinha? A transação principal NÃO será afetada.")){
         deleteRecord('money_box_transactions', id, setMoneyBoxTransactions);
       } else if (!linkedTransactionId){
@@ -983,9 +1070,8 @@ const AppContent: React.FC = () => {
         amount: purchase.estimated_cost,
         description: `Compra: ${purchase.name}`,
         date: getISODateString(),
-        // category_id and account_id will be selected by user in the form
     };
-    setEditingTransaction(prefillData); // Use existing state, no need for a new one
+    setEditingTransaction(prefillData); 
     setIsTransactionModalOpen(true);
   };
 
@@ -1143,18 +1229,66 @@ const AppContent: React.FC = () => {
     return <div className="min-h-screen flex items-center justify-center bg-backgroundDark text-textBaseDark">Carregando sessão...</div>;
   }
   if (!user) {
-    return <LoginView onLoginWithGoogle={handleSignInWithGoogle} isLoading={false} />; // isLoading for login button can be managed locally if needed
+    return (
+      <>
+        <LoginView
+          onLoginWithGoogle={handleSignInWithGoogle}
+          onLoginWithEmail={handleSignInWithEmail}
+          onOpenAuthModal={setAuthModalType}
+          isLoadingGoogle={authLoading.google}
+          isLoadingEmail={authLoading.email}
+          authError={authError}
+          clearAuthError={() => setAuthError(null)}
+        />
+        {authModalType !== 'none' && (
+            <AuthModal
+            isOpen={true}
+            initialMode={authModalType as Exclude<AuthModalType, 'none'>}
+            onClose={() => setAuthModalType('none')}
+            onSetMode={setAuthModalType}
+            onSignUp={handleSignUpWithEmail}
+            onForgotPassword={handleSendPasswordResetEmail}
+            onResetPassword={handleUpdateUserPassword}
+            authError={authError}
+            isLoading={authLoading.form}
+            clearAuthError={() => setAuthError(null)}
+            />
+        )}
+      </>
+    );
   }
-  // Show loading screen if session is loaded (user exists) but their specific data is still being fetched.
   if (isLoadingData && user) { 
      return <div className="min-h-screen flex items-center justify-center bg-backgroundDark text-textBaseDark">Carregando dados do perfil...</div>;
   }
-  // If data loading is done, but profile is still null (e.g., fetch error), go to Login (or an error screen)
   if (!isLoadingData && !activeUserProfile && user) {
      addToast("Falha ao carregar o perfil. Por favor, tente novamente.", "error");
-     // Potentially call handleSignOut() or guide user. For now, fallback to Login view.
-     // This state indicates an issue post-login but pre-data load completion.
-     return <LoginView onLoginWithGoogle={handleSignInWithGoogle} isLoading={false} />;
+     return (
+        <>
+            <LoginView
+            onLoginWithGoogle={handleSignInWithGoogle}
+            onLoginWithEmail={handleSignInWithEmail}
+            onOpenAuthModal={setAuthModalType}
+            isLoadingGoogle={authLoading.google}
+            isLoadingEmail={authLoading.email}
+            authError={authError}
+            clearAuthError={() => setAuthError(null)}
+            />
+            {authModalType !== 'none' && (
+                <AuthModal
+                isOpen={true}
+                initialMode={authModalType as Exclude<AuthModalType, 'none'>}
+                onClose={() => setAuthModalType('none')}
+                onSetMode={setAuthModalType}
+                onSignUp={handleSignUpWithEmail}
+                onForgotPassword={handleSendPasswordResetEmail}
+                onResetPassword={handleUpdateUserPassword}
+                authError={authError}
+                isLoading={authLoading.form}
+                clearAuthError={() => setAuthError(null)}
+                />
+            )}
+        </>
+     );
   }
 
 
@@ -1177,7 +1311,6 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-background dark:bg-backgroundDark">
-      {/* Sidebar */}
       <aside className="w-64 bg-slate-50 dark:bg-slate-900 flex flex-col shadow-2xl fixed inset-y-0 left-0 z-30">
         <div className="p-4 border-b border-slate-200 dark:border-slate-700">
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">{APP_NAME}</h1>
@@ -1226,7 +1359,6 @@ const AppContent: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main content */}
       <main className="flex-1 ml-64 overflow-y-auto bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark">
         {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
@@ -1253,10 +1385,24 @@ const AppContent: React.FC = () => {
             creditCards={creditCards}
             categories={categories}
             tags={tags}
-            initialTransaction={editingTransaction as Transaction | null} // Cast because prefill data is Partial<Transaction>
+            initialTransaction={editingTransaction as Transaction | null} 
             isPrivacyModeEnabled={isPrivacyModeEnabled}
           />
         </Modal>
+      )}
+      {authModalType !== 'none' && user && ( // Only show auth modal if user is logged in and needs to reset password
+        <AuthModal
+          isOpen={true}
+          initialMode={authModalType as Exclude<AuthModalType, 'none'>}
+          onClose={() => setAuthModalType('none')}
+          onSetMode={setAuthModalType}
+          onSignUp={handleSignUpWithEmail} // Not typically used when already logged in
+          onForgotPassword={handleSendPasswordResetEmail} // Not typically used
+          onResetPassword={handleUpdateUserPassword}
+          authError={authError}
+          isLoading={authLoading.form}
+          clearAuthError={() => setAuthError(null)}
+        />
       )}
     </div>
   );
