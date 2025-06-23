@@ -1,7 +1,7 @@
 
 import React from 'react'; 
 import { useState, useEffect, ChangeEvent, useMemo }from 'react'; 
-import { Transaction, TransactionType, Account, Category, Tag, CreditCard, MoneyBox, MoneyBoxRelatedTransactionData } from '../types'; // Added MoneyBox, MoneyBoxRelatedTransactionData
+import { Transaction, TransactionType, Account, Category, Tag, CreditCard, MoneyBox, MoneyBoxRelatedTransactionData, ToastType } from '../types'; // Added MoneyBox, MoneyBoxRelatedTransactionData
 import { TRANSACTION_TYPE_OPTIONS } from '../constants';
 import { getISODateString, formatCurrency } from '../utils/helpers';
 import Input from './Input';
@@ -13,26 +13,27 @@ interface TransactionFormProps {
   onCancel: () => void;
   accounts: Account[];
   creditCards: CreditCard[];
-  moneyBoxes: MoneyBox[]; // Added moneyBoxes
+  moneyBoxes: MoneyBox[]; 
   categories: Category[];
   tags: Tag[]; 
-  initialTransaction?: Transaction | null; // Note: Editing MoneyBox-linked transactions via this form is simplified (won't adjust MoneyBoxTransaction)
+  initialTransaction?: Transaction | null; 
   isPrivacyModeEnabled?: boolean;
+  addToast: (message: string, type: ToastType, duration?: number) => void; // Added for feedback
 }
 
 const TransactionForm: React.FC<TransactionFormProps> = ({ 
-  onSubmit, onCancel, accounts, creditCards, moneyBoxes, categories, tags, initialTransaction, isPrivacyModeEnabled 
+  onSubmit, onCancel, accounts, creditCards, moneyBoxes, categories, tags, initialTransaction, isPrivacyModeEnabled, addToast
 }) => {
-  const [type, setType] = useState<TransactionType>(initialTransaction?.type || TransactionType.EXPENSE);
-  const [amount, setAmount] = useState<string>(initialTransaction?.amount.toString() || '');
-  const [categoryId, setCategoryId] = useState<string>(initialTransaction?.category_id || '');
-  const [description, setDescription] = useState<string>(initialTransaction?.description || '');
-  const [date, setDate] = useState<string>(initialTransaction?.date || getISODateString());
-  const [sourceId, setSourceId] = useState<string>(initialTransaction?.account_id || ''); // Can be Account, CreditCard, or MoneyBox ID
-  const [toAccountId, setToAccountId] = useState<string>(initialTransaction?.to_account_id || (accounts.length > 1 ? accounts[1].id : ''));
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialTransaction?.tag_ids || []);
+  const [type, setType] = useState<TransactionType>(TransactionType.EXPENSE);
+  const [amount, setAmount] = useState<string>('');
+  const [categoryId, setCategoryId] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [date, setDate] = useState<string>(getISODateString());
+  const [sourceId, setSourceId] = useState<string>(''); // Can be Account, CreditCard, or MoneyBox ID
+  const [toAccountId, setToAccountId] = useState<string>('');
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   
-  const [backingAccountId, setBackingAccountId] = useState<string>(accounts.length > 0 ? accounts[0].id : ''); // Real account for MoneyBox movement
+  const [backingAccountId, setBackingAccountId] = useState<string>(''); // Real account for MoneyBox movement
   const [isMoneyBoxSource, setIsMoneyBoxSource] = useState(false);
   
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -41,35 +42,17 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     const accOpts = accounts.map(a => ({ value: a.id, label: `Conta: ${a.name}`, type: 'account' as const }));
     const cardOpts = creditCards.map(cc => ({ value: cc.id, label: `Cartão: ${cc.name}`, type: 'creditCard' as const }));
     const mbOpts = moneyBoxes.map(mb => ({ value: mb.id, label: `Caixinha: ${mb.name}`, type: 'moneyBox' as const }));
-    const allOptions = [...accOpts, ...cardOpts, ...mbOpts];
-    if (!initialTransaction && allOptions.length > 0 && !sourceId) {
-      setSourceId(allOptions[0].value);
-    }
-    return allOptions;
-  }, [accounts, creditCards, moneyBoxes, initialTransaction, sourceId]);
+    return [...accOpts, ...cardOpts, ...mbOpts];
+  }, [accounts, creditCards, moneyBoxes]);
 
   useEffect(() => {
-    const selectedSourceDetails = sourceOptions.find(s => s.value === sourceId);
-    setIsMoneyBoxSource(selectedSourceDetails?.type === 'moneyBox');
+    // This effect initializes or resets the form based on initialTransaction or changes to core data lists.
+    const newSourceOpts = [ // Re-calculate here to avoid complex deps on sourceOptions memo itself
+        ...accounts.map(a => ({ value: a.id, label: `Conta: ${a.name}`, type: 'account' as const })),
+        ...creditCards.map(cc => ({ value: cc.id, label: `Cartão: ${cc.name}`, type: 'creditCard' as const })),
+        ...moneyBoxes.map(mb => ({ value: mb.id, label: `Caixinha: ${mb.name}`, type: 'moneyBox' as const }))
+    ];
 
-    if (selectedSourceDetails?.type === 'moneyBox' && type === TransactionType.TRANSFER) {
-        setType(TransactionType.EXPENSE); // Default to expense if transfer is selected with moneybox
-        // Optionally add a toast notification here
-    }
-     // If type is INCOME or TRANSFER, and a credit card was selected, switch to first account.
-    if (selectedSourceDetails?.type === 'creditCard' && (type === TransactionType.INCOME || type === TransactionType.TRANSFER)) {
-        setSourceId(accounts[0]?.id || ''); 
-    }
-    // If backing account is not set and source is moneybox, set default
-    if (selectedSourceDetails?.type === 'moneyBox' && !backingAccountId && accounts.length > 0) {
-        setBackingAccountId(accounts[0].id);
-    }
-
-
-  }, [sourceId, sourceOptions, type, accounts, backingAccountId]);
-
-
-  useEffect(() => {
     if (initialTransaction) {
       setType(initialTransaction.type);
       setAmount(initialTransaction.amount.toString());
@@ -77,9 +60,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setDescription(initialTransaction.description || '');
       setDate(initialTransaction.date);
       setSourceId(initialTransaction.account_id); 
-      setToAccountId(initialTransaction.to_account_id || '');
+      setToAccountId(initialTransaction.to_account_id || (accounts.length > 1 ? accounts[1].id : ''));
       setSelectedTagIds(initialTransaction.tag_ids || []);
-      // Note: Logic to pre-fill backingAccountId if initialTransaction was MoneyBox-linked is omitted for edit simplification.
+      // isMoneyBoxSource will be set by the other effect based on loaded sourceId
+      setBackingAccountId(accounts.length > 0 ? accounts[0].id : ''); 
     } else {
       // Reset to defaults for new transaction
       setType(TransactionType.EXPENSE);
@@ -87,15 +71,54 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setCategoryId(categories.filter(c => c.type === TransactionType.EXPENSE)[0]?.id || '');
       setDescription('');
       setDate(getISODateString());
-      setSourceId(sourceOptions[0]?.value || '');
+
+      if (newSourceOpts.length > 0) {
+         // Set to first option if current sourceId is empty or no longer valid in newSourceOpts
+         if (!sourceId || !newSourceOpts.some(opt => opt.value === sourceId)) {
+            setSourceId(newSourceOpts[0].value);
+        }
+      } else {
+          setSourceId('');
+      }
       setToAccountId(accounts.length > 1 ? accounts[1].id : (accounts.length > 0 ? accounts[0].id : ''));
       setSelectedTagIds([]);
       setBackingAccountId(accounts.length > 0 ? accounts[0].id : '');
     }
-  }, [initialTransaction, accounts, categories, sourceOptions]); // Rerun if sourceOptions changes (e.g. new moneybox added)
-  
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTransaction, accounts, categories, creditCards, moneyBoxes]); // sourceId intentionally omitted to prevent reset loop
+
+
   useEffect(() => {
-    if (type !== TransactionType.TRANSFER && !isMoneyBoxSource) { // Category only relevant if not transfer and not moneybox source (handled separately)
+    const selectedSourceDetails = sourceOptions.find(s => s.value === sourceId);
+    setIsMoneyBoxSource(selectedSourceDetails?.type === 'moneyBox');
+
+    // Corrective logic for invalid combinations or setting defaults based on source type
+    if (selectedSourceDetails?.type === 'moneyBox' && type === TransactionType.TRANSFER) {
+        setType(TransactionType.EXPENSE); 
+        addToast("Transferências de caixinhas são tratadas como Despesa. Tipo alterado.", "info");
+    }
+    
+    if (selectedSourceDetails?.type === 'creditCard' && (type === TransactionType.INCOME || type === TransactionType.TRANSFER)) {
+        if (accounts.length > 0) {
+            setSourceId(accounts[0].id);
+            const msg = type === TransactionType.INCOME 
+                ? "Receitas não podem originar de cartões. Origem alterada para primeira conta."
+                : "Transferências não podem originar de cartões. Origem alterada para primeira conta.";
+            addToast(msg, "warning");
+        } else {
+           setSourceId(''); 
+           addToast("Nenhuma conta disponível para esta operação com cartão.", "error");
+        }
+    }
+    
+    if (selectedSourceDetails?.type === 'moneyBox' && !backingAccountId && accounts.length > 0) {
+        setBackingAccountId(accounts[0].id);
+    }
+  }, [sourceId, type, sourceOptions, accounts, backingAccountId, addToast]);
+
+
+  useEffect(() => {
+    if (type !== TransactionType.TRANSFER && !isMoneyBoxSource) { 
         const currentCategory = categories.find(c => c.id === categoryId);
         if (!currentCategory || currentCategory.type !== type) {
             const defaultCategoryForType = categories.find(c => c.type === type);
@@ -113,8 +136,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     if (isMoneyBoxSource) {
         if (type === TransactionType.TRANSFER) newErrors.type = 'Transferências diretas de/para caixinhas não são permitidas aqui. Use a tela de Caixinhas.';
         if (!backingAccountId) newErrors.backingAccountId = 'Conta real para movimentação é obrigatória.';
-        // Category can be optional for MoneyBox movements if desired, or handled by default.
-    } else { // Not a MoneyBox source
+    } else { 
         if (type !== TransactionType.TRANSFER && !categoryId && selectedSourceDetails?.type !== 'creditCard') {
             newErrors.categoryId = 'Categoria é obrigatória.';
         }
@@ -140,13 +162,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             isMoneyBoxTransaction: true,
             moneyBoxId: sourceId,
             backingAccountId: backingAccountId,
-            type: type as TransactionType.INCOME | TransactionType.EXPENSE, // type is already validated
+            type: type as TransactionType.INCOME | TransactionType.EXPENSE, 
             amount: parseFloat(amount),
-            category_id: categoryId || undefined, // Category might be optional or set by default logic in App.tsx for MBT
+            category_id: categoryId || undefined, 
             description: description || undefined,
             date,
             tag_ids: selectedTagIds.length > 0 ? selectedTagIds : undefined,
-            id: initialTransaction?.id, // Pass main transaction ID if editing
+            id: initialTransaction?.id, 
         };
         onSubmit(mbTransactionData);
     } else {
@@ -202,7 +224,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         placeholder={isPrivacyModeEnabled ? formatCurrency(0, 'BRL', 'pt-BR', true).replace('0,00', 'Ex: 123.45') : "Ex: 123.45"}
         required
       />
-      {type !== TransactionType.TRANSFER && ( // Category field for non-transfer types
+      {type !== TransactionType.TRANSFER && ( 
         <Select
           label={selectedSourceIsCard && type === TransactionType.EXPENSE ? "Categoria (Opcional para Débito Direto no Cartão)" : "Categoria"}
           id="category"

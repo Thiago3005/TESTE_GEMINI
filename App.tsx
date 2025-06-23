@@ -1478,6 +1478,7 @@ const AppContent: React.FC = () => {
             tags={tags}
             initialTransaction={editingTransaction as Transaction | null} 
             isPrivacyModeEnabled={isPrivacyModeEnabled}
+            addToast={addToast}
           />
         </Modal>
       )}
