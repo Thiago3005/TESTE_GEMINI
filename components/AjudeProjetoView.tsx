@@ -5,7 +5,7 @@ import CopyIcon from './icons/CopyIcon'; // Import the new icon
 import { useToasts } from '../contexts/ToastContext'; // Import useToasts
 
 // Path to the QR code image, assuming it's in public/assets/
-const qrCodeImagePath = '/assets/qrcode-pix.png'; 
+const qrCodeImagePath = 'https://github.com/Thiago3005/controle-financeiro/blob/main/public/assets/qrcode-pix.png?raw=true'; 
 const pixKeyValue = "00020126470014br.gov.bcb.pix0125thiaguiinho3005@gmail.com5204000053039865802BR5923thiago augusto da silva6009Itabirito62180514TX67lsyfc8255663041F05";
 
 const AjudeProjetoView: React.FC = () => {
