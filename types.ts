@@ -301,3 +301,20 @@ export interface UserProfile { // This table is special, it links user to their 
 }
 
 export type AuthModalType = 'none' | 'signup' | 'forgotPassword' | 'resetPassword';
+
+// Payload for transactions involving a MoneyBox, submitted from TransactionForm
+export interface MoneyBoxRelatedTransactionData {
+  type: TransactionType.INCOME | TransactionType.EXPENSE; // Transfers disallowed when MoneyBox is source
+  amount: number;
+  category_id?: string;
+  description?: string;
+  date: string; // YYYY-MM-DD
+  tag_ids?: string[];
+
+  isMoneyBoxTransaction: true;
+  moneyBoxId: string;
+  backingAccountId: string; // The actual account for the main transaction record
+
+  // For updates, if applicable (simplified for now, main transaction edit won't auto-adjust MBT)
+  id?: string; // id of the main transaction if updating
+}

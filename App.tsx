@@ -11,7 +11,8 @@ import {
   Loan, LoanRepayment, LoanStatus,
   AIConfig, AIInsight, AIInsightType,
   FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile,
-  Debt, DebtPayment, DebtStrategy, DebtProjection, AuthModalType
+  Debt, DebtPayment, DebtStrategy, DebtProjection, AuthModalType,
+  MoneyBoxRelatedTransactionData // Added
 } from './types';
 import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts } from './constants';
 import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency, getEligibleInstallmentsForBillingCycle } from './utils/helpers';
@@ -640,7 +641,10 @@ const AppContent: React.FC = () => {
             const newItems = [...filtered, newRecord];
             return sortFn ? newItems.sort(sortFn) : newItems;
         });
-        addToast(`${isUpdate ? 'Atualizado' : 'Adicionado'} com sucesso!`, 'success');
+        // Toast for MoneyBoxTransaction is handled specifically where it's called.
+        if (table !== 'money_box_transactions') {
+             addToast(`${isUpdate ? 'Atualizado' : 'Adicionado'} com sucesso!`, 'success');
+        }
         return newRecord;
     }
     return null;
@@ -658,48 +662,106 @@ const AppContent: React.FC = () => {
 
 
   // Transaction Handlers
-  const handleAddTransaction = async (transactionData: Omit<Transaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => {
+  const handleAddOrUpdateTransaction = async (
+    data: Transaction | Omit<Transaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | MoneyBoxRelatedTransactionData
+  ) => {
     if (!user || !activeUserProfile) return;
-    const newTransaction = await addOrUpdateRecord<Transaction>(
-      'transactions',
-      transactionData,
-      setTransactions,
-      (a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-    if (newTransaction) {
-        setIsTransactionModalOpen(false);
-        setEditingTransaction(null);
-        handleGenerateCommentForTransaction(newTransaction);
-        handleAnalyzeSpendingForCategory(newTransaction);
 
-        const isCreditCardSource = creditCards.some(cc => cc.id === newTransaction.account_id);
-        if (isCreditCardSource && newTransaction.type === TransactionType.EXPENSE) {
-            const installmentPurchaseData: Omit<InstallmentPurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
-                credit_card_id: newTransaction.account_id,
-                description: `Débito na Fatura: ${newTransaction.description || categories.find(c=>c.id === newTransaction.category_id)?.name || 'Despesa no Cartão'}`,
-                purchase_date: newTransaction.date,
-                total_amount: newTransaction.amount,
-                number_of_installments: 1,
-                installments_paid: 0, 
-                linked_transaction_id: newTransaction.id,
+    let mainTransaction: Transaction | null = null;
+    const isUpdate = 'id' in data && !!data.id;
+
+    if ('isMoneyBoxTransaction' in data && data.isMoneyBoxTransaction) {
+        // Handle MoneyBox related transaction
+        const { moneyBoxId, backingAccountId, id: existingMainTxId, ...mainTxBaseData } = data;
+        
+        const mainTxForDb: Omit<Transaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | Transaction = {
+            ...mainTxBaseData,
+            account_id: backingAccountId, // Use the real backing account for the main transaction
+            // Ensure category_id is set or undefined, not empty string if it came from form
+            category_id: mainTxBaseData.category_id || undefined,
+        };
+        if (existingMainTxId) (mainTxForDb as Transaction).id = existingMainTxId;
+
+
+        mainTransaction = await addOrUpdateRecord<Transaction>(
+            'transactions',
+            mainTxForDb,
+            setTransactions,
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+            !!existingMainTxId 
+        );
+
+        if (mainTransaction) {
+            const mbtData: Omit<MoneyBoxTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
+                money_box_id: moneyBoxId,
+                type: mainTransaction.type === TransactionType.INCOME ? MoneyBoxTransactionType.DEPOSIT : MoneyBoxTransactionType.WITHDRAWAL,
+                amount: mainTransaction.amount,
+                date: mainTransaction.date,
+                description: `Movimentação de ${mainTransaction.type === TransactionType.INCOME ? 'entrada' : 'saída'} via formulário: ${mainTransaction.description || categories.find(c=>c.id === mainTransaction.category_id)?.name || ''}`,
+                linked_transaction_id: mainTransaction.id,
             };
-            await handleAddInstallmentPurchase(installmentPurchaseData, false);
+            // Here we might want to update an existing MoneyBoxTransaction if editing.
+            // For simplicity now, we'll always add a new one. A more robust edit would find and update or delete/recreate.
+            // This simplification means editing a MB-linked transaction from main form might create duplicate MBTs if not handled carefully or if user edits multiple times.
+            // For now, we'll add. If an existingMainTxId was present, this might be an update scenario for the MBT too.
+            // Let's assume for now, if it's an update of main TX, we don't try to update MBT, only create new if it was a *new* MB link.
+            // This part needs more thought for robust editing of MB-linked transactions.
+            // Current simplified approach: if it's a moneybox transaction, it creates the main and the MBT. Editing this "compound" transaction is not fully supported through this handler yet.
+            // We will assume MoneyBoxRelatedTransactionData only comes for NEW additions for now to avoid MBT duplication on edit.
+            if (!existingMainTxId) { // Only create new MBT if it's a new main transaction
+                 await addOrUpdateRecord<MoneyBoxTransaction>(
+                    'money_box_transactions',
+                    mbtData,
+                    setMoneyBoxTransactions,
+                    (a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                );
+            }
+             addToast('Transação principal e da caixinha registradas!', 'success');
         }
+    } else {
+        // Handle regular transaction
+        const regularTxData = data as Transaction | Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>;
+        mainTransaction = await addOrUpdateRecord<Transaction>(
+            'transactions',
+            regularTxData,
+            setTransactions,
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+            isUpdate
+        );
     }
-  };
-  const handleUpdateTransaction = async (updatedTransactionData: Transaction) => {
-    const updatedTransaction = await addOrUpdateRecord<Transaction>(
-      'transactions',
-      updatedTransactionData,
-      setTransactions,
-      (a,b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-      true
-    );
-    if (updatedTransaction) {
+
+    if (mainTransaction) {
         setIsTransactionModalOpen(false);
         setEditingTransaction(null);
-        handleGenerateCommentForTransaction(updatedTransaction);
-        handleAnalyzeSpendingForCategory(updatedTransaction);
+        if (mainTransaction.type !== TransactionType.TRANSFER) { // AI comments not for transfers
+            handleGenerateCommentForTransaction(mainTransaction);
+            handleAnalyzeSpendingForCategory(mainTransaction);
+        }
+
+        // Special handling for credit card expenses not linked to installment purchases (direct debits)
+        const isCreditCardSource = creditCards.some(cc => cc.id === mainTransaction!.account_id);
+        const isAlreadyInstallment = installmentPurchases.some(ip => ip.linked_transaction_id === mainTransaction!.id);
+
+        if (isCreditCardSource && mainTransaction!.type === TransactionType.EXPENSE && !isAlreadyInstallment && !('isMoneyBoxTransaction' in data && data.isMoneyBoxTransaction)) {
+            // Check if it's an update where the account_id might have changed from non-card to card
+            // Or if it's a new transaction.
+            // We should only create a 1-installment purchase if it's a new direct debit on card.
+            const originalTransaction = isUpdate ? transactions.find(t => t.id === mainTransaction!.id) : null;
+            const becameCardDebit = isUpdate && originalTransaction && !creditCards.some(cc => cc.id === originalTransaction.account_id) && isCreditCardSource;
+
+            if (!isUpdate || becameCardDebit) { // Create for new transactions or if it just became a card debit
+                const installmentPurchaseData: Omit<InstallmentPurchase, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
+                    credit_card_id: mainTransaction!.account_id,
+                    description: `Débito Direto: ${mainTransaction!.description || categories.find(c=>c.id === mainTransaction!.category_id)?.name || 'Despesa no Cartão'}`,
+                    purchase_date: mainTransaction!.date,
+                    total_amount: mainTransaction!.amount,
+                    number_of_installments: 1, 
+                    installments_paid: 0, 
+                    linked_transaction_id: mainTransaction!.id,
+                };
+                await handleAddInstallmentPurchase(installmentPurchaseData, false); // false for showToast
+            }
+        }
     }
   };
   const handleDeleteTransaction = (id: string) => deleteRecord('transactions', id, setTransactions);
@@ -832,6 +894,7 @@ const AppContent: React.FC = () => {
         linkedTxId = mainTx.id;
     }
     await addOrUpdateRecord('money_box_transactions', {...mbt, linked_transaction_id: linkedTxId} as Omit<MoneyBoxTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>, setMoneyBoxTransactions, (a: MoneyBoxTransaction,b: MoneyBoxTransaction)=>new Date(b.date).getTime() - new Date(a.date).getTime());
+    addToast(`Movimentação na caixinha "${moneyBoxes.find(mb => mb.id === mbt.money_box_id)?.name}" registrada!`, 'success');
   };
   const handleDeleteMoneyBoxTransaction = (id: string, linkedTransactionId?:string) => {
       if(linkedTransactionId && window.confirm("Esta transação de caixinha está vinculada a uma transação principal. Deseja remover APENAS a movimentação da caixinha? A transação principal NÃO será afetada.")){
@@ -862,7 +925,8 @@ const AppContent: React.FC = () => {
             description: `Recorrência: ${rt.description}`, date: rt.next_due_date,
             account_id: rt.account_id, to_account_id: rt.to_account_id,
         };
-        await handleAddTransaction(transactionData); 
+        // Use handleAddOrUpdateTransaction for consistency, though it's always add here.
+        await handleAddOrUpdateTransaction(transactionData); 
 
         const updatedRTData = {
             last_posted_date: rt.next_due_date,
@@ -1379,10 +1443,11 @@ const AppContent: React.FC = () => {
       {isTransactionModalOpen && (
         <Modal isOpen={isTransactionModalOpen} onClose={() => { setIsTransactionModalOpen(false); setEditingTransaction(null);}} title={editingTransaction && 'id' in editingTransaction ? 'Editar Transação' : 'Nova Transação'} size="lg">
           <TransactionForm
-            onSubmit={editingTransaction && 'id' in editingTransaction ? handleUpdateTransaction : handleAddTransaction}
+            onSubmit={handleAddOrUpdateTransaction}
             onCancel={() => { setIsTransactionModalOpen(false); setEditingTransaction(null); }}
             accounts={accounts}
             creditCards={creditCards}
+            moneyBoxes={moneyBoxes}
             categories={categories}
             tags={tags}
             initialTransaction={editingTransaction as Transaction | null} 

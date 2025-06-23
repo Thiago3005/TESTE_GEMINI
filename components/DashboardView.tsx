@@ -38,7 +38,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     isPrivacyModeEnabled,
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
-  const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'pie' | 'bar'>('pie'); 
+  const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'pie' | 'bar'>('bar'); 
   const currentMonthYYYYMM = getISODateString(new Date()).substring(0, 7); 
 
   const totalAccountBalance = useMemo(() => {
