@@ -12,7 +12,7 @@ import {
   AIConfig, AIInsight, AIInsightType,
   FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile,
   Debt, DebtPayment, DebtStrategy, DebtProjection, AuthModalType,
-  MoneyBoxRelatedTransactionData, SimulatedTransactionForProjection // Added SimulatedTransactionForProjection
+  MoneyBoxRelatedTransactionData, SimulatedTransactionForProjection, SafeToSpendTodayState, SafeToSpendTodayInfo // Added SafeToSpendToday types
 } from './types';
 import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts, TRANSACTION_TYPE_OPTIONS } from './constants'; // Added TRANSACTION_TYPE_OPTIONS
 import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency, getEligibleInstallmentsForBillingCycle } from './utils/helpers';
@@ -67,7 +67,7 @@ import HeartIcon from './components/icons/HeartIcon';
 
 // Services
 import * as geminiService from './services/geminiService';
-import type { FinancialContext } from './services/geminiService'; // Removed SimulatedTransactionData as it's now in types.ts
+import type { FinancialContext } from './services/geminiService'; 
 import { GoogleGenAI, GenerateContentResponse, Chat } from "./google-genai-shim";
 
 
@@ -116,6 +116,16 @@ const AppContent: React.FC = () => {
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | Partial<Transaction> | null>(null);
 
+  const [safeToSpendToday, setSafeToSpendToday] = useState<SafeToSpendTodayState>({
+    safeAmount: null,
+    explanation: 'Clique em "Recalcular" para obter uma sugestão.',
+    calculationDate: null,
+    lastCalculatedDisplay: null,
+    isLoading: false,
+    error: null,
+  });
+  const safeToSpendIntervalRef = useRef<number | null>(null);
+
 
   const isFetchingDataRef = useRef(false);
 
@@ -137,6 +147,7 @@ const AppContent: React.FC = () => {
     setActiveUserProfile(null);
     setCurrentUserPreferences(null);
     setAiConfigState({ isEnabled: false, apiKeyStatus: 'unknown', monthlyIncome: null, autoBackupToFileEnabled: false });
+    setSafeToSpendToday({ safeAmount: null, explanation: 'Clique em "Recalcular".', calculationDate: null, lastCalculatedDisplay: null, isLoading: false, error: null });
   };
 
 
@@ -576,7 +587,7 @@ const AppContent: React.FC = () => {
             amount: simulatedTx.amount,
             date: simulatedTx.date,
             description: simulatedTx.description,
-            account_id: 'simulated_account',
+            account_id: 'simulated_account', // Needs a valid account ID or handling for simulated accounts
         };
         effectiveTransactions.push(tempSimulatedTx);
     }
@@ -608,6 +619,89 @@ const AppContent: React.FC = () => {
         debts: debts,
     };
   }, [user, activeUserProfile, accounts, transactions, categories, moneyBoxes, moneyBoxTransactions, loans, loanRepayments, recurringTransactions, futurePurchases, theme, aiConfig.monthlyIncome, debts, calculateAccountBalance, calculateMoneyBoxBalance]);
+
+  const handleFetchSafeToSpendToday = useCallback(async () => {
+    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available' || !user || !activeUserProfile) {
+      setSafeToSpendToday(prev => ({
+        ...prev,
+        explanation: "AI Coach desativado ou não configurado para esta análise.",
+        isLoading: false,
+        error: "AI Coach indisponível.",
+        safeAmount: null,
+        lastCalculatedDisplay: prev.lastCalculatedDisplay || formatDate(new Date().toISOString(), 'pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      }));
+      return;
+    }
+    setSafeToSpendToday(prev => ({ ...prev, isLoading: true, error: null }));
+    const context = generateFinancialContext();
+    if (context) {
+      const advice: SafeToSpendTodayInfo | null = await geminiService.fetchSafeToSpendTodayAdvice(context);
+      if (advice) {
+        setSafeToSpendToday({
+          safeAmount: advice.safeAmount,
+          explanation: advice.explanation,
+          calculationDate: advice.calculationDate,
+          lastCalculatedDisplay: formatDate(new Date().toISOString(), 'pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          isLoading: false,
+          error: advice.error || null,
+        });
+      } else {
+        setSafeToSpendToday({
+          safeAmount: null,
+          explanation: "Não foi possível obter a sugestão da IA no momento.",
+          calculationDate: getISODateString(),
+          lastCalculatedDisplay: formatDate(new Date().toISOString(), 'pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          isLoading: false,
+          error: "Resposta nula da IA.",
+        });
+      }
+    } else {
+      setSafeToSpendToday({
+        safeAmount: null,
+        explanation: "Não foi possível gerar contexto financeiro para a análise.",
+        calculationDate: getISODateString(),
+        lastCalculatedDisplay: formatDate(new Date().toISOString(), 'pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        isLoading: false,
+        error: "Contexto financeiro indisponível.",
+      });
+    }
+  }, [aiConfig.isEnabled, aiConfig.apiKeyStatus, generateFinancialContext, user, activeUserProfile]);
+
+
+  useEffect(() => {
+    if (activeView === 'DASHBOARD' && aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available' && !safeToSpendToday.isLoading) {
+        const todayStr = getISODateString();
+        if (safeToSpendToday.calculationDate !== todayStr) {
+             handleFetchSafeToSpendToday();
+        }
+    }
+  }, [activeView, aiConfig.isEnabled, aiConfig.apiKeyStatus, handleFetchSafeToSpendToday, safeToSpendToday.isLoading, safeToSpendToday.calculationDate]);
+
+
+  useEffect(() => {
+    if (safeToSpendIntervalRef.current) {
+        clearInterval(safeToSpendIntervalRef.current);
+        safeToSpendIntervalRef.current = null;
+    }
+
+    if (activeView === 'DASHBOARD' && aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available') {
+        const checkForRefresh = () => {
+            const todayStr = getISODateString();
+            if (safeToSpendToday.calculationDate !== todayStr && !safeToSpendToday.isLoading) {
+                handleFetchSafeToSpendToday();
+            }
+        };
+        checkForRefresh();
+        safeToSpendIntervalRef.current = window.setInterval(checkForRefresh, 60 * 60 * 1000); // Check every hour
+    }
+
+    return () => {
+        if (safeToSpendIntervalRef.current) {
+            clearInterval(safeToSpendIntervalRef.current);
+        }
+    };
+  }, [activeView, aiConfig.isEnabled, aiConfig.apiKeyStatus, handleFetchSafeToSpendToday, safeToSpendToday.calculationDate, safeToSpendToday.isLoading]);
+
 
 
   const addOrUpdateRecord = async <T extends { id?: string, user_id?: string, profile_id?: string, created_at?: string, updated_at?: string }>(
@@ -729,6 +823,11 @@ const AppContent: React.FC = () => {
             handleGenerateCommentForTransaction(mainTransaction);
             handleAnalyzeSpendingForCategory(mainTransaction);
         }
+        // If a transaction is added/updated, "safe to spend" might change.
+        if (safeToSpendToday.calculationDate === getISODateString()) { // Only if already calculated for today
+            handleFetchSafeToSpendToday(); 
+        }
+
 
         // Special handling for credit card expenses not linked to installment purchases (direct debits)
         const isCreditCardSource = creditCards.some(cc => cc.id === mainTransaction!.account_id);
@@ -1450,7 +1549,7 @@ const AppContent: React.FC = () => {
       </aside>
 
       <main className="flex-1 ml-64 overflow-y-auto bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark">
-        {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} onFetchSavingOpportunities={handleFetchSavingOpportunities} />}
+        {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} onFetchSavingOpportunities={handleFetchSavingOpportunities} safeToSpendToday={safeToSpendToday} onFetchSafeToSpendToday={handleFetchSafeToSpendToday} />}
         {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}
         {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'ACCOUNTS' && <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}

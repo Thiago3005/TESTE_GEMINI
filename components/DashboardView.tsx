@@ -1,7 +1,7 @@
 
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
-import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction } from '../types'; 
+import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState } from '../types'; 
 import { formatCurrency, getISODateString, formatDate } from '../utils/helpers'; 
 import PlusIcon from './icons/PlusIcon';
 import ScaleIcon from './icons/ScaleIcon'; 
@@ -13,7 +13,9 @@ import ChartPieIcon from './icons/ChartPieIcon';
 import BarChartIcon from './icons/BarChartIcon'; 
 import BillsAlerts from './BillsAlerts'; 
 import LightBulbIcon from './icons/LightBulbIcon';
-import SparklesIcon from './icons/SparklesIcon'; // Added for Oportunidades de Economia
+import SparklesIcon from './icons/SparklesIcon';
+import TrendingUpIcon from './icons/TrendingUpIcon'; // New Icon
+import ArrowPathIcon from './icons/ArrowPathIcon'; // For recalculate button
 
 
 interface DashboardViewProps {
@@ -32,7 +34,9 @@ interface DashboardViewProps {
   onViewRecurringTransaction?: (transactionId: string) => void; 
   isPrivacyModeEnabled?: boolean; 
   onFetchGeneralAdvice: () => void;
-  onFetchSavingOpportunities: () => void; // New prop for Saving Opportunities
+  onFetchSavingOpportunities: () => void;
+  safeToSpendToday: SafeToSpendTodayState; // New prop
+  onFetchSafeToSpendToday: () => void; // New prop
 }
 
 const DashboardView: React.FC<DashboardViewProps> = ({ 
@@ -41,7 +45,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     onAddTransaction, calculateAccountBalance, calculateMoneyBoxBalance, onViewRecurringTransaction,
     isPrivacyModeEnabled,
     onFetchGeneralAdvice,
-    onFetchSavingOpportunities, // Destructure new prop
+    onFetchSavingOpportunities,
+    safeToSpendToday, // Destructure new prop
+    onFetchSafeToSpendToday, // Destructure new prop
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
   const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'pie' | 'bar'>('bar'); 
@@ -101,6 +107,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     return { totalBudgeted, totalSpentInBudgetedCategories };
   }, [budgetedCategories, transactions, currentMonthYYYYMM]);
 
+  const handleRecalculateSafeToSpend = () => {
+    onFetchSafeToSpendToday();
+  };
+
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -124,6 +134,63 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             </Button>
         </div>
       </div>
+      
+      {/* Safe to Spend Today Card */}
+      <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-xl dark:shadow-neutralDark/40 border-l-4 border-green-500 dark:border-green-400">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
+            <div className="flex items-center space-x-2">
+                <TrendingUpIcon className="w-7 h-7 text-green-500 dark:text-green-400" />
+                <h2 className="text-lg font-semibold text-textBase dark:text-textBaseDark">Disponível para Gastar Hoje (IA)</h2>
+            </div>
+            <Button
+                onClick={handleRecalculateSafeToSpend}
+                variant="ghost"
+                size="sm"
+                disabled={safeToSpendToday.isLoading}
+                className="!text-xs !py-1 !px-2 self-start sm:self-center"
+                title="Recalcular sugestão da IA"
+            >
+                <ArrowPathIcon className={`w-4 h-4 mr-1 ${safeToSpendToday.isLoading ? 'animate-spin' : ''}`} />
+                {safeToSpendToday.isLoading ? 'Calculando...' : 'Recalcular'}
+            </Button>
+        </div>
+
+        {safeToSpendToday.isLoading && !safeToSpendToday.safeAmount && !isPrivacyModeEnabled ? (
+            <p className="text-center text-textMuted dark:text-textMutedDark py-4">Calculando sugestão...</p>
+        ) : safeToSpendToday.safeAmount !== null ? (
+            <p className={`text-4xl font-bold text-center my-3 ${
+                safeToSpendToday.safeAmount === 0 && (safeToSpendToday.explanation || '').toLowerCase().includes('evite')
+                ? 'text-amber-500 dark:text-amber-400'
+                : safeToSpendToday.safeAmount > 0
+                ? 'text-green-600 dark:text-green-500'
+                : 'text-red-500 dark:text-red-400'
+            }`}>
+            {formatCurrency(safeToSpendToday.safeAmount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+            </p>
+        ) : (
+             <p className={`text-3xl font-bold text-center my-3 text-amber-500 dark:text-amber-400`}>
+                {isPrivacyModeEnabled ? formatCurrency(0, 'BRL','pt-BR', true) : "---"}
+             </p>
+        )}
+        
+        <p className="text-xs text-textMuted dark:text-textMutedDark text-center break-words min-h-[30px]">
+            {safeToSpendToday.isLoading && safeToSpendToday.safeAmount !== null ? 'Recalculando...' : (safeToSpendToday.explanation || "Clique em Recalcular para obter uma sugestão.")}
+        </p>
+        {safeToSpendToday.lastCalculatedDisplay && (
+            <p className="text-xs text-textMuted/70 dark:text-textMutedDark/70 text-center mt-2">
+                Último cálculo: {safeToSpendToday.lastCalculatedDisplay}
+            </p>
+        )}
+        {safeToSpendToday.error && (
+            <p className="text-xs text-destructive dark:text-destructiveDark text-center mt-1">
+                Erro: {safeToSpendToday.error}
+            </p>
+        )}
+         <p className="text-xs text-textMuted dark:text-textMutedDark text-center mt-3 italic">
+            Esta é uma sugestão da IA e não garante sua saúde financeira. Use com discernimento.
+        </p>
+      </div>
+
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">

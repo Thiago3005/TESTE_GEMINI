@@ -159,6 +159,7 @@ export type AIInsightType =
   | 'cash_flow_projection'
   | 'debt_strategy_explanation'
   | 'debt_projection_summary'
+  | 'safe_to_spend_today_advice' // New insight type, if needed for logging
   | 'error_message';
 
 export interface AIInsight extends SupabaseManaged {
@@ -260,6 +261,18 @@ export interface SimulatedTransactionForProjection {
   amount: number;
   type: TransactionType;
   date: string;
+}
+
+export interface SafeToSpendTodayInfo { // For AI response
+  safeAmount: number | null;
+  explanation: string;
+  calculationDate: string; // YYYY-MM-DD
+  error?: string | null;
+}
+
+export interface SafeToSpendTodayState extends SafeToSpendTodayInfo { // For App.tsx state
+  isLoading: boolean;
+  lastCalculatedDisplay: string | null; // Formatted for display
 }
 
 

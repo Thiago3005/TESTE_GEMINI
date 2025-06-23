@@ -1,6 +1,6 @@
 
-import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
-import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection } from '../types';
+import { GoogleGenAI, GenerateContentResponse, Chat } from "../google-genai-shim"; // Changed import
+import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
 const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY;
@@ -446,6 +446,81 @@ Comente se o plano parece realista, se o tempo de quitação é bom, e talvez um
 Exemplo de tom: "Este plano ${strategyName} parece eficaz, quitando suas dívidas em ${projection.monthsToPayoff} meses. O total de juros de ${formatCurrency(projection.totalInterestPaid)} é significativo; considere aumentar o pagamento extra, se possível, para acelerar."
 Não use markdown. Responda apenas com o resumo.
 Resumo:`;
+};
+
+const constructPromptForSafeToSpendToday = (context: FinancialContext): string => {
+  const daysRemainingInMonth = context.daysInMonth - context.dayOfMonth + 1;
+  const endOfMonthDate = getISODateString(new Date(new Date(context.currentDate).getFullYear(), new Date(context.currentDate).getMonth() + 1, 0));
+
+  const upcomingFixedExpenses = context.recurringTransactions
+    ?.filter(rt => rt.type === TransactionType.EXPENSE && new Date(rt.next_due_date) <= new Date(endOfMonthDate) && new Date(rt.next_due_date) >= new Date(context.currentDate) )
+    .map(rt => `- ${rt.description}: ${formatCurrency(rt.amount)} em ${formatDate(rt.next_due_date)}`)
+    .join('\n') || 'Nenhuma despesa recorrente significativa próxima.';
+
+  const upcomingFixedIncome = context.recurringTransactions
+    ?.filter(rt => rt.type === TransactionType.INCOME && new Date(rt.next_due_date) <= new Date(endOfMonthDate) && new Date(rt.next_due_date) >= new Date(context.currentDate))
+    .map(rt => `- ${rt.description}: ${formatCurrency(rt.amount)} em ${formatDate(rt.next_due_date)}`)
+    .join('\n') || 'Nenhuma receita recorrente significativa próxima.';
+
+  const essentialBudgetInfo = context.categories
+    .filter(c => c.type === TransactionType.EXPENSE && c.monthly_budget && ['Alimentação', 'Moradia', 'Transporte', 'Saúde', 'Educação', 'Água', 'Luz', 'Gás', 'Impostos', 'Contas'].some(essential => c.name.toLowerCase().includes(essential.toLowerCase())) )
+    .map(c => {
+        const dailyBudget = (c.monthly_budget || 0) / context.daysInMonth;
+        // Estimate remaining needed for essential budgets more simply
+        const spentSoFarThisMonth = context.transactions?.filter(t => t.category_id === c.id && t.date.startsWith(context.currentDate.substring(0,7)) && t.type === TransactionType.EXPENSE).reduce((sum, t) => sum + t.amount, 0) || 0;
+        const estimatedRemainingNeed = Math.max(0, (c.monthly_budget || 0) - spentSoFarThisMonth);
+        return `- ${c.name}: Orçamento Mensal ${formatCurrency(c.monthly_budget || 0)}. Gasto até agora: ${formatCurrency(spentSoFarThisMonth)}. Necessidade estimada restante: ${formatCurrency(estimatedRemainingNeed)}.`;
+    }).join('\n') || 'Nenhum orçamento para despesas essenciais definido.';
+  
+  const savingsGoalsInfo = context.moneyBoxes && context.moneyBoxes.length > 0 ? context.moneyBoxes.map(mb => {
+        const balanceInfo = context.moneyBoxBalances?.find(b => b.moneyBoxId === mb.id);
+        // Assume a simple monthly contribution goal if not specified otherwise for AI
+        const monthlyContributionSuggestion = mb.goal_amount ? formatCurrency(mb.goal_amount / 12) + " (sugestão anual/12)" : "N/A";
+        return `- ${mb.name}: Saldo Atual ${balanceInfo ? formatCurrency(balanceInfo.balance) : formatCurrency(0)} ${mb.goal_amount ? `(Meta Total: ${formatCurrency(mb.goal_amount)})` : ''}. Contribuição mensal sugerida para meta: ${monthlyContributionSuggestion}`;
+    }).join('\n') : 'Nenhuma caixinha de economia configurada.';
+
+
+  return `Você é um consultor financeiro especialista em planejamento de gastos diários.
+Baseado no contexto financeiro completo do usuário, calcule um valor "seguro para gastar HOJE" em despesas discricionárias (lazer, compras não essenciais, etc.).
+Este valor deve permitir que o usuário cubra todas as suas despesas recorrentes e orçamentos essenciais até o final do mês corrente, além de idealmente permitir alguma contribuição para suas metas de economia, sem comprometer sua saúde financeira no curto prazo.
+
+Data Atual: ${context.currentDate} (Dia ${context.dayOfMonth} de ${context.daysInMonth} dias no mês).
+Renda Mensal Informada: ${context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada'}.
+
+Saldos Atuais em Contas Líquidas (some todos para ter o total disponível agora):
+${context.accounts.map(acc => {
+    const balanceInfo = context.accountBalances.find(b => b.accountId === acc.id);
+    return `- ${acc.name}: Saldo ${balanceInfo ? formatCurrency(balanceInfo.balance) : 'N/A'}`;
+}).join('\n') || 'Nenhuma conta líquida informada.'}
+Saldo Total Líquido Atual: ${formatCurrency(context.accountBalances.reduce((sum, acc) => sum + acc.balance, 0))}
+
+Próximas Despesas Recorrentes Fixas (até o fim do mês atual - ${daysRemainingInMonth} dias restantes):
+${upcomingFixedExpenses}
+
+Próximas Receitas Recorrentes Fixas (até o fim do mês atual):
+${upcomingFixedIncome}
+
+Orçamentos Mensais para Despesas Essenciais/Planejadas (some o valor restante proporcional para o resto do mês):
+${essentialBudgetInfo}
+
+Metas de Economia (Caixinhas):
+${savingsGoalsInfo}
+
+O valor "seguro para gastar hoje" deve ser uma sugestão realista para despesas variáveis e não essenciais.
+Considere o saldo total, as receitas e despesas fixas até o final do mês. Subtraia uma estimativa para despesas essenciais orçadas para o restante do mês.
+Se os fundos estiverem muito apertados ou a projeção indicar saldo negativo, o valor "seguro para gastar hoje" deve ser R$0 ou muito baixo, com uma explicação clara.
+Não se baseie apenas em (Saldo Atual / Dias Restantes). Considere o fluxo de caixa futuro e as obrigações.
+
+Responda APENAS com um objeto JSON contendo as chaves:
+- "safeAmount": number (o valor que pode ser gasto hoje em despesas variáveis; pode ser 0. Arredonde para duas casas decimais se não for inteiro.)
+- "explanation": string (uma breve explicação concisa de como chegou a esse valor ou um aviso se estiver apertado, ex: "Considerando suas contas a pagar e orçamentos essenciais, este é seu limite para gastos variáveis hoje." ou "Seu fluxo de caixa está apertado. Evite gastos não essenciais hoje.")
+- "calculationDate": string (data atual no formato YYYY-MM-DD)
+
+Exemplo de resposta positiva: {"safeAmount": 75.50, "explanation": "Após reservar para contas e orçamentos, este é seu limite para gastos variáveis hoje.", "calculationDate": "${context.currentDate}"}
+Exemplo de resposta restritiva: {"safeAmount": 0, "explanation": "Suas despesas programadas e orçamentos essenciais consomem sua renda prevista. Evite gastos não essenciais hoje para não comprometer o orçamento.", "calculationDate": "${context.currentDate}"}
+Se não for possível calcular confiavelmente (ex: falta de dados cruciais como saldos de conta ou despesas recorrentes), retorne: {"safeAmount": null, "explanation": "Não foi possível calcular com os dados atuais. Verifique seus saldos de conta, transações recorrentes e orçamentos.", "calculationDate": "${context.currentDate}"}
+
+Cálculo:`;
 };
 
 
@@ -926,6 +1001,71 @@ export const fetchDebtProjectionSummary = async (projection: DebtProjection, deb
         is_read: false,
     };
 };
+
+export const fetchSafeToSpendTodayAdvice = async (
+  context: FinancialContext
+): Promise<SafeToSpendTodayInfo | null> => {
+  if (!ai || !isGeminiApiKeyAvailable()) {
+    console.warn("Gemini API not available for fetchSafeToSpendTodayAdvice.");
+    return {
+      safeAmount: null,
+      explanation: "AI Coach desativado ou API Key não configurada.",
+      calculationDate: context.currentDate,
+      error: "AI Coach desativado ou API Key não configurada."
+    };
+  }
+
+  const prompt = constructPromptForSafeToSpendToday(context);
+  try {
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-04-17",
+        contents: prompt,
+        config: { responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } }
+    });
+
+    let jsonStr = response.text?.trim() || '';
+    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+    const match = jsonStr.match(fenceRegex);
+    if (match && match[2]) {
+        jsonStr = match[2].trim();
+    }
+    
+    const parsedResult = JSON.parse(jsonStr);
+
+    if (parsedResult.error) {
+        console.warn("Gemini returned an error for safe to spend today:", parsedResult.error);
+        return { ...parsedResult, explanation: parsedResult.error, calculationDate: parsedResult.calculationDate || context.currentDate };
+    }
+    // Ensure safeAmount is a number or null, and other fields are strings
+    if (typeof parsedResult.explanation === 'string' && 
+        typeof parsedResult.calculationDate === 'string' &&
+        (typeof parsedResult.safeAmount === 'number' || parsedResult.safeAmount === null)) {
+        return parsedResult as SafeToSpendTodayInfo;
+    }
+    
+    console.error("Invalid JSON structure received from Gemini for safeToSpendToday:", parsedResult);
+    return {
+        safeAmount: null,
+        explanation: "Não foi possível determinar o valor seguro para gastar hoje (resposta inválida da IA).",
+        calculationDate: context.currentDate,
+        error: "Resposta inválida da IA."
+    };
+
+  } catch (error) {
+    console.error("Error fetching safe to spend today advice from Gemini:", error);
+    let errorMessage = "Desculpe, não consegui calcular o valor seguro para gastar hoje.";
+    if (error instanceof Error) {
+        errorMessage += ` Detalhe: ${error.message}`;
+    }
+    return {
+        safeAmount: null,
+        explanation: errorMessage,
+        calculationDate: context.currentDate,
+        error: errorMessage
+    };
+  }
+};
+
 
 export const calculateNextDueDate = (currentDueDate: string, frequency: RecurringTransactionFrequency, customIntervalDays?: number): string => {
   const date = new Date(currentDueDate + 'T00:00:00'); 
