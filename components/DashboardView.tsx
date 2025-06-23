@@ -13,6 +13,7 @@ import ChartPieIcon from './icons/ChartPieIcon';
 import BarChartIcon from './icons/BarChartIcon'; 
 import BillsAlerts from './BillsAlerts'; 
 import LightBulbIcon from './icons/LightBulbIcon';
+import SparklesIcon from './icons/SparklesIcon'; // Added for Oportunidades de Economia
 
 
 interface DashboardViewProps {
@@ -30,7 +31,8 @@ interface DashboardViewProps {
   calculateMoneyBoxBalance: (moneyBoxId: string) => number; 
   onViewRecurringTransaction?: (transactionId: string) => void; 
   isPrivacyModeEnabled?: boolean; 
-  onFetchGeneralAdvice: () => void; // New prop for AI advice
+  onFetchGeneralAdvice: () => void;
+  onFetchSavingOpportunities: () => void; // New prop for Saving Opportunities
 }
 
 const DashboardView: React.FC<DashboardViewProps> = ({ 
@@ -38,7 +40,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     loans, loanRepayments, recurringTransactions, 
     onAddTransaction, calculateAccountBalance, calculateMoneyBoxBalance, onViewRecurringTransaction,
     isPrivacyModeEnabled,
-    onFetchGeneralAdvice, // Destructure new prop
+    onFetchGeneralAdvice,
+    onFetchSavingOpportunities, // Destructure new prop
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
   const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'pie' | 'bar'>('bar'); 
@@ -106,10 +109,14 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           <h1 className="text-2xl font-bold text-textBase dark:text-textBaseDark">Painel Geral</h1>
           <p className="text-textMuted dark:text-textMutedDark">Bem-vindo ao seu controle financeiro.</p>
         </div>
-        <div className="flex items-center gap-x-3">
-            <Button onClick={onFetchGeneralAdvice} variant="ghost" size="md" className="!px-3" title="Obter Conselho Rápido da IA">
-                <LightBulbIcon className="w-5 h-5 mr-0 sm:mr-2 text-yellow-500 dark:text-yellow-400" />
-                <span className="hidden sm:inline">Conselho Rápido</span>
+        <div className="flex items-center gap-x-2 sm:gap-x-3">
+            <Button onClick={onFetchGeneralAdvice} variant="ghost" size="md" className="!px-2 sm:!px-3" title="Obter Conselho Rápido da IA">
+                <LightBulbIcon className="w-5 h-5 text-yellow-500 dark:text-yellow-400 sm:mr-2" />
+                <span className="hidden sm:inline">Conselho</span>
+            </Button>
+            <Button onClick={onFetchSavingOpportunities} variant="ghost" size="md" className="!px-2 sm:!px-3" title="Buscar Oportunidades de Economia com IA">
+                <SparklesIcon className="w-5 h-5 text-teal-500 dark:text-teal-400 sm:mr-2" />
+                <span className="hidden sm:inline">Economizar</span>
             </Button>
             <Button onClick={onAddTransaction} variant="primary" size="lg">
             <PlusIcon className="w-5 h-5 mr-2" />

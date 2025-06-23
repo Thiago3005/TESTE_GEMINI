@@ -21,8 +21,7 @@ interface AICoachViewProps {
   insights: AIInsight[];
   onUpdateInsight: (insight: AIInsight) => void; 
   isPrivacyModeEnabled?: boolean;
-  onFetchSavingOpportunities: () => void; 
-  onDeleteAllInsights: () => void; // New prop to clear all insights
+  onDeleteAllInsights: () => void; 
 }
 
 const AICoachView: React.FC<AICoachViewProps> = ({
@@ -31,8 +30,7 @@ const AICoachView: React.FC<AICoachViewProps> = ({
   insights,
   onUpdateInsight,
   isPrivacyModeEnabled,
-  onFetchSavingOpportunities, 
-  onDeleteAllInsights, // Destructure new prop
+  onDeleteAllInsights, 
 }) => {
   const [monthlyIncomeInput, setMonthlyIncomeInput] = useState<string>(aiConfig.monthlyIncome?.toString() || '');
   const [incomeEditMode, setIncomeEditMode] = useState(false);
@@ -201,9 +199,6 @@ const AICoachView: React.FC<AICoachViewProps> = ({
             <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-3">
                 <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark">Histórico de Insights</h2>
                 <div className="flex flex-wrap gap-2">
-                     <Button onClick={onFetchSavingOpportunities} variant="ghost" size="sm">
-                        <SparklesIcon className="w-4 h-4 mr-1.5" /> Oportunidades de Economia
-                    </Button>
                     <Button onClick={onDeleteAllInsights} variant="danger" size="sm">
                         <TrashIcon className="w-4 h-4 mr-1.5" /> Limpar Histórico
                     </Button>
