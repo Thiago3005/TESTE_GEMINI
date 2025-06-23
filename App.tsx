@@ -27,14 +27,15 @@ import CategoriesView from './components/CategoriesView';
 import CreditCardsView from './components/CreditCardsView';
 import MoneyBoxesView from './components/MoneyBoxesView';
 import FuturePurchasesView from './components/FuturePurchasesView';
-import DataManagementView from './components/DataManagementView';
+// DataManagementView removed
 import TagsView from './components/TagsView';
 import RecurringTransactionsView from './components/RecurringTransactionsView';
 import LoansView from './components/LoansView';
 import AICoachView from './components/AICoachView';
 import LoginView from './components/LoginView';
 import DebtPlannerView from './components/DebtPlannerView';
-import CashFlowView from './components/CashFlowView'; // New View
+import CashFlowView from './components/CashFlowView';
+import AjudeProjetoView from './components/AjudeProjetoView'; // New View
 
 // Components
 import Modal from './components/Modal';
@@ -47,7 +48,7 @@ import ChartPieIcon from './components/icons/ChartPieIcon';
 import ListBulletIcon from './components/icons/ListBulletIcon';
 import CreditCardIcon from './components/icons/CreditCardIcon';
 import TagIcon from './components/icons/TagIcon';
-import CogIcon from './components/icons/CogIcon';
+// CogIcon removed
 import PlusIcon from './components/icons/PlusIcon';
 import PiggyBankIcon from './components/icons/PiggyBankIcon';
 import ShoppingCartIcon from './components/icons/ShoppingCartIcon';
@@ -60,7 +61,8 @@ import EyeIcon from './components/icons/EyeIcon';
 import EyeSlashIcon from './components/icons/EyeSlashIcon';
 import PowerIcon from './components/icons/PowerIcon';
 import BanknotesIcon from './components/icons/BanknotesIcon';
-import PresentationChartLineIcon from './components/icons/PresentationChartLineIcon'; // New Icon
+import PresentationChartLineIcon from './components/icons/PresentationChartLineIcon';
+import HeartIcon from './components/icons/HeartIcon'; // New Icon
 
 // Services
 import * as geminiService from './services/geminiService';
@@ -1170,7 +1172,7 @@ const AppContent: React.FC = () => {
     { view: 'LOANS', icon: <UsersIcon />, label: 'Empréstimos' },
     { view: 'DEBT_PLANNER', icon: <BanknotesIcon />, label: 'Planejador Dívidas' },
     { view: 'AI_COACH', icon: <ChatBubbleLeftRightIcon />, label: 'AI Coach', hasIndicator: aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available' },
-    { view: 'DATA_MANAGEMENT', icon: <CogIcon />, label: 'Dados' },
+    { view: 'AJUDE_PROJETO', icon: <HeartIcon className="text-red-500"/>, label: 'Ajude o Projeto' },
   ];
 
   return (
@@ -1239,7 +1241,7 @@ const AppContent: React.FC = () => {
         {activeView === 'LOANS' && <LoansView loans={loans} loanRepayments={loanRepayments} accounts={accounts} creditCards={creditCards} onAddLoan={handleAddLoan} onUpdateLoan={handleUpdateLoan} onDeleteLoan={handleDeleteLoan} onAddLoanRepayment={handleAddLoanRepayment} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'DEBT_PLANNER' && <DebtPlannerView debts={debts} debtPayments={debtPayments} accounts={accounts} onAddDebt={handleAddDebt} onUpdateDebt={handleUpdateDebt} onDeleteDebt={handleDeleteDebt} onAddDebtPayment={handleAddDebtPayment} onFetchDebtStrategyExplanation={handleFetchDebtStrategyExplanation} onFetchDebtProjectionSummary={handleFetchDebtProjectionSummary} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'AI_COACH' && <AICoachView aiConfig={aiConfig} setAiConfig={updateAiConfig} insights={aiInsights} onFetchGeneralAdvice={() => {const ctx=generateFinancialContext(); if(ctx) geminiService.fetchGeneralAdvice(ctx).then(res => res && handleAddAIInsight(res,true))}} onUpdateInsight={handleUpdateAIInsight} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates} onFetchSavingOpportunities={handleFetchSavingOpportunities} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}
-        {activeView === 'DATA_MANAGEMENT' && <DataManagementView allData={{ transactions, accounts, categories, creditCards, installmentPurchases, moneyBoxes, moneyBoxTransactions, futurePurchases, tags, recurringTransactions, loans, loanRepayments, aiInsights, debts, debtPayments }} userPreferencesToExport={{ theme, is_privacy_mode_enabled: isPrivacyModeEnabled, ai_is_enabled: aiConfig.isEnabled, ai_monthly_income: aiConfig.monthlyIncome, ai_auto_backup_enabled: aiConfig.autoBackupToFileEnabled, id: currentUserPreferences?.id || '', profile_id: activeUserProfile?.id || ''}} activeProfileName={activeUserDisplayName} user={user} />}
+        {activeView === 'AJUDE_PROJETO' && <AjudeProjetoView />}
       </main>
 
       {isTransactionModalOpen && (

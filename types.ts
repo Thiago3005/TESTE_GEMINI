@@ -269,9 +269,9 @@ export type AppView =
   | 'RECURRING_TRANSACTIONS'
   | 'LOANS'
   | 'DEBT_PLANNER'
-  | 'CASH_FLOW' // New View for Cash Flow
+  | 'CASH_FLOW'
   | 'AI_COACH'
-  | 'DATA_MANAGEMENT';
+  | 'AJUDE_PROJETO'; // Replaced DATA_MANAGEMENT
 
 export interface ChartData {
   name: string; // Typically represents a category name or a date string
