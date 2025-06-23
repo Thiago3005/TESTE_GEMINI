@@ -465,7 +465,6 @@ const constructPromptForSafeToSpendToday = (context: FinancialContext): string =
   const essentialBudgetInfo = context.categories
     .filter(c => c.type === TransactionType.EXPENSE && c.monthly_budget && ['Alimentação', 'Moradia', 'Transporte', 'Saúde', 'Educação', 'Água', 'Luz', 'Gás', 'Impostos', 'Contas'].some(essential => c.name.toLowerCase().includes(essential.toLowerCase())) )
     .map(c => {
-        const dailyBudget = (c.monthly_budget || 0) / context.daysInMonth;
         // Estimate remaining needed for essential budgets more simply
         const spentSoFarThisMonth = context.transactions?.filter(t => t.category_id === c.id && t.date.startsWith(context.currentDate.substring(0,7)) && t.type === TransactionType.EXPENSE).reduce((sum, t) => sum + t.amount, 0) || 0;
         const estimatedRemainingNeed = Math.max(0, (c.monthly_budget || 0) - spentSoFarThisMonth);
@@ -529,8 +528,8 @@ const safeGenerateContent = async (
     insightTypeForError: AIInsightType, 
     relatedId?: string 
 ): Promise<string | null> => {
-    if (!ai || !isGeminiApiKeyAvailable()) {
-        console.warn(`Gemini API not available for ${insightTypeForError}.`);
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
+        console.warn(`Gemini API or ai.models not available for ${insightTypeForError}.`);
         return null; 
     }
     try {
@@ -550,12 +549,12 @@ const safeGenerateContent = async (
 };
 
 export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-  if (!ai || !isGeminiApiKeyAvailable()) {
-    console.warn("Gemini API not available for fetchGeneralAdvice.");
+  if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
+    console.warn("Gemini API or ai.models not available for fetchGeneralAdvice.");
     return {
         timestamp: new Date().toISOString(),
         type: 'error_message',
-        content: "AI Coach desativado ou API Key (GEMINI_API_KEY) não configurada.",
+        content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK.",
         is_read: false,
       };
   }
@@ -598,12 +597,12 @@ export const fetchGeneralAdvice = async (context: FinancialContext): Promise<Omi
 };
 
 export const fetchCommentForTransaction = async (transaction: Transaction, context: FinancialContext, categoryName?: string, accountName?: string): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-  if (!ai || !isGeminiApiKeyAvailable()) {
-    console.warn("Gemini API not available for fetchCommentForTransaction.");
+  if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
+    console.warn("Gemini API or ai.models not available for fetchCommentForTransaction.");
      return { 
         timestamp: new Date().toISOString(),
         type: 'error_message',
-        content: "AI Coach desativado ou API Key (GEMINI_API_KEY) não configurada para comentar transação.",
+        content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK para comentar transação.",
         related_transaction_id: transaction.id,
         is_read: false,
       };
@@ -656,12 +655,12 @@ export const fetchBudgetSuggestion = async (
     existingBudgets: {name: string, budget?: number}[],
     context: FinancialContext
 ): Promise<{ suggestedBudget: number } | Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-    if (!ai || !isGeminiApiKeyAvailable()) {
-        console.warn("Gemini API not available for fetchBudgetSuggestion.");
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
+        console.warn("Gemini API or ai.models not available for fetchBudgetSuggestion.");
         return {
             timestamp: new Date().toISOString(),
             type: 'error_message',
-            content: "AI Coach desativado ou API Key (GEMINI_API_KEY) não configurada para sugerir orçamentos.",
+            content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK para sugerir orçamentos.",
             is_read: false,
         };
     }
@@ -719,10 +718,10 @@ export const fetchFuturePurchaseAnalysis = async (
   purchase: FuturePurchase,
   context: FinancialContext
 ): Promise<{ analysisText: string; recommendedStatus: FuturePurchaseStatus } | Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-  if (!ai || !isGeminiApiKeyAvailable()) {
+  if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
     return {
       timestamp: new Date().toISOString(), type: 'error_message',
-      content: "AI Coach desativado ou API Key não configurada para analisar compra futura.",
+      content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK para analisar compra futura.",
       related_future_purchase_id: purchase.id, is_read: false,
     };
   }
@@ -772,13 +771,13 @@ export const fetchBestPurchaseDayAdvice = async (
   card: Pick<CreditCard, 'name' | 'closing_day' | 'due_day'>,
   currentDateISO: string
 ): Promise<BestPurchaseDayInfo | null> => {
-  if (!ai || !isGeminiApiKeyAvailable()) {
-    console.warn("Gemini API not available for fetchBestPurchaseDayAdvice.");
+  if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
+    console.warn("Gemini API or ai.models not available for fetchBestPurchaseDayAdvice.");
     return { 
       bestPurchaseDay: "", 
       paymentDueDate: "", 
-      explanation: "AI Coach desativado ou API Key não configurada.",
-      error: "AI Coach desativado ou API Key não configurada."
+      explanation: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK.",
+      error: "AI Coach indisponível ou erro no SDK."
     };
   }
 
@@ -936,6 +935,15 @@ export const fetchCashFlowProjectionInsight = async (
     context: FinancialContext,
     projectionPeriodDays: number
 ): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
+        console.warn("Gemini API or ai.models not available for fetchCashFlowProjectionInsight.");
+        return { 
+            timestamp: new Date().toISOString(),
+            type: 'error_message',
+            content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK para projeção de caixa.",
+            is_read: false,
+        };
+    }
     const prompt = constructPromptForCashFlowProjection(context, projectionPeriodDays);
     const content = await safeGenerateContent(prompt, 'cash_flow_projection');
     if (content) {
@@ -956,10 +964,10 @@ export const fetchCashFlowProjectionInsight = async (
 
 
 export const fetchDebtStrategyExplanation = async (strategy: DebtStrategy): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-    if (!ai || !isGeminiApiKeyAvailable()) {
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
         return {
             timestamp: new Date().toISOString(), type: 'error_message',
-            content: "AI Coach desativado ou API Key não configurada para explicar estratégia de dívida.",
+            content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK para explicar estratégia de dívida.",
             related_debt_strategy: strategy, is_read: false,
         };
     }
@@ -979,10 +987,10 @@ export const fetchDebtStrategyExplanation = async (strategy: DebtStrategy): Prom
 };
 
 export const fetchDebtProjectionSummary = async (projection: DebtProjection, debtsContext: Debt[], context: FinancialContext): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-    if (!ai || !isGeminiApiKeyAvailable()) {
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
         return {
             timestamp: new Date().toISOString(), type: 'error_message',
-            content: "AI Coach desativado ou API Key não configurada para resumir projeção de dívida.",
+            content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK para resumir projeção de dívida.",
             is_read: false,
         };
     }
@@ -1005,13 +1013,13 @@ export const fetchDebtProjectionSummary = async (projection: DebtProjection, deb
 export const fetchSafeToSpendTodayAdvice = async (
   context: FinancialContext
 ): Promise<SafeToSpendTodayInfo | null> => {
-  if (!ai || !isGeminiApiKeyAvailable()) {
-    console.warn("Gemini API not available for fetchSafeToSpendTodayAdvice.");
+  if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
+    console.warn("Gemini API or ai.models not available for fetchSafeToSpendTodayAdvice.");
     return {
       safeAmount: null,
-      explanation: "AI Coach desativado ou API Key não configurada.",
+      explanation: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK.",
       calculationDate: context.currentDate,
-      error: "AI Coach desativado ou API Key não configurada."
+      error: "AI Coach indisponível ou erro no SDK."
     };
   }
 
@@ -1036,7 +1044,6 @@ export const fetchSafeToSpendTodayAdvice = async (
         console.warn("Gemini returned an error for safe to spend today:", parsedResult.error);
         return { ...parsedResult, explanation: parsedResult.error, calculationDate: parsedResult.calculationDate || context.currentDate };
     }
-    // Ensure safeAmount is a number or null, and other fields are strings
     if (typeof parsedResult.explanation === 'string' && 
         typeof parsedResult.calculationDate === 'string' &&
         (typeof parsedResult.safeAmount === 'number' || parsedResult.safeAmount === null)) {

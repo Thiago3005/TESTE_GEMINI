@@ -46,8 +46,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     isPrivacyModeEnabled,
     onFetchGeneralAdvice,
     onFetchSavingOpportunities,
-    safeToSpendToday, // Destructure new prop
-    onFetchSafeToSpendToday, // Destructure new prop
+    safeToSpendToday, 
+    onFetchSafeToSpendToday, 
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
   const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'pie' | 'bar'>('bar'); 
@@ -135,64 +135,63 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
       
-      {/* Safe to Spend Today Card */}
-      <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-xl dark:shadow-neutralDark/40 border-l-4 border-green-500 dark:border-green-400">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
-            <div className="flex items-center space-x-2">
-                <TrendingUpIcon className="w-7 h-7 text-green-500 dark:text-green-400" />
-                <h2 className="text-lg font-semibold text-textBase dark:text-textBaseDark">Disponível para Gastar Hoje (IA)</h2>
-            </div>
-            <Button
-                onClick={handleRecalculateSafeToSpend}
-                variant="ghost"
-                size="sm"
-                disabled={safeToSpendToday.isLoading}
-                className="!text-xs !py-1 !px-2 self-start sm:self-center"
-                title="Recalcular sugestão da IA"
-            >
-                <ArrowPathIcon className={`w-4 h-4 mr-1 ${safeToSpendToday.isLoading ? 'animate-spin' : ''}`} />
-                {safeToSpendToday.isLoading ? 'Calculando...' : 'Recalcular'}
-            </Button>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Safe to Spend Today Card - Moved into the grid */}
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-1">
+              <div className="flex items-center space-x-1.5">
+                  <TrendingUpIcon className="w-6 h-6 text-green-500 dark:text-green-400" />
+                  <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">GASTAR HOJE (IA)</h2>
+              </div>
+              <Button
+                  onClick={handleRecalculateSafeToSpend}
+                  variant="ghost"
+                  size="sm"
+                  disabled={safeToSpendToday.isLoading}
+                  className="!text-xs !py-1 !px-2 self-start sm:self-center"
+                  title="Recalcular sugestão da IA"
+              >
+                  <ArrowPathIcon className={`w-3 h-3 mr-1 ${safeToSpendToday.isLoading ? 'animate-spin' : ''}`} />
+                  {safeToSpendToday.isLoading ? '...' : 'Recalcular'}
+              </Button>
+          </div>
+
+          {safeToSpendToday.isLoading && !safeToSpendToday.safeAmount && !isPrivacyModeEnabled ? (
+              <p className="text-center text-textMuted dark:text-textMutedDark py-3 text-xs">Calculando...</p>
+          ) : safeToSpendToday.safeAmount !== null ? (
+              <p className={`text-3xl font-bold text-center my-2 ${
+                  safeToSpendToday.safeAmount === 0 && (safeToSpendToday.explanation || '').toLowerCase().includes('evite')
+                  ? 'text-amber-500 dark:text-amber-400'
+                  : safeToSpendToday.safeAmount > 0
+                  ? 'text-green-600 dark:text-green-500'
+                  : 'text-red-500 dark:text-red-400'
+              }`}>
+              {formatCurrency(safeToSpendToday.safeAmount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+              </p>
+          ) : (
+              <p className={`text-2xl font-bold text-center my-2 text-amber-500 dark:text-amber-400`}>
+                  {isPrivacyModeEnabled ? formatCurrency(0, 'BRL','pt-BR', true) : "---"}
+              </p>
+          )}
+          
+          <p className="text-xs text-textMuted dark:text-textMutedDark text-center break-words min-h-[28px] leading-tight">
+              {safeToSpendToday.isLoading && safeToSpendToday.safeAmount !== null ? 'Recalculando...' : (safeToSpendToday.explanation || "Clique em Recalcular.")}
+          </p>
+          {safeToSpendToday.lastCalculatedDisplay && (
+              <p className="text-xs text-textMuted/70 dark:text-textMutedDark/70 text-center mt-1">
+                  Calc.: {safeToSpendToday.lastCalculatedDisplay}
+              </p>
+          )}
+          {safeToSpendToday.error && (
+              <p className="text-xs text-destructive dark:text-destructiveDark text-center mt-1">
+                  Erro: {safeToSpendToday.error.length > 50 ? safeToSpendToday.error.substring(0,50) + "..." : safeToSpendToday.error}
+              </p>
+          )}
+          <p className="text-xs text-textMuted/60 dark:text-textMutedDark/60 text-center mt-1.5 italic leading-tight">
+              Sugestão da IA. Use com discernimento.
+          </p>
         </div>
 
-        {safeToSpendToday.isLoading && !safeToSpendToday.safeAmount && !isPrivacyModeEnabled ? (
-            <p className="text-center text-textMuted dark:text-textMutedDark py-4">Calculando sugestão...</p>
-        ) : safeToSpendToday.safeAmount !== null ? (
-            <p className={`text-4xl font-bold text-center my-3 ${
-                safeToSpendToday.safeAmount === 0 && (safeToSpendToday.explanation || '').toLowerCase().includes('evite')
-                ? 'text-amber-500 dark:text-amber-400'
-                : safeToSpendToday.safeAmount > 0
-                ? 'text-green-600 dark:text-green-500'
-                : 'text-red-500 dark:text-red-400'
-            }`}>
-            {formatCurrency(safeToSpendToday.safeAmount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
-            </p>
-        ) : (
-             <p className={`text-3xl font-bold text-center my-3 text-amber-500 dark:text-amber-400`}>
-                {isPrivacyModeEnabled ? formatCurrency(0, 'BRL','pt-BR', true) : "---"}
-             </p>
-        )}
-        
-        <p className="text-xs text-textMuted dark:text-textMutedDark text-center break-words min-h-[30px]">
-            {safeToSpendToday.isLoading && safeToSpendToday.safeAmount !== null ? 'Recalculando...' : (safeToSpendToday.explanation || "Clique em Recalcular para obter uma sugestão.")}
-        </p>
-        {safeToSpendToday.lastCalculatedDisplay && (
-            <p className="text-xs text-textMuted/70 dark:text-textMutedDark/70 text-center mt-2">
-                Último cálculo: {safeToSpendToday.lastCalculatedDisplay}
-            </p>
-        )}
-        {safeToSpendToday.error && (
-            <p className="text-xs text-destructive dark:text-destructiveDark text-center mt-1">
-                Erro: {safeToSpendToday.error}
-            </p>
-        )}
-         <p className="text-xs text-textMuted dark:text-textMutedDark text-center mt-3 italic">
-            Esta é uma sugestão da IA e não garante sua saúde financeira. Use com discernimento.
-        </p>
-      </div>
-
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
           <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO TOTAL (CONTAS)</h2>
           <p className={`text-3xl font-bold ${totalAccountBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
@@ -214,7 +213,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             {formatCurrency(totalOutstandingLoanReceivables, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
         </div>
-        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col items-start">
+        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col items-start md:col-span-2 lg:col-span-4"> {/* Net worth takes full width on lg if safe-to-spend is moved here */}
             <div className="flex items-center w-full justify-between">
                  <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">PATRIMÔNIO LÍQUIDO</h2>
                  <ScaleIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
