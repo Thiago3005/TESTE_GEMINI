@@ -1,7 +1,7 @@
 
 
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
-import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtAnalysisResult } from '../types';
+import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
 const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY;
@@ -523,52 +523,57 @@ Se não for possível calcular confiavelmente (ex: falta de dados cruciais como 
 Cálculo:`;
 };
 
-const constructPromptForDebtAnalysis = (debt: Partial<Debt>, context: FinancialContext): string => {
+const constructPromptForDebtRateAnalysis = (debt: Partial<Debt>): string => {
+  return `Você é um analista de crédito. Analise a taxa de juros anual fornecida e classifique-a.
+Taxa de Juros Anual: ${debt.interest_rate_annual || 0}% a.a.
+
+Use benchmarks do mercado brasileiro (ex: empréstimo pessoal ~25-70% a.a., rotativo do cartão > 300% a.a., financiamento de veículo ~18-30% a.a.).
+
+Responda APENAS com um objeto JSON contendo as chaves:
+- "classification": uma de "razoável", "moderado", ou "abusivo".
+- "text": Uma frase MUITO CURTA justificando a classificação. (Ex: “Comum para empréstimos pessoais não consignados.”)
+
+Exemplo de resposta:
+{
+  "classification": "moderado",
+  "text": "Taxa alta, mas comum para empréstimos pessoais sem garantia."
+}`;
+};
+
+const constructPromptForDebtViabilityAnalysis = (debt: Partial<Debt>, context: FinancialContext): string => {
   const { initial_balance, interest_rate_annual, minimum_payment } = debt;
   const monthlyIncomeText = context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada';
   
   const otherDebts = context.debts?.filter(d => d.id !== debt.id && !d.is_archived && d.current_balance > 0) || [];
-  const totalOtherDebtBalance = otherDebts.reduce((sum, d) => sum + d.current_balance, 0);
   const totalOtherMinimumPayments = otherDebts.reduce((sum, d) => sum + d.minimum_payment, 0);
   const totalMinimumPaymentsAll = (minimum_payment || 0) + totalOtherMinimumPayments;
   const debtPaymentToIncomeRatio = (context.monthlyIncome && totalMinimumPaymentsAll > 0 && context.monthlyIncome > 0) ? ((totalMinimumPaymentsAll / context.monthlyIncome) * 100).toFixed(1) : 'N/A';
 
-  return `Você é um analista de crédito e consultor financeiro. Analise a seguinte proposta de dívida de um usuário e retorne uma avaliação estruturada em JSON.
+  return `Você é um consultor financeiro. Analise a viabilidade de uma nova dívida para o usuário.
 
-Dados da Dívida em Análise:
-- Nome: ${debt.name || 'Nova Dívida'}
-- Valor Principal: ${formatCurrency(initial_balance || 0)}
-- Taxa de Juros Anual: ${interest_rate_annual || 0}% a.a.
+Dados da Dívida:
+- Valor: ${formatCurrency(initial_balance || 0)}
 - Pagamento Mínimo Mensal: ${formatCurrency(minimum_payment || 0)}
 
 Contexto Financeiro do Usuário:
-- Renda Mensal Informada: ${monthlyIncomeText}
-- Outras Dívidas Ativas: ${otherDebts.length} (Totalizando ${formatCurrency(totalOtherDebtBalance)})
-- Soma de TODOS pagamentos mínimos (incluindo esta): ${formatCurrency(totalMinimumPaymentsAll)}/mês
-- Comprometimento da Renda com Pagamentos Mínimos (DTI): ${debtPaymentToIncomeRatio}%
+- Renda Mensal: ${monthlyIncomeText}
+- Comprometimento da Renda com Pagamentos Mínimos (DTI, incluindo esta dívida): ${debtPaymentToIncomeRatio}%
 
-Instruções para Análise (responda APENAS com o objeto JSON):
-1.  **interestRateClassification**: Classifique a taxa de juros. Use benchmarks do mercado brasileiro (ex: empréstimo pessoal ~25-70% a.a., rotativo do cartão > 300% a.a.).
-    - "classification": uma de "razoável", "moderado", ou "abusivo".
-    - "text": Uma frase justificando a classificação. (Ex: “A taxa de 18% é considerada 'abusiva' pois está bem acima da média de 4%-7% para financiamentos imobiliários.”)
-2.  **viability**: Avalie se a dívida é sustentável para o usuário, considerando o comprometimento total da renda (DTI).
-3.  **risk**: Avalie o risco geral da dívida (inadimplência, efeito bola de neve), considerando o contexto geral.
-4.  **riskBadge**: Com base em tudo, atribua um badge de risco: uma de "healthy", "alert", ou "critical".
-5.  **recommendation**: Forneça uma recomendação clara e acionável (ex: "Busque taxas menores", "Cuidado com o comprometimento da renda", "Parece uma dívida gerenciável").
+Instruções para Análise (responda APENAS com o objeto JSON e com textos MUITO CURTOS):
+1.  **viability**: Avalie se a dívida é sustentável para o usuário. (Ex: "Viável, mas exige disciplina com seu DTI de ${debtPaymentToIncomeRatio}%.")
+2.  **risk**: Avalie o risco geral da dívida. (Ex: "Risco moderado. Atrasos podem levar a rápido crescimento do saldo.")
+3.  **riskBadge**: Com base em tudo, atribua um badge: uma de "healthy", "alert", ou "critical".
+4.  **recommendation**: Forneça uma recomendação clara e acionável. (Ex: "Avalie opções de crédito com juros menores e foque na quitação.")
 
 Exemplo de resposta JSON:
 {
-  "interestRateClassification": {
-    "classification": "moderado",
-    "text": "A taxa de 34% a.a. é alta, mas comum para empréstimos pessoais não consignados."
-  },
   "viability": "Com um DTI de ${debtPaymentToIncomeRatio}%, o comprometimento da sua renda é considerável. A dívida é viável, mas exige disciplina.",
   "risk": "O risco é moderado. Atrasos podem levar a um rápido crescimento do saldo devido aos juros. O alto DTI limita sua capacidade de poupança.",
   "riskBadge": "alert",
   "recommendation": "A dívida é viável, mas avalie opções de crédito com juros menores e considere um plano de quitação agressivo."
-}
-`;
+}`;
 };
+
 
 
 
@@ -1122,12 +1127,12 @@ export const fetchSafeToSpendTodayAdvice = async (
   }
 };
 
-export const fetchDebtAnalysis = async (debt: Partial<Debt>, context: FinancialContext): Promise<DebtAnalysisResult | null> => {
+export const fetchDebtRateAnalysis = async (debt: Partial<Debt>): Promise<DebtRateAnalysis | null> => {
     if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
-        console.warn("Gemini API or ai.models not available for fetchDebtAnalysis.");
+        console.warn("Gemini API or ai.models not available for fetchDebtRateAnalysis.");
         return null;
     }
-    const prompt = constructPromptForDebtAnalysis(debt, context);
+    const prompt = constructPromptForDebtRateAnalysis(debt);
     try {
         const response: GenerateContentResponse = await ai.models!.generateContent({
             model: "gemini-2.5-flash-preview-04-17",
@@ -1138,21 +1143,50 @@ export const fetchDebtAnalysis = async (debt: Partial<Debt>, context: FinancialC
         let jsonStr = response.text?.trim() || '';
         const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
         const match = jsonStr.match(fenceRegex);
-        if (match && match[2]) {
-            jsonStr = match[2].trim();
-        }
+        if (match && match[2]) jsonStr = match[2].trim();
         
         const parsed = JSON.parse(jsonStr);
-        if (parsed && parsed.interestRateClassification && parsed.viability && parsed.risk && parsed.riskBadge && parsed.recommendation) {
-            return parsed as DebtAnalysisResult;
+        if (parsed && parsed.classification && parsed.text) {
+            return parsed as DebtRateAnalysis;
         }
-        console.error("Invalid JSON structure received from Gemini for debt analysis:", parsed);
+        console.error("Invalid JSON for debt rate analysis:", parsed);
         return null;
     } catch (error) {
-        console.error("Error fetching debt analysis from Gemini:", error);
+        console.error("Error fetching debt rate analysis from Gemini:", error);
         return null;
     }
 };
+
+export const fetchDebtViabilityAnalysis = async (debt: Partial<Debt>, context: FinancialContext): Promise<DebtViabilityAnalysis | null> => {
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
+        console.warn("Gemini API or ai.models not available for fetchDebtViabilityAnalysis.");
+        return null;
+    }
+    const prompt = constructPromptForDebtViabilityAnalysis(debt, context);
+    try {
+        const response: GenerateContentResponse = await ai.models!.generateContent({
+            model: "gemini-2.5-flash-preview-04-17",
+            contents: prompt,
+            config: { responseMimeType: "application/json" }
+        });
+        
+        let jsonStr = response.text?.trim() || '';
+        const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+        const match = jsonStr.match(fenceRegex);
+        if (match && match[2]) jsonStr = match[2].trim();
+        
+        const parsed = JSON.parse(jsonStr);
+        if (parsed && parsed.viability && parsed.risk && parsed.riskBadge && parsed.recommendation) {
+            return parsed as DebtViabilityAnalysis;
+        }
+        console.error("Invalid JSON for debt viability analysis:", parsed);
+        return null;
+    } catch (error) {
+        console.error("Error fetching debt viability analysis from Gemini:", error);
+        return null;
+    }
+};
+
 
 
 export const calculateNextDueDate = (currentDueDate: string, frequency: RecurringTransactionFrequency, customIntervalDays?: number): string => {

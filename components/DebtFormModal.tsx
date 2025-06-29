@@ -2,14 +2,12 @@
 
 import React from 'react';
 import { useState, useEffect, ChangeEvent, useCallback } from 'react';
-import { Debt, DebtType, Account, DebtCalculationResult, DebtAnalysisResult } from '../types';
+import { Debt, DebtType, Account, DebtRateAnalysis, DebtViabilityAnalysis } from '../types';
 import Modal from './Modal';
 import Input from './Input';
 import Select from './Select';
 import Button from './Button';
 import { getISODateString, formatCurrency } from '../utils/helpers';
-import { calculateDebtPayoff } from '../utils/debtCalculator';
-import { LineChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Line, CartesianGrid } from 'recharts';
 import LightBulbIcon from './icons/LightBulbIcon';
 import ShieldCheckIcon from './icons/ShieldCheckIcon';
 import ExclamationTriangleIcon from './icons/ExclamationTriangleIcon';
@@ -32,9 +30,11 @@ interface DebtFormModalProps {
       debt: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'> & { id?: string },
       createIncome: boolean,
       creditedAccountId?: string,
-      analysis?: DebtAnalysisResult | null,
+      rateAnalysis?: DebtRateAnalysis | null,
+      viabilityAnalysis?: DebtViabilityAnalysis | null,
   ) => void;
-  onAnalyzeDebt: (debt: Partial<Debt>) => Promise<DebtAnalysisResult | null>;
+  onAnalyzeRate: (debt: Partial<Debt>) => Promise<DebtRateAnalysis | null>;
+  onAnalyzeViability: (debt: Partial<Debt>) => Promise<DebtViabilityAnalysis | null>;
   existingDebt?: Debt | null;
   accounts: Account[];
   isAIFeatureEnabled: boolean;
@@ -54,9 +54,40 @@ function useDebounce(value: any, delay: number) {
   return debouncedValue;
 }
 
+// Interest Rate Calculation
+function calculateMonthlyRate(loanAmount: number, monthlyPayment: number, numberOfMonths: number): number {
+    if (loanAmount <= 0 || monthlyPayment <= 0 || numberOfMonths <= 0 || (monthlyPayment * numberOfMonths <= loanAmount)) {
+        return 0;
+    }
+
+    let high = 1.0; // Max monthly rate 100%
+    let low = 0.0;
+    let mid;
+    const precision = 1e-6;
+
+    for (let i = 0; i < 100; i++) { // Max iterations to prevent infinite loops
+        mid = (high + low) / 2;
+        if (mid < precision) break;
+
+        try {
+            const pv = monthlyPayment * (1 - Math.pow(1 + mid, -numberOfMonths)) / mid;
+            if (pv > loanAmount) {
+                low = mid;
+            } else {
+                high = mid;
+            }
+            if (Math.abs(pv - loanAmount) < precision) break;
+        } catch (e) {
+            console.error("Error in rate calculation", e);
+            return 0; // Return 0 on math error (e.g., overflow)
+        }
+    }
+    return mid;
+}
+
 
 const DebtFormModal: React.FC<DebtFormModalProps> = ({ 
-    isOpen, onClose, onSave, onAnalyzeDebt, existingDebt, accounts, isAIFeatureEnabled 
+    isOpen, onClose, onSave, onAnalyzeRate, onAnalyzeViability, existingDebt, accounts, isAIFeatureEnabled 
 }) => {
   const [name, setName] = useState('');
   const [type, setType] = useState<DebtType>('other');
@@ -64,20 +95,20 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
   const [debtDate, setDebtDate] = useState(getISODateString());
   const [interestRateAnnual, setInterestRateAnnual] = useState('');
   const [minimumPayment, setMinimumPayment] = useState('');
-  const [fixedMonthlyPayment, setFixedMonthlyPayment] = useState('');
+  const [numberOfInstallments, setNumberOfInstallments] = useState('');
   const [dueDateDayOfMonth, setDueDateDayOfMonth] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   
   const [createIncome, setCreateIncome] = useState(false);
   const [creditedAccountId, setCreditedAccountId] = useState('');
   
-  // Analysis & Calculation State
-  const [calculation, setCalculation] = useState<DebtCalculationResult | null>(null);
-  const [analysis, setAnalysis] = useState<DebtAnalysisResult | null>(null);
-  const [isCalculating, setIsCalculating] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  
-  const formStateForDebounce = { initialBalance, interestRateAnnual, minimumPayment, fixedMonthlyPayment };
+  // Analysis State
+  const [rateAnalysis, setRateAnalysis] = useState<DebtRateAnalysis | null>(null);
+  const [viabilityAnalysis, setViabilityAnalysis] = useState<DebtViabilityAnalysis | null>(null);
+  const [isAnalyzingRate, setIsAnalyzingRate] = useState(false);
+  const [isAnalyzingViability, setIsAnalyzingViability] = useState(false);
+
+  const formStateForDebounce = { initialBalance, minimumPayment, numberOfInstallments };
   const debouncedFormState = useDebounce(formStateForDebounce, 800);
 
   useEffect(() => {
@@ -89,61 +120,36 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
         setDebtDate(existingDebt.debt_date || getISODateString());
         setInterestRateAnnual(existingDebt.interest_rate_annual.toString());
         setMinimumPayment(existingDebt.minimum_payment.toString());
-        setFixedMonthlyPayment('');
         setDueDateDayOfMonth(existingDebt.due_date_day_of_month?.toString() || '');
         setCreateIncome(!!existingDebt.linked_income_transaction_id); 
       } else {
-        // Reset form for new debt
         setName(''); setType('other'); setInitialBalance(''); setDebtDate(getISODateString());
-        setInterestRateAnnual(''); setMinimumPayment(''); setFixedMonthlyPayment(''); setDueDateDayOfMonth('');
+        setInterestRateAnnual(''); setMinimumPayment(''); setNumberOfInstallments(''); setDueDateDayOfMonth('');
         setCreateIncome(false);
       }
       setCreditedAccountId(accounts.length > 0 ? accounts[0].id : '');
       setErrors({});
-      setCalculation(null);
-      setAnalysis(null);
-      setIsCalculating(false);
-      setIsAnalyzing(false);
+      setRateAnalysis(null);
+      setViabilityAnalysis(null);
+      setIsAnalyzingRate(false);
+      setIsAnalyzingViability(false);
     }
   }, [existingDebt, isOpen, accounts]);
 
+  // Automatic Interest Rate Calculation Effect
   const handleAutoCalculation = useCallback(() => {
     const bal = parseFloat(debouncedFormState.initialBalance);
-    const rate = parseFloat(debouncedFormState.interestRateAnnual);
-    const minPay = parseFloat(debouncedFormState.minimumPayment);
-    const fixedPay = parseFloat(debouncedFormState.fixedMonthlyPayment);
+    const pay = parseFloat(debouncedFormState.minimumPayment);
+    const numInstallments = parseInt(debouncedFormState.numberOfInstallments, 10);
 
-    if (bal > 0 && rate >= 0 && (minPay > 0 || fixedPay > 0)) {
-        setIsCalculating(true);
-        const effectivePayment = fixedPay > minPay ? fixedPay : minPay;
-        const extraPayment = effectivePayment - minPay;
-        
-        // This is a simplified simulation for the modal, so we create a temporary Debt object
-        const tempDebt: Debt = {
-            id: 'temp', user_id: '', profile_id: '', created_at: '', updated_at: '',
-            name: 'temp', type: 'other', initial_balance: bal, current_balance: bal,
-            interest_rate_annual: rate, minimum_payment: minPay, debt_date: getISODateString(), is_archived: false
-        };
-
-        try {
-            const result = calculateDebtPayoff([tempDebt], extraPayment, 'avalanche');
-            if (result.monthsToPayoff > 0) {
-                setCalculation({
-                    monthsToPayoff: result.monthsToPayoff,
-                    totalInterestPaid: result.totalInterestPaid,
-                    monthlyPaymentsLog: result.payoffDetails[0].monthlyPayments.map(p => ({ month: p.month, remainingBalance: p.remainingBalance }))
-                });
-            } else {
-                 setCalculation(null); // Could not calculate
-            }
-        } catch (e) {
-            console.error("Error during debt calculation:", e);
-            setCalculation(null);
-        } finally {
-            setIsCalculating(false);
+    if (bal > 0 && pay > 0 && numInstallments > 0) {
+        const monthlyRate = calculateMonthlyRate(bal, pay, numInstallments);
+        if (monthlyRate > 0) {
+            const annualRate = (Math.pow(1 + monthlyRate, 12) - 1) * 100;
+            setInterestRateAnnual(annualRate.toFixed(2));
+        } else {
+            setInterestRateAnnual('0.00');
         }
-    } else {
-        setCalculation(null);
     }
   }, [debouncedFormState]);
 
@@ -152,7 +158,21 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
   }, [debouncedFormState, handleAutoCalculation]);
   
   
-  const handleAnalyzeClick = async () => {
+  const handleAnalyzeRateClick = async () => {
+    const debtDataForAnalysis: Partial<Debt> = { interest_rate_annual: parseFloat(interestRateAnnual) };
+    if (isNaN(debtDataForAnalysis.interest_rate_annual as any)) {
+        setErrors({ form: 'Taxa de juros deve ser calculada primeiro (preencha Saldo, Parcela e Nº Parcelas).' });
+        return;
+    }
+    setErrors({});
+    setIsAnalyzingRate(true);
+    setRateAnalysis(null);
+    const result = await onAnalyzeRate(debtDataForAnalysis);
+    setRateAnalysis(result);
+    setIsAnalyzingRate(false);
+  };
+
+   const handleAnalyzeViabilityClick = async () => {
     const debtDataForAnalysis: Partial<Debt> = {
         name: name.trim(),
         initial_balance: parseFloat(initialBalance),
@@ -160,16 +180,16 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
         minimum_payment: parseFloat(minimumPayment),
     };
 
-    if (!debtDataForAnalysis.initial_balance || !debtDataForAnalysis.interest_rate_annual || !debtDataForAnalysis.minimum_payment) {
-        setErrors({ form: 'Preencha Saldo, Juros e Pagamento Mínimo para análise.' });
+    if (!debtDataForAnalysis.initial_balance || isNaN(debtDataForAnalysis.interest_rate_annual as any) || !debtDataForAnalysis.minimum_payment) {
+        setErrors({ form: 'Preencha Saldo, Parcela e Nº de Parcelas para análise de viabilidade.' });
         return;
     }
     setErrors({});
-    setIsAnalyzing(true);
-    setAnalysis(null);
-    const result = await onAnalyzeDebt(debtDataForAnalysis);
-    setAnalysis(result);
-    setIsAnalyzing(false);
+    setIsAnalyzingViability(true);
+    setViabilityAnalysis(null);
+    const result = await onAnalyzeViability(debtDataForAnalysis);
+    setViabilityAnalysis(result);
+    setIsAnalyzingViability(false);
   };
 
 
@@ -179,13 +199,16 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
     if (!debtDate) newErrors.debtDate = 'Data da dívida é obrigatória.';
     
     const numInitialBalance = parseFloat(initialBalance);
-    if (isNaN(numInitialBalance) || numInitialBalance <= 0) newErrors.initialBalance = 'Saldo inicial deve ser positivo.';
+    if (isNaN(numInitialBalance) || numInitialBalance <= 0) newErrors.initialBalance = 'Saldo devedor deve ser positivo.';
     
     const numInterestRate = parseFloat(interestRateAnnual);
-    if (isNaN(numInterestRate) || numInterestRate < 0) newErrors.interestRateAnnual = 'Taxa de juros deve ser um número não negativo.';
+    if (isNaN(numInterestRate) || numInterestRate < 0) newErrors.interestRateAnnual = 'Taxa de juros inválida. Verifique os valores de cálculo.';
     
     const numMinimumPayment = parseFloat(minimumPayment);
-    if (isNaN(numMinimumPayment) || numMinimumPayment <= 0) newErrors.minimumPayment = 'Pagamento mínimo deve ser positivo.';
+    if (isNaN(numMinimumPayment) || numMinimumPayment <= 0) newErrors.minimumPayment = 'Valor da parcela deve ser positivo.';
+    
+    const numInstallments = parseInt(numberOfInstallments, 10);
+    if(isNaN(numInstallments) || numInstallments <= 0) newErrors.numberOfInstallments = "Nº de parcelas deve ser positivo.";
 
     if (dueDateDayOfMonth) {
       const numDueDateDay = parseInt(dueDateDayOfMonth, 10);
@@ -214,13 +237,13 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
     };
     
     const finalData = existingDebt ? { ...debtData, id: existingDebt.id } : debtData;
-    onSave(finalData, createIncome, creditedAccountId, analysis);
+    onSave(finalData, createIncome, creditedAccountId, rateAnalysis, viabilityAnalysis);
     onClose();
   };
   
   const getRiskBadge = () => {
-    if (!analysis) return null;
-    const { riskBadge } = analysis;
+    if (!viabilityAnalysis) return null;
+    const { riskBadge } = viabilityAnalysis;
     let icon;
     let text;
     let colorClass;
@@ -249,7 +272,7 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
 
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={existingDebt ? 'Editar Dívida' : 'Nova Dívida'} size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title={existingDebt ? 'Editar Dívida' : 'Nova Dívida'} size="2xl">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
         <div className="space-y-4 col-span-1">
             <Input
@@ -269,40 +292,11 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setType(e.target.value as DebtType)}
             required
             />
-            <Input
-                label="Saldo Devedor Inicial (R$)"
-                id="initialBalance"
-                type="number" step="0.01"
-                value={initialBalance} onChange={(e) => setInitialBalance(e.target.value)}
-                error={errors.initialBalance} required
-            />
-            <Input
+             <Input
                 label="Data da Dívida"
                 id="debtDate" type="date"
                 value={debtDate} onChange={(e) => setDebtDate(e.target.value)}
                 error={errors.debtDate} required
-            />
-            <Input
-                label="Taxa de Juros Anual (%)"
-                id="interestRateAnnual"
-                type="number" step="0.01"
-                value={interestRateAnnual} onChange={(e) => setInterestRateAnnual(e.target.value)}
-                error={errors.interestRateAnnual} placeholder="Ex: 19.9 para 19.9%" required
-            />
-            <Input
-                label="Pagamento Mínimo Mensal (R$)"
-                id="minimumPayment"
-                type="number" step="0.01"
-                value={minimumPayment} onChange={(e) => setMinimumPayment(e.target.value)}
-                error={errors.minimumPayment} required
-            />
-            <Input
-                label="Pagamento Fixo Mensal (Opcional)"
-                id="fixedMonthlyPayment"
-                type="number" step="0.01"
-                value={fixedMonthlyPayment} onChange={(e) => setFixedMonthlyPayment(e.target.value)}
-                error={errors.fixedMonthlyPayment} placeholder="Ex: 500.00"
-                containerClassName="bg-blue-50 dark:bg-blue-900/20 p-2 rounded-md"
             />
             <Input
                 label="Dia de Vencimento Mensal (Opcional)"
@@ -311,6 +305,35 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
                 value={dueDateDayOfMonth} onChange={(e) => setDueDateDayOfMonth(e.target.value)}
                 error={errors.dueDateDayOfMonth} placeholder="Ex: 15"
             />
+             <div className="p-3 border-t border-b border-borderBase dark:border-borderBaseDark space-y-4 my-2">
+                <p className="text-sm font-medium text-textMuted dark:text-textMutedDark -mt-1">Cálculo de Juros</p>
+                <Input
+                    label="Saldo Devedor Inicial (R$)"
+                    id="initialBalance"
+                    type="number" step="0.01"
+                    value={initialBalance} onChange={(e) => setInitialBalance(e.target.value)}
+                    error={errors.initialBalance} required
+                />
+                <Input
+                    label="Valor da Parcela (R$)"
+                    id="minimumPayment"
+                    type="number" step="0.01"
+                    value={minimumPayment} onChange={(e) => setMinimumPayment(e.target.value)}
+                    error={errors.minimumPayment} required
+                    placeholder="Ex: 350.50"
+                />
+                <Input
+                    label="Nº de Parcelas"
+                    id="numberOfInstallments"
+                    type="number"
+                    min="1"
+                    value={numberOfInstallments}
+                    onChange={(e) => setNumberOfInstallments(e.target.value)}
+                    error={errors.numberOfInstallments}
+                    placeholder="Ex: 24"
+                    required
+                />
+             </div>
 
             {!existingDebt && (
                 <div className="pt-2">
@@ -336,45 +359,41 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
         </div>
         <div className="space-y-4 col-span-1 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg">
             <h3 className="text-lg font-semibold text-textBase dark:text-textBaseDark">Análise e Projeção</h3>
-            {isCalculating && <p className="text-sm text-textMuted dark:text-textMutedDark">Calculando projeção...</p>}
-            {calculation && !isCalculating && (
-                <div className="space-y-2 text-sm p-2 bg-background dark:bg-backgroundDark rounded">
-                   <p><strong>Tempo Estimado:</strong> {(calculation.monthsToPayoff / 12).toFixed(1)} anos ({calculation.monthsToPayoff} meses)</p>
-                   <p><strong>Total de Juros Pagos:</strong> {formatCurrency(calculation.totalInterestPaid)}</p>
-                   <div style={{width: '100%', height: 150}}>
-                        <ResponsiveContainer>
-                            <LineChart data={calculation.monthlyPaymentsLog} margin={{top:5, right:10, left:-25, bottom:5}}>
-                                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                                <XAxis dataKey="month" tick={{fontSize:10}} />
-                                <YAxis tick={{fontSize:10}} tickFormatter={(val) => formatCurrency(val, 'BRL', 'pt-BR', true)} />
-                                <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                                <Line type="monotone" dataKey="remainingBalance" name="Saldo Devedor" stroke="#ef4444" strokeWidth={2} dot={false} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                   </div>
-                </div>
-            )}
-            
+            <Input
+                label="Taxa de Juros Anual (%) - Calculada"
+                id="interestRateAnnual"
+                type="text"
+                value={interestRateAnnual}
+                error={errors.interestRateAnnual}
+                readOnly
+                className="bg-slate-100 dark:bg-slate-800 font-bold"
+            />
             {isAIFeatureEnabled && (
-                <Button variant="secondary" size="sm" onClick={handleAnalyzeClick} disabled={isAnalyzing} className="w-full">
+              <div className="space-y-4">
+                <Button variant="secondary" size="sm" onClick={handleAnalyzeRateClick} disabled={isAnalyzingRate || !interestRateAnnual} className="w-full">
                     <LightBulbIcon className="w-4 h-4 mr-2"/>
-                    {isAnalyzing ? 'Analisando com IA...' : 'Analisar com IA'}
+                    {isAnalyzingRate ? 'Analisando Taxa...' : 'Analisar Taxa de Juros'}
                 </Button>
-            )}
-            {isAnalyzing && <p className="text-sm text-textMuted dark:text-textMutedDark">Analisando com IA...</p>}
-             {analysis && !isAnalyzing && (
-                <div className="space-y-3 text-sm p-3 bg-background dark:bg-backgroundDark rounded">
-                    <div className="font-semibold">{getRiskBadge()}</div>
-                    <p><strong>Taxa de Juros:</strong> {analysis.interestRateClassification.text} <span className="font-semibold">({analysis.interestRateClassification.classification})</span></p>
-                    <p><strong>Viabilidade (IA):</strong> {analysis.viability}</p>
-                    <p><strong>Risco (IA):</strong> {analysis.risk}</p>
-                    <p className="p-2 bg-primary/10 rounded-md"><strong>Recomendação da IA:</strong> <span className="font-semibold">{analysis.recommendation}</span></p>
-                    <p className="text-xs text-textMuted dark:text-textMutedDark pt-2 border-t border-borderBase/50 dark:border-borderBaseDark/50">
-                        *Análise da IA. Suas informações são usadas apenas para esta análise e não são compartilhadas.
-                    </p>
-                </div>
-            )}
+                
+                {rateAnalysis && !isAnalyzingRate && (
+                    <div className="text-sm p-2 bg-background dark:bg-backgroundDark rounded animate-fadeIn">
+                       <p><strong className="text-primary dark:text-primaryDark">Análise da Taxa:</strong> {rateAnalysis.text} <span className="font-semibold">({rateAnalysis.classification})</span></p>
+                    </div>
+                )}
 
+                <Button variant="secondary" size="sm" onClick={handleAnalyzeViabilityClick} disabled={isAnalyzingViability || !interestRateAnnual} className="w-full">
+                    <LightBulbIcon className="w-4 h-4 mr-2"/>
+                    {isAnalyzingViability ? 'Analisando Viabilidade...' : 'Analisar Viabilidade'}
+                </Button>
+                 {viabilityAnalysis && !isAnalyzingViability && (
+                    <div className="space-y-2 text-sm p-2 bg-background dark:bg-backgroundDark rounded animate-fadeIn">
+                        <div className="font-semibold">{getRiskBadge()}</div>
+                        <p><strong>Viabilidade:</strong> {viabilityAnalysis.viability}</p>
+                        <p className="p-2 bg-primary/10 rounded-md"><strong>Recomendação:</strong> <span className="font-semibold">{viabilityAnalysis.recommendation}</span></p>
+                    </div>
+                )}
+              </div>
+            )}
              {errors.form && <p className="mt-1 text-xs text-destructive dark:text-destructiveDark/90">{errors.form}</p>}
         </div>
       </div>
@@ -384,6 +403,15 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
             {existingDebt ? 'Salvar Alterações' : 'Adicionar Dívida'}
           </Button>
         </div>
+        <style>{`
+            @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+            }
+            .animate-fadeIn {
+            animation: fadeIn 0.5s ease-in-out forwards;
+            }
+        `}</style>
     </Modal>
   );
 };

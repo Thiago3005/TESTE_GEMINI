@@ -1,8 +1,9 @@
 
 
+
 import React from 'react';
 import { useState, useMemo, useEffect } from 'react';
-import { Debt, DebtPayment, Account, DebtStrategy, DebtProjection, AIInsight, DebtAnalysisResult, AIConfig } from '../types';
+import { Debt, DebtPayment, Account, DebtStrategy, DebtProjection, AIInsight, DebtRateAnalysis, DebtViabilityAnalysis, AIConfig } from '../types';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import BanknotesIcon from './icons/BanknotesIcon';
@@ -23,14 +24,15 @@ interface DebtPlannerViewProps {
   debts: Debt[];
   debtPayments: DebtPayment[];
   accounts: Account[];
-  onAddDebt: (debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'>, createIncome: boolean, creditedAccountId?: string, analysis?: DebtAnalysisResult | null) => void;
-  onUpdateDebt: (debtData: Debt, analysis?: DebtAnalysisResult | null) => void;
+  onAddDebt: (debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'>, createIncome: boolean, creditedAccountId?: string, rateAnalysis?: DebtRateAnalysis | null, viabilityAnalysis?: DebtViabilityAnalysis | null) => void;
+  onUpdateDebt: (debtData: Debt, rateAnalysis?: DebtRateAnalysis | null, viabilityAnalysis?: DebtViabilityAnalysis | null) => void;
   onDeleteDebt: (debtId: string) => void;
   onAddDebtPayment: (paymentData: Omit<DebtPayment, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id'>, createLinkedExpense: boolean, linkedAccountId?: string) => void;
   onFetchDebtStrategyExplanation: (strategy: DebtStrategy) => Promise<void>;
   onFetchDebtProjectionSummary: (projection: DebtProjection, debts: Debt[], strategy: DebtStrategy) => Promise<void>;
   isPrivacyModeEnabled?: boolean;
-  onAnalyzeDebt: (debt: Partial<Debt>) => Promise<DebtAnalysisResult | null>;
+  onAnalyzeRate: (debt: Partial<Debt>) => Promise<DebtRateAnalysis | null>;
+  onAnalyzeViability: (debt: Partial<Debt>) => Promise<DebtViabilityAnalysis | null>;
   isAIFeatureEnabled: boolean;
   aiConfig: AIConfig;
 }
@@ -125,7 +127,8 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
   onFetchDebtStrategyExplanation,
   onFetchDebtProjectionSummary,
   isPrivacyModeEnabled,
-  onAnalyzeDebt,
+  onAnalyzeRate,
+  onAnalyzeViability,
   isAIFeatureEnabled,
   aiConfig,
 }) => {
@@ -223,13 +226,14 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
       debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'> & { id?: string },
       createIncome = false,
       creditedAccountId = '',
-      analysis?: DebtAnalysisResult | null
+      rateAnalysis?: DebtRateAnalysis | null,
+      viabilityAnalysis?: DebtViabilityAnalysis | null
   ) => {
       if (editingDebt && debtData.id) {
-          onUpdateDebt({ ...editingDebt, ...debtData }, analysis);
+          onUpdateDebt({ ...editingDebt, ...debtData }, rateAnalysis, viabilityAnalysis);
       } else {
           const { id, ...newDebtData } = debtData;
-          onAddDebt(newDebtData, createIncome, creditedAccountId, analysis);
+          onAddDebt(newDebtData, createIncome, creditedAccountId, rateAnalysis, viabilityAnalysis);
       }
   };
 
@@ -375,7 +379,8 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
         isOpen={isDebtFormModalOpen}
         onClose={() => setIsDebtFormModalOpen(false)}
         onSave={handleSaveDebt}
-        onAnalyzeDebt={onAnalyzeDebt}
+        onAnalyzeRate={onAnalyzeRate}
+        onAnalyzeViability={onAnalyzeViability}
         existingDebt={editingDebt}
         accounts={accounts}
         isAIFeatureEnabled={isAIFeatureEnabled}

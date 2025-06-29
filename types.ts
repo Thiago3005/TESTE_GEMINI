@@ -163,6 +163,8 @@ export type AIInsightType =
   | 'debt_projection_summary'
   | 'safe_to_spend_today_advice'
   | 'debt_analysis' // New insight type for storing debt analysis
+  | 'debt_rate_analysis' // For specific rate analysis
+  | 'debt_viability_analysis' // For specific viability analysis
   | 'error_message';
 
 export interface AIInsight extends SupabaseManaged {
@@ -262,18 +264,20 @@ export interface DebtProjection {
   monthlyTotalBalanceLog: { month: number; totalBalance: number }[];
 }
 
-// For DebtFormModal analysis
+// For DebtFormModal calculation display
 export interface DebtCalculationResult {
   monthsToPayoff: number;
   totalInterestPaid: number;
   monthlyPaymentsLog: { month: number; remainingBalance: number }[];
 }
 
-export interface DebtAnalysisResult {
-  interestRateClassification: {
-    classification: 'razoável' | 'moderado' | 'abusivo';
-    text: string;
-  };
+// For AI analysis in DebtFormModal
+export interface DebtRateAnalysis {
+  classification: 'razoável' | 'moderado' | 'abusivo';
+  text: string;
+}
+
+export interface DebtViabilityAnalysis {
   viability: string;
   risk: string;
   riskBadge: 'healthy' | 'alert' | 'critical';

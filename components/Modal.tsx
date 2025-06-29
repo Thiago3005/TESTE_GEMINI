@@ -1,3 +1,4 @@
+
 import React from 'react';
 import CloseIcon from './icons/CloseIcon';
 
@@ -6,7 +7,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 }
 
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md' }) => {
@@ -16,6 +17,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
   if (size === 'sm') sizeClasses = 'max-w-sm';
   if (size === 'lg') sizeClasses = 'max-w-lg';
   if (size === 'xl') sizeClasses = 'max-w-xl';
+  if (size === '2xl') sizeClasses = 'max-w-2xl';
 
 
   return (
