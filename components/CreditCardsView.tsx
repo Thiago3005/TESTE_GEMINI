@@ -1,11 +1,12 @@
 
 import React from 'react';
 import { useState, useCallback } from 'react';
-import { CreditCard, InstallmentPurchase, AIConfig, BestPurchaseDayInfo } from '../types';
+import { CreditCard, InstallmentPurchase, AIConfig, BestPurchaseDayInfo, Account } from '../types';
 import CreditCardItem from './CreditCardItem';
 import CreditCardFormModal from './CreditCardFormModal';
 import InstallmentPurchaseFormModal from './InstallmentPurchaseFormModal';
-import BestPurchaseDayModal from './BestPurchaseDayModal'; // New Modal
+import BestPurchaseDayModal from './BestPurchaseDayModal'; 
+import PayBillModal from './PayBillModal';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import { useToasts } from '../contexts/ToastContext';
@@ -16,6 +17,7 @@ import { getISODateString } from '../utils/helpers';
 interface CreditCardsViewProps {
   creditCards: CreditCard[];
   installmentPurchases: InstallmentPurchase[];
+  accounts: Account[];
   aiConfig: AIConfig; 
   onAddCreditCard: (card: Omit<CreditCard, 'user_id' | 'created_at' | 'updated_at'>) => void;
   onUpdateCreditCard: (card: CreditCard) => void;
@@ -24,13 +26,14 @@ interface CreditCardsViewProps {
   onUpdateInstallmentPurchase: (purchase: InstallmentPurchase) => void;
   onDeleteInstallmentPurchase: (purchaseId: string) => void;
   onMarkInstallmentPaid: (purchaseId: string) => void;
-  onPayMonthlyInstallments: (cardId: string) => Promise<void>;
+  onPayCreditCardBill: (cardId: string, fromAccountId: string, billAmount: number, installmentIdsToPay: string[]) => Promise<void>;
   isPrivacyModeEnabled?: boolean; 
 }
 
 const CreditCardsView: React.FC<CreditCardsViewProps> = ({
   creditCards,
   installmentPurchases,
+  accounts,
   aiConfig, 
   onAddCreditCard,
   onUpdateCreditCard,
@@ -39,7 +42,7 @@ const CreditCardsView: React.FC<CreditCardsViewProps> = ({
   onUpdateInstallmentPurchase,
   onDeleteInstallmentPurchase,
   onMarkInstallmentPaid,
-  onPayMonthlyInstallments,
+  onPayCreditCardBill,
   isPrivacyModeEnabled,
 }) => {
   const { addToast } = useToasts();
@@ -50,11 +53,13 @@ const CreditCardsView: React.FC<CreditCardsViewProps> = ({
   const [editingInstallment, setEditingInstallment] = useState<InstallmentPurchase | null>(null);
   const [selectedCardForInstallment, setSelectedCardForInstallment] = useState<CreditCard | null>(null);
 
-  // State for Best Purchase Day Modal
   const [isBestDayModalOpen, setIsBestDayModalOpen] = useState(false);
   const [bestDayAdvice, setBestDayAdvice] = useState<BestPurchaseDayInfo | null>(null);
   const [isLoadingBestDay, setIsLoadingBestDay] = useState(false);
   const [selectedCardForBestDay, setSelectedCardForBestDay] = useState<CreditCard | null>(null);
+  
+  const [isPayBillModalOpen, setIsPayBillModalOpen] = useState(false);
+  const [billData, setBillData] = useState<{ card: CreditCard; amount: number; installmentIds: string[] } | null>(null);
 
 
   const handleOpenNewCardModal = () => {
@@ -120,6 +125,11 @@ const CreditCardsView: React.FC<CreditCardsViewProps> = ({
         addToast(advice.explanation || "Erro ao buscar sugestão da IA.", 'error');
     }
   }, [aiConfig, creditCards, addToast]);
+  
+  const handleOpenPayBillModal = (card: CreditCard, amount: number, installmentIds: string[]) => {
+    setBillData({ card, amount, installmentIds });
+    setIsPayBillModalOpen(true);
+  };
 
 
   return (
@@ -146,7 +156,7 @@ const CreditCardsView: React.FC<CreditCardsViewProps> = ({
               onDeleteInstallmentPurchase={onDeleteInstallmentPurchase}
               onMarkInstallmentPaid={onMarkInstallmentPaid}
               onGetBestPurchaseDay={handleGetBestPurchaseDay} 
-              onPayMonthlyInstallments={onPayMonthlyInstallments}
+              onOpenPayBillModal={handleOpenPayBillModal}
               isAIFeatureEnabled={aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available'}
               isPrivacyModeEnabled={isPrivacyModeEnabled}
             />
@@ -180,6 +190,17 @@ const CreditCardsView: React.FC<CreditCardsViewProps> = ({
         isLoading={isLoadingBestDay}
         cardName={selectedCardForBestDay?.name}
       />
+      
+      {billData && (
+        <PayBillModal
+          isOpen={isPayBillModalOpen}
+          onClose={() => setIsPayBillModalOpen(false)}
+          billData={billData}
+          accounts={accounts}
+          onConfirmPayment={onPayCreditCardBill}
+          isPrivacyModeEnabled={isPrivacyModeEnabled}
+        />
+      )}
 
     </div>
   );

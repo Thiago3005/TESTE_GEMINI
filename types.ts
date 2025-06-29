@@ -1,5 +1,4 @@
 
-
 import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 
 export { SupabaseUser, SupabaseSession };
@@ -197,6 +196,7 @@ export interface UserPreferences extends SupabaseManaged {
   ai_is_enabled: boolean;
   ai_monthly_income: number | null;
   ai_auto_backup_enabled: boolean;
+  is_onboarding_completed: boolean;
 }
 
 

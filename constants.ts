@@ -21,6 +21,7 @@ export const DEFAULT_EXPENSE_CATEGORIES_SEED: Omit<Category, 'id' | 'type' | 'us
   { name: 'Impostos' },
   { name: 'Água' },
   { name: 'Luz' },
+  { name: 'Pagamento de Fatura' },
   { name: 'Outras Despesas' },
 ];
 

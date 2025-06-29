@@ -21,7 +21,7 @@ interface CreditCardItemProps {
   onDeleteInstallmentPurchase: (purchaseId: string) => void;
   onMarkInstallmentPaid: (purchaseId: string) => void;
   onGetBestPurchaseDay: (cardId: string) => void;
-  onPayMonthlyInstallments: (cardId: string) => void; 
+  onOpenPayBillModal: (card: CreditCard, billAmount: number, eligibleInstallmentIds: string[]) => void; 
   isAIFeatureEnabled: boolean;
   isPrivacyModeEnabled?: boolean; 
 }
@@ -36,7 +36,7 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
   onDeleteInstallmentPurchase,
   onMarkInstallmentPaid,
   onGetBestPurchaseDay, 
-  onPayMonthlyInstallments,
+  onOpenPayBillModal,
   isAIFeatureEnabled,
   isPrivacyModeEnabled,
 }) => {
@@ -52,8 +52,10 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
   }, 0);
   const availableLimit = card.card_limit - totalOutstandingDebt;
 
-  const eligibleInstallmentsForPayment = React.useMemo(() => {
-    return getEligibleInstallmentsForBillingCycle(cardInstallments, card, new Date());
+  const { billAmount, eligibleInstallments } = React.useMemo(() => {
+    const eligible = getEligibleInstallmentsForBillingCycle(cardInstallments, card, new Date());
+    const amount = eligible.reduce((sum, p) => sum + (p.total_amount / p.number_of_installments), 0);
+    return { billAmount: amount, eligibleInstallments: eligible };
   }, [cardInstallments, card]);
 
 
@@ -96,6 +98,24 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
         </div>
       </div>
       
+      <div className="space-y-3 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+        <div>
+          <h4 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">FATURA ATUAL</h4>
+          <p className="text-2xl font-bold text-destructive dark:text-destructiveDark">
+            {formatCurrency(billAmount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => onOpenPayBillModal(card, billAmount, eligibleInstallments.map(p => p.id))}
+          disabled={billAmount <= 0}
+          className="w-full !text-sm"
+        >
+          Pagar Fatura ({eligibleInstallments.length} ite{eligibleInstallments.length === 1 ? 'm' : 'ns'})
+        </Button>
+      </div>
+      
       <div className="space-y-2">
         {isAIFeatureEnabled && (
          <Button 
@@ -107,17 +127,6 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
           >
            <SparklesIcon className="w-4 h-4 mr-1.5" /> Melhor Dia para Compra (IA)
          </Button>
-        )}
-        
-        {eligibleInstallmentsForPayment.length > 0 && (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => onPayMonthlyInstallments(card.id)}
-            className="w-full !text-xs"
-          >
-            Pagar Parcelas da Fatura ({eligibleInstallmentsForPayment.length})
-          </Button>
         )}
       </div>
       
@@ -138,10 +147,10 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
               const isFullyPaid = p.installments_paid >= p.number_of_installments;
               const nextInstallmentNumber = p.installments_paid + 1;
               const nextInstallmentDueDate = !isFullyPaid ? calculateInstallmentDueDate(p.purchase_date, nextInstallmentNumber, card.due_day) : null;
-              const isEligibleForCurrentPayment = eligibleInstallmentsForPayment.some(eligibleP => eligibleP.id === p.id);
+              const isEligibleForCurrentPayment = eligibleInstallments.some(eligibleP => eligibleP.id === p.id);
 
               return (
-                <li key={p.id} className={`p-3 rounded-md ${isFullyPaid ? 'bg-green-500/10 dark:bg-green-500/20 opacity-70' : 'bg-surface dark:bg-surfaceDark shadow-sm border border-borderBase dark:border-borderBaseDark'}`}>
+                <li key={p.id} className={`p-3 rounded-md ${isFullyPaid ? 'bg-green-500/10 dark:bg-green-500/20 opacity-70' : isEligibleForCurrentPayment ? 'bg-amber-500/10 dark:bg-amber-500/20' : 'bg-surface dark:bg-surfaceDark shadow-sm border border-borderBase dark:border-borderBaseDark'}`}>
                   <div className="flex justify-between items-start mb-1.5">
                     <span className="font-semibold text-textBase dark:text-textBaseDark">{p.description}</span>
                     <div className="flex space-x-1">
@@ -172,12 +181,11 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
                   {!isFullyPaid && (
                      <Button 
                         size="sm" 
-                        variant={isEligibleForCurrentPayment ? "primary" : "ghost"}
+                        variant={"ghost"}
                         onClick={() => onMarkInstallmentPaid(p.id)} 
-                        className={`text-xs py-1 px-2 mt-2.5 w-full sm:w-auto ${isEligibleForCurrentPayment ? '' : 'border border-borderBase dark:border-borderBaseDark'}`}
+                        className={`text-xs py-1 px-2 mt-2.5 w-full sm:w-auto border border-borderBase dark:border-borderBaseDark`}
                       >
-                        {isEligibleForCurrentPayment ? <CheckCircleIcon className="w-4 h-4 mr-1"/> : null}
-                        Pagar Parcela ({nextInstallmentNumber})
+                        Pagar Parcela Individualmente ({nextInstallmentNumber})
                     </Button>
                   )}
                    {isFullyPaid && (

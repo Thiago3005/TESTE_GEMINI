@@ -44,6 +44,7 @@ import TransactionForm from './components/TransactionForm';
 import ThemeSwitcher from './components/ThemeSwitcher';
 import Button from './components/Button';
 import AuthModal from './components/AuthModal';
+import OnboardingWizard from './components/OnboardingWizard';
 
 
 // Icons
@@ -94,6 +95,8 @@ const AppContent: React.FC = () => {
     monthlyIncome: null,
     autoBackupToFileEnabled: false,
   });
+  const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
+
 
   // Data states
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -149,6 +152,7 @@ const AppContent: React.FC = () => {
     setCurrentUserPreferences(null);
     setAiConfigState({ isEnabled: false, apiKeyStatus: 'unknown', monthlyIncome: null, autoBackupToFileEnabled: false });
     setSafeToSpendToday({ safeAmount: null, explanation: 'Clique em "Recalcular".', calculationDate: null, lastCalculatedDisplay: null, isLoading: false, error: null });
+    setShowOnboardingWizard(false);
   };
 
 
@@ -209,6 +213,9 @@ const AppContent: React.FC = () => {
             autoBackupToFileEnabled: prefsData.ai_auto_backup_enabled,
             apiKeyStatus: geminiService.isGeminiApiKeyAvailable() ? 'available' : 'unavailable',
         });
+        if (!prefsData.is_onboarding_completed) {
+            setShowOnboardingWizard(true);
+        }
       } else {
         const defaultPrefs: Omit<UserPreferences, 'created_at' | 'updated_at'> = {
             id: generateClientSideId(), 
@@ -216,6 +223,7 @@ const AppContent: React.FC = () => {
             profile_id: dbProfileId, 
             theme: 'dark', is_privacy_mode_enabled: false,
             ai_is_enabled: false, ai_monthly_income: null, ai_auto_backup_enabled: false,
+            is_onboarding_completed: false,
         };
         const { data: newPrefsData, error: insertPrefsError } = await supabase
             .from('user_preferences')
@@ -232,6 +240,7 @@ const AppContent: React.FC = () => {
             autoBackupToFileEnabled: defaultPrefs.ai_auto_backup_enabled,
             apiKeyStatus: geminiService.isGeminiApiKeyAvailable() ? 'available' : 'unavailable',
         });
+        setShowOnboardingWizard(true);
       }
       
       const dataFilter = (query: any) => query.eq('user_id', authUser.id).eq('profile_id', dbProfileId);
@@ -275,19 +284,21 @@ const AppContent: React.FC = () => {
       if (debtsRes.error) throw debtsRes.error; setDebts(debtsRes.data as Debt[]);
       if (debtPaymentsRes.error) throw debtPaymentsRes.error; setDebtPayments(debtPaymentsRes.data as DebtPayment[]);
       
-      if (accountsRes.data?.length === 0) {
+      if (accountsRes.data?.length === 0 && !showOnboardingWizard) {
           const seedAccs = getSeedAccounts(authUser.id, dbProfileId).map(acc => ({ ...acc, user_id: authUser.id, profile_id: dbProfileId }));
           const { data: newAccs, error: seedAccError } = await supabase.from('accounts').insert(seedAccs).select();
           if (seedAccError) throw seedAccError;
           if (newAccs) setAccounts(newAccs as Account[]);
       }
-      if (categoriesRes.data?.length === 0) {
+      if (categoriesRes.data?.length === 0 && !showOnboardingWizard) {
           const seedCats = getSeedCategories(authUser.id, dbProfileId).map(cat => ({ ...cat, user_id: authUser.id, profile_id: dbProfileId }));
           const { data: newCats, error: seedCatError } = await supabase.from('categories').insert(seedCats).select();
           if (seedCatError) throw seedCatError;
           if (newCats) setCategories(newCats as Category[]);
       }
-      setActiveView('DASHBOARD');
+      if (!showOnboardingWizard) {
+        setActiveView('DASHBOARD');
+      }
 
     } catch (error: any) {
         console.error("Error fetching user data:", error);
@@ -298,7 +309,7 @@ const AppContent: React.FC = () => {
         setIsLoadingData(false);
         isFetchingDataRef.current = false;
     }
-  }, [addToast]);
+  }, [addToast, showOnboardingWizard]);
 
 
   useEffect(() => {
@@ -400,6 +411,12 @@ const AppContent: React.FC = () => {
             });
     }
   }, [user, activeUserProfile, addToast]);
+  
+  const handleCompleteOnboarding = async () => {
+    await updateUserPreference('is_onboarding_completed', true);
+    setShowOnboardingWizard(false);
+    addToast("Configuração inicial concluída. Bem-vindo(a)!", 'success');
+  };
 
   useEffect(() => {
     const applyThemeToDocument = (currentTheme: Theme) => {
@@ -911,33 +928,70 @@ const AppContent: React.FC = () => {
       await handleUpdateInstallmentPurchase(updatedPurchase);
     }
   };
-  const handlePayMonthlyInstallments = async (cardId: string): Promise<void> => {
+  const handlePayCreditCardBill = async (cardId: string, fromAccountId: string, billAmount: number, installmentIdsToPay: string[]): Promise<void> => {
     if (!user || !activeUserProfile) return;
-    const eligible = getEligibleInstallmentsForBillingCycle(installmentPurchases.filter(p => p.credit_card_id === cardId), creditCards.find(c => c.id === cardId)!, new Date());
-
-    const updates = eligible.map(p => {
-      const updatedPurchase = { ...p, installments_paid: p.installments_paid + 1, updated_at: new Date().toISOString() };
-      return supabase
-        .from('installment_purchases')
-        .update({ installments_paid: updatedPurchase.installments_paid, updated_at: updatedPurchase.updated_at })
-        .eq('id', p.id)
-        .eq('user_id', user.id)
-        .eq('profile_id', activeUserProfile.id)
-        .select()
-        .single();
-    });
-    const results = await Promise.all(updates);
-    const successfulUpdates = results.filter(res => res.data).map(res => res.data as InstallmentPurchase);
-    if (successfulUpdates.length > 0) {
-      setInstallmentPurchases(prev =>
-        prev.map(ip => successfulUpdates.find(s => s.id === ip.id) || ip)
-          .sort((a,b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())
-      );
-      addToast(`${successfulUpdates.length} parcela(s) da fatura marcada(s) como paga(s)!`, 'success');
+    
+    // 1. Find the "Bill Payment" category
+    let billPaymentCategory = categories.find(c => c.name.toLowerCase() === 'pagamento de fatura');
+    if (!billPaymentCategory) {
+        addToast("Categoria 'Pagamento de Fatura' não encontrada. Crie-a ou verifique as constantes.", "error");
+        return;
     }
-    results.filter(res => res.error).forEach(res => addToast(`Erro ao pagar parcela: ${res.error?.message}`, 'error'));
+
+    // 2. Create the expense transaction for the bill payment
+    const expenseTxData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
+        type: TransactionType.EXPENSE,
+        amount: billAmount,
+        date: getISODateString(),
+        account_id: fromAccountId,
+        category_id: billPaymentCategory.id,
+        description: `Pagamento Fatura Cartão: ${creditCards.find(c => c.id === cardId)?.name || 'N/A'}`,
+    };
+    const newExpenseTx = await addOrUpdateRecord('transactions', expenseTxData, setTransactions, (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    if (!newExpenseTx) {
+        addToast("Erro ao registrar a despesa do pagamento da fatura.", "error");
+        return;
+    }
+
+    // 3. Update all paid installments
+    const updates = installmentIdsToPay.map(id => {
+        const purchase = installmentPurchases.find(p => p.id === id);
+        if (!purchase) return Promise.resolve(null);
+        
+        const updatedPurchase = { 
+            installments_paid: purchase.installments_paid + 1, 
+            updated_at: new Date().toISOString() 
+        };
+
+        return supabase
+            .from('installment_purchases')
+            .update(updatedPurchase)
+            .eq('id', purchase.id)
+            .eq('user_id', user.id)
+            .eq('profile_id', activeUserProfile.id)
+            .select()
+            .single();
+    });
+
+    const results = await Promise.all(updates);
+    const successfulUpdates = results.filter(res => res && res.data).map(res => res!.data as InstallmentPurchase);
+    
+    if (successfulUpdates.length > 0) {
+        setInstallmentPurchases(prev =>
+            prev.map(ip => successfulUpdates.find(s => s.id === ip.id) || ip)
+              .sort((a,b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())
+        );
+        addToast(`Fatura de ${formatCurrency(billAmount)} paga com sucesso! ${successfulUpdates.length} parcelas foram atualizadas.`, 'success');
+    }
+
+    results.forEach(res => {
+        if (res && res.error) {
+            addToast(`Erro ao atualizar parcela: ${res.error.message}`, 'error');
+        }
+    });
   };
-  
+
   // MoneyBox Handlers
   const handleAddMoneyBox = (data: Omit<MoneyBox, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>) => addOrUpdateRecord('money_boxes', data, setMoneyBoxes, (a: MoneyBox,b: MoneyBox) => a.name.localeCompare(b.name));
   const handleUpdateMoneyBox = (data: MoneyBox) => addOrUpdateRecord('money_boxes', data, setMoneyBoxes, (a: MoneyBox,b: MoneyBox) => a.name.localeCompare(b.name), true);
@@ -1521,6 +1575,23 @@ const AppContent: React.FC = () => {
   if (isLoadingData && user) { 
      return <div className="min-h-screen flex items-center justify-center bg-backgroundDark text-textBaseDark">Carregando dados do perfil...</div>;
   }
+  
+  if (showOnboardingWizard) {
+    return (
+        <OnboardingWizard
+            isOpen={true}
+            onSetMonthlyIncome={(income) => updateAiConfig({ monthlyIncome: income })}
+            onAddBudgets={(budgetsToUpdate) => {
+                budgetsToUpdate.forEach(b => handleUpdateCategory(b));
+            }}
+            onAddMoneyBox={handleAddMoneyBox}
+            onComplete={handleCompleteOnboarding}
+            categories={categories}
+            isPrivacyModeEnabled={isPrivacyModeEnabled}
+        />
+    )
+  }
+
   if (!isLoadingData && !activeUserProfile && user) {
      addToast("Falha ao carregar o perfil. Por favor, tente novamente.", "error");
      return (
@@ -1626,7 +1697,7 @@ const AppContent: React.FC = () => {
         {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'ACCOUNTS' && <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'CATEGORIES' && <CategoriesView categories={categories} transactions={transactions} aiConfig={aiConfig} onAddCategory={handleAddCategory} onUpdateCategory={handleUpdateCategory} onDeleteCategory={handleDeleteCategory} onSuggestBudget={handleSuggestBudgetForCategory} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'CREDIT_CARDS' && <CreditCardsView creditCards={creditCards} installmentPurchases={installmentPurchases} aiConfig={aiConfig} onAddCreditCard={handleAddCreditCard} onUpdateCreditCard={handleUpdateCreditCard} onDeleteCreditCard={handleDeleteCreditCard} onAddInstallmentPurchase={handleAddInstallmentPurchase} onUpdateInstallmentPurchase={handleUpdateInstallmentPurchase} onDeleteInstallmentPurchase={handleDeleteInstallmentPurchase} onMarkInstallmentPaid={handleMarkInstallmentPaid} onPayMonthlyInstallments={handlePayMonthlyInstallments} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+        {activeView === 'CREDIT_CARDS' && <CreditCardsView creditCards={creditCards} installmentPurchases={installmentPurchases} accounts={accounts} aiConfig={aiConfig} onAddCreditCard={handleAddCreditCard} onUpdateCreditCard={handleUpdateCreditCard} onDeleteCreditCard={handleDeleteCreditCard} onAddInstallmentPurchase={handleAddInstallmentPurchase} onUpdateInstallmentPurchase={handleUpdateInstallmentPurchase} onDeleteInstallmentPurchase={handleDeleteInstallmentPurchase} onMarkInstallmentPaid={handleMarkInstallmentPaid} onPayCreditCardBill={handlePayCreditCardBill} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'MONEY_BOXES' && <MoneyBoxesView moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions} accounts={accounts} onAddMoneyBox={handleAddMoneyBox} onUpdateMoneyBox={handleUpdateMoneyBox} onDeleteMoneyBox={handleDeleteMoneyBox} onAddMoneyBoxTransaction={handleAddMoneyBoxTransaction} onDeleteMoneyBoxTransaction={handleDeleteMoneyBoxTransaction} calculateMoneyBoxBalance={calculateMoneyBoxBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'FUTURE_PURCHASES' && <FuturePurchasesView futurePurchases={futurePurchases} onAddFuturePurchase={handleAddFuturePurchase} onUpdateFuturePurchase={handleUpdateFuturePurchase} onDeleteFuturePurchase={handleDeleteFuturePurchase} onAnalyzeFuturePurchase={handleAnalyzeFuturePurchase} onInitiateTransaction={handleInitiateTransactionFromFuturePurchase} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'TAGS' && <TagsView tags={tags} transactions={transactions} onAddTag={handleAddTag} onUpdateTag={handleUpdateTag} onDeleteTag={handleDeleteTag} />}
