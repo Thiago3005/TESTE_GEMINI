@@ -21,7 +21,7 @@ interface TransactionItemProps {
 const TransactionItem: React.FC<TransactionItemProps> = ({ 
   transaction, accounts, categories, tags, installmentPurchases, onEdit, onDelete, isPrivacyModeEnabled 
 }) => {
-  const { type, amount, category_id, description, date, account_id, to_account_id, tag_ids } = transaction;
+  const { type, amount, category_id, description, date, account_id, to_account_id, tag_ids, payee_name } = transaction;
 
   const account = accounts.find(a => a.id === account_id);
   const toAccount = to_account_id ? accounts.find(a => a.id === to_account_id) : null;
@@ -38,12 +38,19 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     sign = '-';
   }
 
-  const title = description || category?.name || type;
+  let title = description || category?.name || type;
   const subTitleParts: string[] = [];
   if (account) subTitleParts.push(account.name);
-  if (type === TransactionType.TRANSFER && toAccount) {
-    subTitleParts.push(`➔ ${toAccount.name}`);
-  } else if (category && type !== TransactionType.TRANSFER) {
+  if (type === TransactionType.TRANSFER) {
+      if (toAccount) {
+        subTitleParts.push(`➔ ${toAccount.name}`);
+      } else if (payee_name) {
+        subTitleParts.push(`➔ ${payee_name}`);
+        if (!description) {
+            title = `Transferência para ${payee_name}`;
+        }
+      }
+  } else if (category) {
      subTitleParts.push(category.name);
   }
 

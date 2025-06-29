@@ -1305,13 +1305,49 @@ const AppContent: React.FC = () => {
   };
 
   // Debt & Debt Payment Handlers
-  const handleAddDebt = async (debtData: Omit<Debt, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'|'current_balance'|'is_archived'>) => {
-    const newDebt = {
+  const handleAddDebt = async (
+    debtData: Omit<Debt, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'|'current_balance'|'is_archived'|'linked_income_transaction_id'>,
+    createIncome: boolean,
+    creditedAccountId?: string
+  ) => {
+    if (!user || !activeUserProfile) return;
+
+    const newDebtData = {
         ...debtData,
         current_balance: debtData.initial_balance,
         is_archived: false,
     };
-    await addOrUpdateRecord('debts', newDebt, setDebts, (a: Debt,b: Debt) => a.name.localeCompare(b.name));
+    
+    const newDebt = await addOrUpdateRecord('debts', newDebtData, setDebts, (a: Debt,b: Debt) => a.name.localeCompare(b.name));
+
+    if (newDebt && createIncome && creditedAccountId) {
+      // Create a linked income transaction
+      const incomeCategory = categories.find(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes("outras receitas")) 
+                          || categories.find(c => c.type === TransactionType.INCOME);
+      if (!incomeCategory) {
+        addToast("Nenhuma categoria de receita encontrada para o empréstimo recebido.", "error");
+        return;
+      }
+      const incomeTxData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
+        type: TransactionType.INCOME,
+        amount: newDebt.initial_balance,
+        date: newDebt.debt_date,
+        account_id: creditedAccountId,
+        category_id: incomeCategory.id,
+        description: `Empréstimo recebido de: ${newDebt.name}`,
+      };
+      const incomeTx = await addOrUpdateRecord('transactions', incomeTxData, setTransactions, (a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      // Link transaction to debt
+      if (incomeTx) {
+        const { error } = await supabase.from('debts').update({ linked_income_transaction_id: incomeTx.id }).eq('id', newDebt.id);
+        if (error) {
+          addToast("Erro ao vincular transação à dívida.", "error");
+        } else {
+          setDebts(prev => prev.map(d => d.id === newDebt.id ? { ...d, linked_income_transaction_id: incomeTx.id } : d));
+        }
+      }
+    }
   };
   const handleUpdateDebt = (debt: Debt) => addOrUpdateRecord('debts', debt, setDebts, (a: Debt,b: Debt) => a.name.localeCompare(b.name), true);
   const handleDeleteDebt = (debtId: string) => {

@@ -30,7 +30,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [description, setDescription] = useState<string>('');
   const [date, setDate] = useState<string>(getISODateString());
   const [sourceId, setSourceId] = useState<string>(''); // Can be Account, CreditCard, or MoneyBox ID
+  
+  // New state for enhanced transfers
+  const [transferTargetType, setTransferTargetType] = useState<'account' | 'person'>('account');
   const [toAccountId, setToAccountId] = useState<string>('');
+  const [payeeName, setPayeeName] = useState<string>('');
+
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   
   const [backingAccountId, setBackingAccountId] = useState<string>(''); // Real account for MoneyBox movement
@@ -60,9 +65,23 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setDescription(initialTransaction.description || '');
       setDate(initialTransaction.date);
       setSourceId(initialTransaction.account_id); 
-      setToAccountId(initialTransaction.to_account_id || (accounts.length > 1 ? accounts[1].id : ''));
       setSelectedTagIds(initialTransaction.tag_ids || []);
-      // isMoneyBoxSource will be set by the other effect based on loaded sourceId
+      
+      // Handle transfer target
+      if (initialTransaction.type === TransactionType.TRANSFER) {
+        if (initialTransaction.to_account_id) {
+          setTransferTargetType('account');
+          setToAccountId(initialTransaction.to_account_id);
+          setPayeeName('');
+        } else if (initialTransaction.payee_name) {
+          setTransferTargetType('person');
+          setPayeeName(initialTransaction.payee_name);
+          setToAccountId('');
+        }
+      } else {
+         setToAccountId(accounts.length > 1 ? accounts[1].id : '');
+      }
+
       setBackingAccountId(accounts.length > 0 ? accounts[0].id : ''); 
     } else {
       // Reset to defaults for new transaction
@@ -71,9 +90,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setCategoryId(categories.filter(c => c.type === TransactionType.EXPENSE)[0]?.id || '');
       setDescription('');
       setDate(getISODateString());
+      setPayeeName('');
 
       if (newSourceOpts.length > 0) {
-         // Set to first option if current sourceId is empty or no longer valid in newSourceOpts
          if (!sourceId || !newSourceOpts.some(opt => opt.value === sourceId)) {
             setSourceId(newSourceOpts[0].value);
         }
@@ -141,10 +160,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             newErrors.categoryId = 'Categoria é obrigatória.';
         }
         if (!sourceId) newErrors.sourceId = 'Origem (Conta/Cartão) é obrigatória.';
-        if (type === TransactionType.TRANSFER && !toAccountId) newErrors.toAccountId = 'Conta de destino é obrigatória.';
-        if (type === TransactionType.TRANSFER && sourceId === toAccountId) newErrors.toAccountId = 'Conta de origem e destino não podem ser iguais.';
-        if (type === TransactionType.TRANSFER && selectedSourceDetails?.type === 'creditCard') {
+        
+        if (type === TransactionType.TRANSFER) {
+          if (transferTargetType === 'account' && !toAccountId) newErrors.toAccountId = 'Conta de destino é obrigatória.';
+          if (transferTargetType === 'account' && sourceId === toAccountId) newErrors.toAccountId = 'Conta de origem e destino não podem ser iguais.';
+          if (transferTargetType === 'person' && !payeeName.trim()) newErrors.payeeName = 'Nome do destinatário é obrigatório.';
+          if (selectedSourceDetails?.type === 'creditCard') {
             newErrors.sourceId = 'Transferências não podem originar de um cartão de crédito.';
+          }
         }
     }
     if (!date) newErrors.date = 'Data é obrigatória.';
@@ -180,7 +203,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             description: description || undefined,
             date,
             account_id: sourceId,
-            to_account_id: type === TransactionType.TRANSFER ? toAccountId : undefined,
+            to_account_id: type === TransactionType.TRANSFER && transferTargetType === 'account' ? toAccountId : undefined,
+            payee_name: type === TransactionType.TRANSFER && transferTargetType === 'person' ? payeeName.trim() : undefined,
             tag_ids: selectedTagIds.length > 0 ? selectedTagIds : undefined,
         };
         onSubmit(transactionData as any); 
@@ -279,16 +303,39 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       )}
 
       {type === TransactionType.TRANSFER && !isMoneyBoxSource && (
-        <Select
-          label="Conta de Destino"
-          id="toAccountId"
-          options={accounts.map(a => ({ value: a.id, label: a.name }))}
-          value={toAccountId}
-          onChange={(e: ChangeEvent<HTMLSelectElement>) => setToAccountId(e.target.value)}
-          error={errors.toAccountId}
-          placeholder="Selecione uma conta de destino"
-          disabled={accounts.length === 0}
-        />
+        <div className="p-3 border border-borderBase dark:border-borderBaseDark rounded-md space-y-3">
+            <div className="flex items-center space-x-4">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input type="radio" name="transferTarget" value="person" checked={transferTargetType === 'person'} onChange={() => setTransferTargetType('person')} className="form-radio text-primary dark:text-primaryDark" />
+                <span>Para outra pessoa/empresa</span>
+              </label>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input type="radio" name="transferTarget" value="account" checked={transferTargetType === 'account'} onChange={() => setTransferTargetType('account')} className="form-radio text-primary dark:text-primaryDark" />
+                <span>Entre minhas contas</span>
+              </label>
+            </div>
+            {transferTargetType === 'person' ? (
+                <Input
+                    label="Nome do Destinatário"
+                    id="payeeName"
+                    value={payeeName}
+                    onChange={(e) => setPayeeName(e.target.value)}
+                    error={errors.payeeName}
+                    placeholder="Ex: João Silva"
+                />
+            ) : (
+                <Select
+                    label="Conta de Destino"
+                    id="toAccountId"
+                    options={accounts.map(a => ({ value: a.id, label: a.name }))}
+                    value={toAccountId}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => setToAccountId(e.target.value)}
+                    error={errors.toAccountId}
+                    placeholder="Selecione uma conta de destino"
+                    disabled={accounts.length === 0}
+                />
+            )}
+        </div>
       )}
       {tags.length > 0 && (
         <Select

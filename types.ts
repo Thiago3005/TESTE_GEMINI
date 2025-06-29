@@ -26,6 +26,7 @@ export interface Transaction extends SupabaseManaged {
   date: string; // YYYY-MM-DD
   account_id: string; // UUID, references accounts.id OR credit_cards.id
   to_account_id?: string; // UUID, For TRANSFER type, references accounts.id
+  payee_name?: string; // For TRANSFER type to an external person/entity
   tag_ids?: string[]; // Array of UUIDs, references tags.id
 }
 
@@ -225,8 +226,10 @@ export interface Debt extends SupabaseManaged {
   current_balance: number; // This will be managed by the app
   interest_rate_annual: number; // Annual percentage rate, e.g., 19.9 for 19.9%
   minimum_payment: number;
+  debt_date: string; // YYYY-MM-DD - The date the debt was incurred
   due_date_day_of_month?: number; // e.g., 15 for 15th of month
   is_archived: boolean; // To hide paid-off or irrelevant debts
+  linked_income_transaction_id?: string; // Optional FK to Transaction (if an income was auto-created)
 }
 
 export interface DebtPayment extends SupabaseManaged {

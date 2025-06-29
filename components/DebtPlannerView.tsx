@@ -21,7 +21,7 @@ interface DebtPlannerViewProps {
   debts: Debt[];
   debtPayments: DebtPayment[];
   accounts: Account[];
-  onAddDebt: (debtData: Omit<Debt, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived'>) => void;
+  onAddDebt: (debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'>, createIncome: boolean, creditedAccountId?: string) => void;
   onUpdateDebt: (debtData: Debt) => void;
   onDeleteDebt: (debtId: string) => void;
   onAddDebtPayment: (paymentData: Omit<DebtPayment, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id'>, createLinkedExpense: boolean, linkedAccountId?: string) => void;
@@ -179,6 +179,15 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
     await onFetchDebtProjectionSummary(projection, debts.filter(d => !d.is_archived && d.current_balance > 0), selectedStrategy);
   };
 
+  const handleSaveDebt = (debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'> & {id?: string}, createIncome = false, creditedAccountId = '') => {
+      if (editingDebt && debtData.id) {
+          onUpdateDebt({ ...editingDebt, ...debtData });
+      } else {
+          const { id, ...newDebtData } = debtData;
+          onAddDebt(newDebtData, createIncome, creditedAccountId);
+      }
+  };
+
 
   const strategyOptions: { value: DebtStrategy; label: string }[] = [
     { value: 'minimums', label: 'Apenas Pagamentos Mínimos' },
@@ -297,8 +306,9 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
         <DebtFormModal
           isOpen={isDebtFormModalOpen}
           onClose={() => setIsDebtFormModalOpen(false)}
-          onSave={editingDebt ? (data) => onUpdateDebt({...(data as Debt), id: editingDebt.id}) : onAddDebt}
+          onSave={handleSaveDebt}
           existingDebt={editingDebt}
+          accounts={accounts}
         />
       )}
       {isPaymentFormModalOpen && selectedDebtForPayment && (

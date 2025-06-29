@@ -84,7 +84,8 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
       const lowerSearchTerm = searchTerm.toLowerCase();
       items = items.filter(t => 
         (t.description && t.description.toLowerCase().includes(lowerSearchTerm)) ||
-        (t.category_id && categories.find(c=>c.id === t.category_id)?.name.toLowerCase().includes(lowerSearchTerm))
+        (t.category_id && categories.find(c=>c.id === t.category_id)?.name.toLowerCase().includes(lowerSearchTerm)) ||
+        (t.payee_name && t.payee_name.toLowerCase().includes(lowerSearchTerm))
       );
     }
     
@@ -136,7 +137,7 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
                 placeholder="Todas as Tags"
             />
         )}
-        <Input label="Buscar Descrição" type="text" placeholder="Ex: Supermercado" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} containerClassName={tags.length === 0 ? 'lg:col-span-2' : ''} />
+        <Input label="Buscar Descrição/Destinatário" type="text" placeholder="Ex: Supermercado, João" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} containerClassName={tags.length === 0 ? 'lg:col-span-2' : ''} />
       </div>
       
       <div className="flex justify-end">
