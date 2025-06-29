@@ -221,7 +221,7 @@ export interface FuturePurchase extends SupabaseManaged {
 }
 
 // Debt Planner Types
-export type DebtType = 'credit_card_balance' | 'personal_loan' | 'student_loan' | 'mortgage' | 'car_loan' | 'other';
+export type DebtType = 'credit_card_balance' | 'personal_loan' | 'student_loan' | 'mortgage' | 'car_loan' | 'consignado' | 'other';
 
 export interface Debt extends SupabaseManaged {
   name: string;

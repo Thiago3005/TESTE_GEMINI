@@ -1,7 +1,9 @@
 
 
+
+
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
-import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis } from '../types';
+import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis, DebtType } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
 const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY;
@@ -523,25 +525,37 @@ Se não for possível calcular confiavelmente (ex: falta de dados cruciais como 
 Cálculo:`;
 };
 
+const debtTypeLabels: Record<DebtType, string> = {
+    credit_card_balance: 'Saldo de Cartão de Crédito',
+    personal_loan: 'Empréstimo Pessoal',
+    student_loan: 'Empréstimo Estudantil',
+    mortgage: 'Hipoteca / Financiamento Imob.',
+    car_loan: 'Financiamento de Veículo',
+    consignado: 'Empréstimo Consignado',
+    other: 'Outra Dívida',
+};
+
 const constructPromptForDebtRateAnalysis = (debt: Partial<Debt>): string => {
-  return `Você é um analista de crédito. Analise a taxa de juros anual fornecida e classifique-a.
+  return `Você é um analista de crédito. Analise a taxa de juros anual fornecida para o tipo de dívida especificado.
+Tipo de Dívida: ${debtTypeLabels[debt.type as DebtType] || 'Não especificado'}
 Taxa de Juros Anual: ${debt.interest_rate_annual || 0}% a.a.
 
-Use benchmarks do mercado brasileiro (ex: empréstimo pessoal ~25-70% a.a., rotativo do cartão > 300% a.a., financiamento de veículo ~18-30% a.a.).
+Use benchmarks do mercado brasileiro (ex: empréstimo pessoal ~25-70% a.a., empréstimo consignado ~15-30% a.a., rotativo do cartão > 300% a.a., financiamento de veículo ~18-30% a.a.).
+Para 'consignado', considere que as taxas são significativamente mais baixas.
 
 Responda APENAS com um objeto JSON contendo as chaves:
 - "classification": uma de "razoável", "moderado", ou "abusivo".
-- "text": Uma frase MUITO CURTA justificando a classificação. (Ex: “Comum para empréstimos pessoais não consignados.”)
+- "text": Uma frase MUITO CURTA justificando a classificação. (Ex: “Taxa comum para empréstimos consignados.”)
 
 Exemplo de resposta:
 {
-  "classification": "moderado",
-  "text": "Taxa alta, mas comum para empréstimos pessoais sem garantia."
+  "classification": "razoável",
+  "text": "Taxa competitiva para a modalidade de empréstimo consignado."
 }`;
 };
 
 const constructPromptForDebtViabilityAnalysis = (debt: Partial<Debt>, context: FinancialContext): string => {
-  const { initial_balance, interest_rate_annual, minimum_payment } = debt;
+  const { initial_balance, interest_rate_annual, minimum_payment, type } = debt;
   const monthlyIncomeText = context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada';
   
   const otherDebts = context.debts?.filter(d => d.id !== debt.id && !d.is_archived && d.current_balance > 0) || [];
@@ -552,8 +566,10 @@ const constructPromptForDebtViabilityAnalysis = (debt: Partial<Debt>, context: F
   return `Você é um consultor financeiro. Analise a viabilidade de uma nova dívida para o usuário.
 
 Dados da Dívida:
+- Tipo de Dívida: ${debtTypeLabels[type as DebtType] || 'Não especificado'}
 - Valor: ${formatCurrency(initial_balance || 0)}
 - Pagamento Mínimo Mensal: ${formatCurrency(minimum_payment || 0)}
+- Taxa de Juros Anual: ${interest_rate_annual}% a.a.
 
 Contexto Financeiro do Usuário:
 - Renda Mensal: ${monthlyIncomeText}
@@ -564,6 +580,10 @@ Instruções para Análise (responda APENAS com o objeto JSON e com textos MUITO
 2.  **risk**: Avalie o risco geral da dívida. (Ex: "Risco moderado. Atrasos podem levar a rápido crescimento do saldo.")
 3.  **riskBadge**: Com base em tudo, atribua um badge: uma de "healthy", "alert", ou "critical".
 4.  **recommendation**: Forneça uma recomendação clara e acionável. (Ex: "Avalie opções de crédito com juros menores e foque na quitação.")
+
+Informação adicional por tipo de dívida:
+- Se o tipo for 'consignado', considere que o pagamento é descontado diretamente da folha de pagamento, o que reduz o risco de inadimplência mas também reduz a renda líquida disponível do usuário de forma fixa.
+- Se o tipo for 'credit_card_balance', o risco de juros altos (rotativo) é extremo se não pago integralmente.
 
 Exemplo de resposta JSON:
 {
@@ -964,6 +984,36 @@ export const fetchSavingOpportunityInsight = async (
     return null;
 };
 
+export const calculateNextDueDate = (
+  currentDueDate: string,
+  frequency: RecurringTransactionFrequency,
+  customIntervalDays?: number
+): string => {
+  const lastDue = new Date(currentDueDate + 'T00:00:00'); // Ensure local timezone
+  let nextDue = new Date(lastDue);
+
+  switch (frequency) {
+    case 'daily':
+      nextDue.setDate(lastDue.getDate() + 1);
+      break;
+    case 'weekly':
+      nextDue.setDate(lastDue.getDate() + 7);
+      break;
+    case 'monthly':
+      nextDue.setMonth(lastDue.getMonth() + 1);
+      break;
+    case 'yearly':
+      nextDue.setFullYear(lastDue.getFullYear() + 1);
+      break;
+    case 'custom_days':
+      if (customIntervalDays && customIntervalDays > 0) {
+        nextDue.setDate(lastDue.getDate() + customIntervalDays);
+      }
+      break;
+  }
+  return getISODateString(nextDue);
+};
+
 export const fetchUnusualTransactionInsight = async (
     transaction: Transaction,
     categoryName: string,
@@ -971,7 +1021,7 @@ export const fetchUnusualTransactionInsight = async (
     context: FinancialContext
 ): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
     const prompt = constructPromptForUnusualTransactionValue(transaction, categoryName, recentCategoryTransactions, context);
-    const content = await safeGenerateContent(prompt, 'unusual_transaction_value', transaction.category_id);
+    const content = await safeGenerateContent(prompt, 'unusual_transaction_value', transaction.id);
     if (content) {
         return {
             timestamp: new Date().toISOString(),
@@ -989,15 +1039,6 @@ export const fetchCashFlowProjectionInsight = async (
     context: FinancialContext,
     projectionPeriodDays: number
 ): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
-        console.warn("Gemini API or ai.models not available for fetchCashFlowProjectionInsight.");
-        return { 
-            timestamp: new Date().toISOString(),
-            type: 'error_message',
-            content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK para projeção de caixa.",
-            is_read: false,
-        };
-    }
     const prompt = constructPromptForCashFlowProjection(context, projectionPeriodDays);
     const content = await safeGenerateContent(prompt, 'cash_flow_projection');
     if (content) {
@@ -1008,131 +1049,51 @@ export const fetchCashFlowProjectionInsight = async (
             is_read: false,
         };
     }
-     return { 
-        timestamp: new Date().toISOString(),
-        type: 'error_message',
-        content: "Não foi possível gerar uma projeção de fluxo de caixa com os dados atuais.",
-        is_read: false,
-    };
+    return null;
 };
 
-
 export const fetchDebtStrategyExplanation = async (strategy: DebtStrategy): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
-        return {
-            timestamp: new Date().toISOString(), type: 'error_message',
-            content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK para explicar estratégia de dívida.",
-            related_debt_strategy: strategy, is_read: false,
-        };
-    }
     const prompt = constructPromptForDebtStrategyExplanation(strategy);
     const content = await safeGenerateContent(prompt, 'debt_strategy_explanation');
     if (content) {
         return {
-            timestamp: new Date().toISOString(), type: 'debt_strategy_explanation',
-            content: content, related_debt_strategy: strategy, is_read: false,
-        };
-    }
-    return {
-        timestamp: new Date().toISOString(), type: 'error_message',
-        content: `Não foi possível obter uma explicação para a estratégia ${strategy} no momento.`,
-        related_debt_strategy: strategy, is_read: false,
-    };
-};
-
-export const fetchDebtProjectionSummary = async (projection: DebtProjection, debtsContext: Debt[], context: FinancialContext): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
-        return {
-            timestamp: new Date().toISOString(), type: 'error_message',
-            content: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK para resumir projeção de dívida.",
+            timestamp: new Date().toISOString(),
+            type: 'debt_strategy_explanation',
+            content: content,
+            related_debt_strategy: strategy,
             is_read: false,
         };
     }
-    const fullContext = {...context, debts: debtsContext };
-    const prompt = constructPromptForDebtProjectionSummary(projection, debtsContext, fullContext);
+    return null;
+};
+
+export const fetchDebtProjectionSummary = async (projection: DebtProjection, debts: Debt[], context: FinancialContext): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
+    const prompt = constructPromptForDebtProjectionSummary(projection, debts, context);
     const content = await safeGenerateContent(prompt, 'debt_projection_summary');
     if (content) {
         return {
-            timestamp: new Date().toISOString(), type: 'debt_projection_summary',
-            content: content, related_debt_strategy: projection.strategy, is_read: false,
+            timestamp: new Date().toISOString(),
+            type: 'debt_projection_summary',
+            content: content,
+            related_debt_strategy: projection.strategy,
+            is_read: false,
         };
     }
-     return {
-        timestamp: new Date().toISOString(), type: 'error_message',
-        content: "Não foi possível obter um resumo da projeção de dívida no momento.",
-        is_read: false,
-    };
+    return null;
 };
 
-export const fetchSafeToSpendTodayAdvice = async (
-  context: FinancialContext
-): Promise<SafeToSpendTodayInfo | null> => {
-  if (!ai || !ai.models || !isGeminiApiKeyAvailable()) { // Added !ai.models check
-    console.warn("Gemini API or ai.models not available for fetchSafeToSpendTodayAdvice.");
-    return {
-      safeAmount: null,
-      explanation: "AI Coach desativado, API Key não configurada, ou falha na inicialização do SDK.",
-      calculationDate: context.currentDate,
-      error: "AI Coach indisponível ou erro no SDK."
-    };
-  }
-
-  const prompt = constructPromptForSafeToSpendToday(context);
-  try {
-    const response: GenerateContentResponse = await ai.models!.generateContent({
-        model: "gemini-2.5-flash-preview-04-17",
-        contents: prompt,
-        config: { responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } }
-    });
-
-    let jsonStr = response.text?.trim() || '';
-    const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
-    const match = jsonStr.match(fenceRegex);
-    if (match && match[2]) {
-        jsonStr = match[2].trim();
-    }
-    
-    const parsedResult = JSON.parse(jsonStr);
-
-    if (parsedResult.error) {
-        console.warn("Gemini returned an error for safe to spend today:", parsedResult.error);
-        return { ...parsedResult, explanation: parsedResult.error, calculationDate: parsedResult.calculationDate || context.currentDate };
-    }
-    if (typeof parsedResult.explanation === 'string' && 
-        typeof parsedResult.calculationDate === 'string' &&
-        (typeof parsedResult.safeAmount === 'number' || parsedResult.safeAmount === null)) {
-        return parsedResult as SafeToSpendTodayInfo;
-    }
-    
-    console.error("Invalid JSON structure received from Gemini for safeToSpendToday:", parsedResult);
-    return {
-        safeAmount: null,
-        explanation: "Não foi possível determinar o valor seguro para gastar hoje (resposta inválida da IA).",
-        calculationDate: context.currentDate,
-        error: "Resposta inválida da IA."
-    };
-
-  } catch (error) {
-    console.error("Error fetching safe to spend today advice from Gemini:", error);
-    let errorMessage = "Desculpe, não consegui calcular o valor seguro para gastar hoje.";
-    if (error instanceof Error) {
-        errorMessage += ` Detalhe: ${error.message}`;
-    }
-    return {
-        safeAmount: null,
-        explanation: errorMessage,
-        calculationDate: context.currentDate,
-        error: errorMessage
-    };
-  }
-};
-
-export const fetchDebtRateAnalysis = async (debt: Partial<Debt>): Promise<DebtRateAnalysis | null> => {
+export const fetchSafeToSpendTodayAdvice = async (context: FinancialContext): Promise<SafeToSpendTodayInfo | null> => {
     if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
-        console.warn("Gemini API or ai.models not available for fetchDebtRateAnalysis.");
-        return null;
+        console.warn("Gemini API or ai.models not available for fetchSafeToSpendTodayAdvice.");
+        return {
+            safeAmount: null,
+            explanation: "AI Coach desativado ou API Key indisponível.",
+            calculationDate: context.currentDate,
+            error: "AI Coach indisponível."
+        };
     }
-    const prompt = constructPromptForDebtRateAnalysis(debt);
+
+    const prompt = constructPromptForSafeToSpendToday(context);
     try {
         const response: GenerateContentResponse = await ai.models!.generateContent({
             model: "gemini-2.5-flash-preview-04-17",
@@ -1143,72 +1104,95 @@ export const fetchDebtRateAnalysis = async (debt: Partial<Debt>): Promise<DebtRa
         let jsonStr = response.text?.trim() || '';
         const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
         const match = jsonStr.match(fenceRegex);
-        if (match && match[2]) jsonStr = match[2].trim();
-        
-        const parsed = JSON.parse(jsonStr);
-        if (parsed && parsed.classification && parsed.text) {
-            return parsed as DebtRateAnalysis;
+        if (match && match[2]) {
+            jsonStr = match[2].trim();
         }
-        console.error("Invalid JSON for debt rate analysis:", parsed);
+        
+        const parsed = JSON.parse(jsonStr) as SafeToSpendTodayInfo;
+
+        if (parsed && (typeof parsed.safeAmount === 'number' || parsed.safeAmount === null) && typeof parsed.explanation === 'string') {
+            return { ...parsed, calculationDate: context.currentDate };
+        }
+        
+        return {
+            safeAmount: null,
+            explanation: "Não foi possível obter a sugestão da IA no momento (resposta inválida).",
+            calculationDate: context.currentDate,
+            error: "Resposta inválida da IA."
+        };
+
+    } catch (error) {
+        console.error("Error fetching safe to spend advice from Gemini:", error);
+        let errorMessage = "Desculpe, não consegui calcular o valor seguro para gastar hoje.";
+        if (error instanceof Error) {
+            errorMessage += ` Detalhe: ${error.message}`;
+        }
+        return {
+            safeAmount: null,
+            explanation: errorMessage,
+            calculationDate: context.currentDate,
+            error: errorMessage
+        };
+    }
+};
+
+export const fetchDebtRateAnalysis = async (debt: Partial<Debt>): Promise<DebtRateAnalysis | null> => {
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
+        console.warn("Gemini API not available for fetchDebtRateAnalysis.");
+        return null;
+    }
+
+    const prompt = constructPromptForDebtRateAnalysis(debt);
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-04-17",
+            contents: prompt,
+            config: { responseMimeType: "application/json" }
+        });
+        
+        let jsonStr = response.text?.trim() || '';
+        const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+        const match = jsonStr.match(fenceRegex);
+        if (match && match[2]) {
+            jsonStr = match[2].trim();
+        }
+        
+        const parsed = JSON.parse(jsonStr) as DebtRateAnalysis;
+        if (parsed && parsed.classification && parsed.text) {
+            return parsed;
+        }
         return null;
     } catch (error) {
-        console.error("Error fetching debt rate analysis from Gemini:", error);
+        console.error("Error fetching debt rate analysis:", error);
         return null;
     }
 };
 
 export const fetchDebtViabilityAnalysis = async (debt: Partial<Debt>, context: FinancialContext): Promise<DebtViabilityAnalysis | null> => {
     if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
-        console.warn("Gemini API or ai.models not available for fetchDebtViabilityAnalysis.");
+        console.warn("Gemini API not available for fetchDebtViabilityAnalysis.");
         return null;
     }
     const prompt = constructPromptForDebtViabilityAnalysis(debt, context);
     try {
-        const response: GenerateContentResponse = await ai.models!.generateContent({
+        const response: GenerateContentResponse = await ai.models.generateContent({
             model: "gemini-2.5-flash-preview-04-17",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
-        
         let jsonStr = response.text?.trim() || '';
         const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
         const match = jsonStr.match(fenceRegex);
-        if (match && match[2]) jsonStr = match[2].trim();
-        
-        const parsed = JSON.parse(jsonStr);
-        if (parsed && parsed.viability && parsed.risk && parsed.riskBadge && parsed.recommendation) {
-            return parsed as DebtViabilityAnalysis;
+        if (match && match[2]) {
+            jsonStr = match[2].trim();
         }
-        console.error("Invalid JSON for debt viability analysis:", parsed);
+        const parsed = JSON.parse(jsonStr) as DebtViabilityAnalysis;
+        if (parsed && parsed.viability && parsed.risk && parsed.riskBadge && parsed.recommendation) {
+            return parsed;
+        }
         return null;
     } catch (error) {
-        console.error("Error fetching debt viability analysis from Gemini:", error);
+        console.error("Error fetching debt viability analysis:", error);
         return null;
     }
-};
-
-
-
-export const calculateNextDueDate = (currentDueDate: string, frequency: RecurringTransactionFrequency, customIntervalDays?: number): string => {
-  const date = new Date(currentDueDate + 'T00:00:00'); 
-  switch (frequency) {
-    case 'daily':
-      date.setDate(date.getDate() + 1);
-      break;
-    case 'weekly':
-      date.setDate(date.getDate() + 7);
-      break;
-    case 'monthly':
-      date.setMonth(date.getMonth() + 1);
-      break;
-    case 'yearly':
-      date.setFullYear(date.getFullYear() + 1);
-      break;
-    case 'custom_days':
-      date.setDate(date.getDate() + (customIntervalDays || 1));
-      break;
-    default:
-      break; 
-  }
-  return getISODateString(date);
 };

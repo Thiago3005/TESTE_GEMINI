@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { useState, useMemo, useEffect } from 'react';
-import { Debt, DebtPayment, Account, DebtStrategy, DebtProjection, AIInsight, DebtRateAnalysis, DebtViabilityAnalysis, AIConfig } from '../types';
+import { Debt, DebtPayment, Account, DebtStrategy, DebtProjection, AIInsight, DebtRateAnalysis, DebtViabilityAnalysis, AIConfig, DebtType } from '../types';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import BanknotesIcon from './icons/BanknotesIcon';
@@ -37,6 +37,17 @@ interface DebtPlannerViewProps {
   aiConfig: AIConfig;
 }
 
+const debtTypeLabels: Record<DebtType, string> = {
+    credit_card_balance: 'Saldo de Cartão de Crédito',
+    personal_loan: 'Empréstimo Pessoal',
+    student_loan: 'Empréstimo Estudantil',
+    mortgage: 'Hipoteca / Financiamento Imob.',
+    car_loan: 'Financiamento de Veículo',
+    consignado: 'Empréstimo Consignado',
+    other: 'Outra Dívida',
+};
+
+
 const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, onEdit: (debt:Debt)=>void, onDelete: (debtId: string) => void, hasPayments: boolean, isPrivacyModeEnabled?: boolean}> =
   ({ debt, onRegisterPayment, onEdit, onDelete, hasPayments, isPrivacyModeEnabled }) => {
 
@@ -49,7 +60,7 @@ const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, o
       <div className="flex justify-between items-start">
         <div>
           <h3 className="text-lg font-semibold text-textBase dark:text-textBaseDark">{debt.name}</h3>
-          <p className="text-xs text-textMuted dark:text-textMutedDark">{debt.type === 'credit_card_balance' ? 'Saldo de Cartão' : debt.type === 'personal_loan' ? 'Empréstimo Pessoal' : 'Outra Dívida'}</p>
+          <p className="text-xs text-textMuted dark:text-textMutedDark">{debtTypeLabels[debt.type] || 'Dívida'}</p>
         </div>
         <div className="flex space-x-1">
             <Button variant="ghost" size="sm" onClick={() => onEdit(debt)} aria-label="Editar Dívida" className="!p-1.5">
@@ -175,8 +186,11 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
   }
   
   const financialHealthScore = useMemo(() => {
-    if (!aiConfig.monthlyIncome || aiConfig.monthlyIncome <= 0 || totalMinimumPayments <= 0) {
-        return { score: -1, label: 'Indisponível', advice: 'Informe sua renda mensal no AI Coach e pagamentos mínimos das dívidas para calcular.', color: 'text-neutral' };
+    if (!aiConfig.monthlyIncome || aiConfig.monthlyIncome <= 0) {
+        return { score: -1, label: 'Indisponível', advice: 'Informe sua renda mensal no AI Coach e pagamentos mínimos das dívidas para calcular.', color: 'text-neutral', bgColor: 'bg-neutral-500' };
+    }
+    if (totalMinimumPayments <= 0) {
+        return { score: -1, label: 'Indisponível', advice: 'Adicione dívidas com um pagamento mínimo maior que zero para calcular.', color: 'text-neutral', bgColor: 'bg-neutral-500' };
     }
     const dti = (totalMinimumPayments / aiConfig.monthlyIncome) * 100;
 

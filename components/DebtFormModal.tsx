@@ -1,5 +1,6 @@
 
 
+
 import React from 'react';
 import { useState, useEffect, ChangeEvent, useCallback } from 'react';
 import { Debt, DebtType, Account, DebtRateAnalysis, DebtViabilityAnalysis } from '../types';
@@ -17,6 +18,7 @@ import ShieldExclamationIcon from './icons/ShieldExclamationIcon';
 const debtTypeOptions: { value: DebtType; label: string }[] = [
   { value: 'credit_card_balance', label: 'Saldo de Cartão de Crédito' },
   { value: 'personal_loan', label: 'Empréstimo Pessoal' },
+  { value: 'consignado', label: 'Empréstimo Consignado' },
   { value: 'student_loan', label: 'Empréstimo Estudantil' },
   { value: 'mortgage', label: 'Hipoteca / Financiamento Imob.' },
   { value: 'car_loan', label: 'Financiamento de Veículo' },
@@ -159,7 +161,10 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
   
   
   const handleAnalyzeRateClick = async () => {
-    const debtDataForAnalysis: Partial<Debt> = { interest_rate_annual: parseFloat(interestRateAnnual) };
+    const debtDataForAnalysis: Partial<Debt> = { 
+        interest_rate_annual: parseFloat(interestRateAnnual),
+        type: type 
+    };
     if (isNaN(debtDataForAnalysis.interest_rate_annual as any)) {
         setErrors({ form: 'Taxa de juros deve ser calculada primeiro (preencha Saldo, Parcela e Nº Parcelas).' });
         return;
@@ -178,6 +183,7 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
         initial_balance: parseFloat(initialBalance),
         interest_rate_annual: parseFloat(interestRateAnnual),
         minimum_payment: parseFloat(minimumPayment),
+        type: type
     };
 
     if (!debtDataForAnalysis.initial_balance || isNaN(debtDataForAnalysis.interest_rate_annual as any) || !debtDataForAnalysis.minimum_payment) {
@@ -307,13 +313,18 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
             />
              <div className="p-3 border-t border-b border-borderBase dark:border-borderBaseDark space-y-4 my-2">
                 <p className="text-sm font-medium text-textMuted dark:text-textMutedDark -mt-1">Cálculo de Juros</p>
-                <Input
-                    label="Saldo Devedor Inicial (R$)"
-                    id="initialBalance"
-                    type="number" step="0.01"
-                    value={initialBalance} onChange={(e) => setInitialBalance(e.target.value)}
-                    error={errors.initialBalance} required
-                />
+                <div className="space-y-1">
+                    <Input
+                        label="Saldo Devedor Inicial (R$)"
+                        id="initialBalance"
+                        type="number" step="0.01"
+                        value={initialBalance} onChange={(e) => setInitialBalance(e.target.value)}
+                        error={errors.initialBalance} required
+                    />
+                    <p className="text-xs text-textMuted dark:text-textMutedDark">
+                        Valor total do empréstimo ou da dívida no início.
+                    </p>
+                </div>
                 <Input
                     label="Valor da Parcela (R$)"
                     id="minimumPayment"
@@ -359,15 +370,22 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
         </div>
         <div className="space-y-4 col-span-1 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg">
             <h3 className="text-lg font-semibold text-textBase dark:text-textBaseDark">Análise e Projeção</h3>
-            <Input
-                label="Taxa de Juros Anual (%) - Calculada"
-                id="interestRateAnnual"
-                type="text"
-                value={interestRateAnnual}
-                error={errors.interestRateAnnual}
-                readOnly
-                className="bg-slate-100 dark:bg-slate-800 font-bold"
-            />
+            <div>
+                <Input
+                    label="Taxa de Juros Anual (TAE) - Calculada"
+                    id="interestRateAnnual"
+                    type="text"
+                    value={interestRateAnnual}
+                    error={errors.interestRateAnnual}
+                    readOnly
+                    className="bg-slate-100 dark:bg-slate-800 font-bold"
+                />
+                {(parseInt(numberOfInstallments || '0', 10) < 12 && parseInt(numberOfInstallments || '0', 10) > 1) && (
+                    <p className="text-xs text-textMuted dark:text-textMutedDark mt-1">
+                        * TAE (Taxa Anual Efetiva) é uma medida padrão para comparar diferentes opções de crédito, mesmo para prazos curtos.
+                    </p>
+                )}
+            </div>
             {isAIFeatureEnabled && (
               <div className="space-y-4">
                 <Button variant="secondary" size="sm" onClick={handleAnalyzeRateClick} disabled={isAnalyzingRate || !interestRateAnnual} className="w-full">
