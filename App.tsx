@@ -12,7 +12,7 @@ import {
   AIConfig, AIInsight, AIInsightType,
   FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile,
   Debt, DebtPayment, DebtStrategy, DebtProjection, AuthModalType,
-  MoneyBoxRelatedTransactionData, SimulatedTransactionForProjection, SafeToSpendTodayState, SafeToSpendTodayInfo // Added SafeToSpendToday types
+  MoneyBoxRelatedTransactionData, SimulatedTransactionForProjection, SafeToSpendTodayState, SafeToSpendTodayInfo, DebtAnalysisResult // Added SafeToSpendToday types
 } from './types';
 import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts, TRANSACTION_TYPE_OPTIONS } from './constants'; // Added TRANSACTION_TYPE_OPTIONS
 import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency, getEligibleInstallmentsForBillingCycle } from './utils/helpers';
@@ -1308,48 +1308,49 @@ const AppContent: React.FC = () => {
   const handleAddDebt = async (
     debtData: Omit<Debt, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'|'current_balance'|'is_archived'|'linked_income_transaction_id'>,
     createIncome: boolean,
-    creditedAccountId?: string
+    creditedAccountId?: string,
+    analysis?: DebtAnalysisResult | null
   ) => {
     if (!user || !activeUserProfile) return;
 
-    const newDebtData = {
-        ...debtData,
-        current_balance: debtData.initial_balance,
-        is_archived: false,
-    };
-    
-    const newDebt = await addOrUpdateRecord('debts', newDebtData, setDebts, (a: Debt,b: Debt) => a.name.localeCompare(b.name));
+    const newDebtData = { ...debtData, current_balance: debtData.initial_balance, is_archived: false };
+    const newDebt = await addOrUpdateRecord('debts', newDebtData, setDebts, (a: Debt, b: Debt) => a.name.localeCompare(b.name));
 
-    if (newDebt && createIncome && creditedAccountId) {
-      // Create a linked income transaction
-      const incomeCategory = categories.find(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes("outras receitas")) 
-                          || categories.find(c => c.type === TransactionType.INCOME);
-      if (!incomeCategory) {
-        addToast("Nenhuma categoria de receita encontrada para o empréstimo recebido.", "error");
-        return;
-      }
-      const incomeTxData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
-        type: TransactionType.INCOME,
-        amount: newDebt.initial_balance,
-        date: newDebt.debt_date,
-        account_id: creditedAccountId,
-        category_id: incomeCategory.id,
-        description: `Empréstimo recebido de: ${newDebt.name}`,
-      };
-      const incomeTx = await addOrUpdateRecord('transactions', incomeTxData, setTransactions, (a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
-      // Link transaction to debt
-      if (incomeTx) {
-        const { error } = await supabase.from('debts').update({ linked_income_transaction_id: incomeTx.id }).eq('id', newDebt.id);
-        if (error) {
-          addToast("Erro ao vincular transação à dívida.", "error");
-        } else {
-          setDebts(prev => prev.map(d => d.id === newDebt.id ? { ...d, linked_income_transaction_id: incomeTx.id } : d));
+    if (newDebt) {
+        if (analysis) {
+            const insightContent = `Análise da dívida "${newDebt.name}": ${analysis.recommendation} (Risco: ${analysis.riskBadge})`;
+            await handleAddAIInsight({
+                type: 'debt_analysis', content: insightContent, related_debt_id: newDebt.id, 
+                timestamp: new Date().toISOString(), is_read: false
+            });
         }
-      }
+        if (createIncome && creditedAccountId) {
+            const incomeCategory = categories.find(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes("outras receitas")) || categories.find(c => c.type === TransactionType.INCOME);
+            if (!incomeCategory) { addToast("Nenhuma categoria de receita encontrada.", "error"); return; }
+            const incomeTxData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
+                type: TransactionType.INCOME, amount: newDebt.initial_balance, date: newDebt.debt_date,
+                account_id: creditedAccountId, category_id: incomeCategory.id,
+                description: `Empréstimo recebido de: ${newDebt.name}`,
+            };
+            const incomeTx = await addOrUpdateRecord('transactions', incomeTxData, setTransactions, (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            if (incomeTx) {
+                const { error } = await supabase.from('debts').update({ linked_income_transaction_id: incomeTx.id }).eq('id', newDebt.id);
+                if (error) { addToast("Erro ao vincular transação à dívida.", "error"); }
+                else { setDebts(prev => prev.map(d => d.id === newDebt.id ? { ...d, linked_income_transaction_id: incomeTx.id } : d)); }
+            }
+        }
     }
   };
-  const handleUpdateDebt = (debt: Debt) => addOrUpdateRecord('debts', debt, setDebts, (a: Debt,b: Debt) => a.name.localeCompare(b.name), true);
+  const handleUpdateDebt = async (debt: Debt, analysis?: DebtAnalysisResult | null) => {
+    const updatedDebt = await addOrUpdateRecord('debts', debt, setDebts, (a: Debt, b: Debt) => a.name.localeCompare(b.name), true);
+    if (updatedDebt && analysis) {
+        const insightContent = `Análise da dívida "${updatedDebt.name}": ${analysis.recommendation} (Risco: ${analysis.riskBadge})`;
+        await handleAddAIInsight({
+            type: 'debt_analysis', content: insightContent, related_debt_id: updatedDebt.id,
+            timestamp: new Date().toISOString(), is_read: false
+        });
+    }
+  };
   const handleDeleteDebt = (debtId: string) => {
     if (debtPayments.some(dp => dp.debt_id === debtId)) {
         addToast("Não é possível excluir. Esta dívida possui pagamentos registrados.", "error");
@@ -1357,6 +1358,19 @@ const AppContent: React.FC = () => {
     }
     if (window.confirm('Excluir esta dívida?')) deleteRecord('debts', debtId, setDebts);
   };
+  const handleFetchDebtAnalysis = async (debt: Partial<Debt>): Promise<DebtAnalysisResult | null> => {
+    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') {
+        addToast("AI Coach desativado ou não configurado.", 'warning');
+        return null;
+    }
+    const context = generateFinancialContext();
+    if (!context) {
+        addToast("Contexto financeiro indisponível para análise.", 'error');
+        return null;
+    }
+    return await geminiService.fetchDebtAnalysis(debt, context);
+  };
+
 
   const handleAddDebtPayment = async (
     paymentData: Omit<DebtPayment, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'|'linked_expense_transaction_id'>,
@@ -1596,7 +1610,7 @@ const AppContent: React.FC = () => {
         {activeView === 'TAGS' && <TagsView tags={tags} transactions={transactions} onAddTag={handleAddTag} onUpdateTag={handleUpdateTag} onDeleteTag={handleDeleteTag} />}
         {activeView === 'RECURRING_TRANSACTIONS' && <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} creditCards={creditCards} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates}/>}
         {activeView === 'LOANS' && <LoansView loans={loans} loanRepayments={loanRepayments} accounts={accounts} creditCards={creditCards} onAddLoan={handleAddLoan} onUpdateLoan={handleUpdateLoan} onDeleteLoan={handleDeleteLoan} onAddLoanRepayment={handleAddLoanRepayment} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'DEBT_PLANNER' && <DebtPlannerView debts={debts} debtPayments={debtPayments} accounts={accounts} onAddDebt={handleAddDebt} onUpdateDebt={handleUpdateDebt} onDeleteDebt={handleDeleteDebt} onAddDebtPayment={handleAddDebtPayment} onFetchDebtStrategyExplanation={handleFetchDebtStrategyExplanation} onFetchDebtProjectionSummary={handleFetchDebtProjectionSummary} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+        {activeView === 'DEBT_PLANNER' && <DebtPlannerView debts={debts} debtPayments={debtPayments} accounts={accounts} onAddDebt={handleAddDebt} onUpdateDebt={handleUpdateDebt} onDeleteDebt={handleDeleteDebt} onAddDebtPayment={handleAddDebtPayment} onFetchDebtStrategyExplanation={handleFetchDebtStrategyExplanation} onFetchDebtProjectionSummary={handleFetchDebtProjectionSummary} isPrivacyModeEnabled={isPrivacyModeEnabled} onAnalyzeDebt={handleFetchDebtAnalysis} isAIFeatureEnabled={aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available'} aiConfig={aiConfig} />}
         {activeView === 'AI_COACH' && <AICoachView aiConfig={aiConfig} setAiConfig={updateAiConfig} insights={aiInsights} onUpdateInsight={handleUpdateAIInsight} isPrivacyModeEnabled={isPrivacyModeEnabled} onDeleteAllInsights={handleDeleteAllAIInsights}/>}
         {activeView === 'AJUDE_PROJETO' && <AjudeProjetoView />}
       </main>

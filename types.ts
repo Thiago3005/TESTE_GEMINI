@@ -1,4 +1,5 @@
 
+
 import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 
 export { SupabaseUser, SupabaseSession };
@@ -160,7 +161,8 @@ export type AIInsightType =
   | 'cash_flow_projection'
   | 'debt_strategy_explanation'
   | 'debt_projection_summary'
-  | 'safe_to_spend_today_advice' // New insight type, if needed for logging
+  | 'safe_to_spend_today_advice'
+  | 'debt_analysis' // New insight type for storing debt analysis
   | 'error_message';
 
 export interface AIInsight extends SupabaseManaged {
@@ -257,7 +259,27 @@ export interface DebtProjection {
   totalPrincipalPaid: number;
   totalPaid: number;
   payoffDetails: DebtPayoffDetail[];
+  monthlyTotalBalanceLog: { month: number; totalBalance: number }[];
 }
+
+// For DebtFormModal analysis
+export interface DebtCalculationResult {
+  monthsToPayoff: number;
+  totalInterestPaid: number;
+  monthlyPaymentsLog: { month: number; remainingBalance: number }[];
+}
+
+export interface DebtAnalysisResult {
+  interestRateClassification: {
+    classification: 'razoável' | 'moderado' | 'abusivo';
+    text: string;
+  };
+  viability: string;
+  risk: string;
+  riskBadge: 'healthy' | 'alert' | 'critical';
+  recommendation: string;
+}
+
 
 export interface SimulatedTransactionForProjection {
   description?: string;

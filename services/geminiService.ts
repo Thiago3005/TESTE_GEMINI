@@ -1,5 +1,7 @@
+
+
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
-import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo } from '../types';
+import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtAnalysisResult } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
 const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY;
@@ -511,7 +513,7 @@ Não se baseie apenas em (Saldo Atual / Dias Restantes). Considere o fluxo de ca
 
 Responda APENAS com um objeto JSON contendo as chaves:
 - "safeAmount": number (o valor que pode ser gasto hoje em despesas variáveis; pode ser 0. Arredonde para duas casas decimais se não for inteiro.)
-- "explanation": string (uma breve explicação concisa de como chegou a esse valor ou um aviso se estiver apertado, ex: "Considerando suas contas a pagar e orçamentos essenciais, este é seu limite para gastos variáveis hoje." ou "Seu fluxo de caixa está apertado. Evite gastos não essenciais hoje.")
+- "explanation": string (uma breve explicação concisa de como chegou a esse valor ou um aviso se estiver apertado, ex: "Considerando suas contas a pagar e orçamentos essenciais, este é seu limite para gastos variáveis hoje." ou "Seu fluxo de caixa está apertado. Evite gastos não essenciais hoje para não comprometer o orçamento.")
 - "calculationDate": string (data atual no formato YYYY-MM-DD)
 
 Exemplo de resposta positiva: {"safeAmount": 75.50, "explanation": "Após reservar para contas e orçamentos, este é seu limite para gastos variáveis hoje.", "calculationDate": "${context.currentDate}"}
@@ -520,6 +522,54 @@ Se não for possível calcular confiavelmente (ex: falta de dados cruciais como 
 
 Cálculo:`;
 };
+
+const constructPromptForDebtAnalysis = (debt: Partial<Debt>, context: FinancialContext): string => {
+  const { initial_balance, interest_rate_annual, minimum_payment } = debt;
+  const monthlyIncomeText = context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada';
+  
+  const otherDebts = context.debts?.filter(d => d.id !== debt.id && !d.is_archived && d.current_balance > 0) || [];
+  const totalOtherDebtBalance = otherDebts.reduce((sum, d) => sum + d.current_balance, 0);
+  const totalOtherMinimumPayments = otherDebts.reduce((sum, d) => sum + d.minimum_payment, 0);
+  const totalMinimumPaymentsAll = (minimum_payment || 0) + totalOtherMinimumPayments;
+  const debtPaymentToIncomeRatio = (context.monthlyIncome && totalMinimumPaymentsAll > 0 && context.monthlyIncome > 0) ? ((totalMinimumPaymentsAll / context.monthlyIncome) * 100).toFixed(1) : 'N/A';
+
+  return `Você é um analista de crédito e consultor financeiro. Analise a seguinte proposta de dívida de um usuário e retorne uma avaliação estruturada em JSON.
+
+Dados da Dívida em Análise:
+- Nome: ${debt.name || 'Nova Dívida'}
+- Valor Principal: ${formatCurrency(initial_balance || 0)}
+- Taxa de Juros Anual: ${interest_rate_annual || 0}% a.a.
+- Pagamento Mínimo Mensal: ${formatCurrency(minimum_payment || 0)}
+
+Contexto Financeiro do Usuário:
+- Renda Mensal Informada: ${monthlyIncomeText}
+- Outras Dívidas Ativas: ${otherDebts.length} (Totalizando ${formatCurrency(totalOtherDebtBalance)})
+- Soma de TODOS pagamentos mínimos (incluindo esta): ${formatCurrency(totalMinimumPaymentsAll)}/mês
+- Comprometimento da Renda com Pagamentos Mínimos (DTI): ${debtPaymentToIncomeRatio}%
+
+Instruções para Análise (responda APENAS com o objeto JSON):
+1.  **interestRateClassification**: Classifique a taxa de juros. Use benchmarks do mercado brasileiro (ex: empréstimo pessoal ~25-70% a.a., rotativo do cartão > 300% a.a.).
+    - "classification": uma de "razoável", "moderado", ou "abusivo".
+    - "text": Uma frase justificando a classificação. (Ex: “A taxa de 18% é considerada 'abusiva' pois está bem acima da média de 4%-7% para financiamentos imobiliários.”)
+2.  **viability**: Avalie se a dívida é sustentável para o usuário, considerando o comprometimento total da renda (DTI).
+3.  **risk**: Avalie o risco geral da dívida (inadimplência, efeito bola de neve), considerando o contexto geral.
+4.  **riskBadge**: Com base em tudo, atribua um badge de risco: uma de "healthy", "alert", ou "critical".
+5.  **recommendation**: Forneça uma recomendação clara e acionável (ex: "Busque taxas menores", "Cuidado com o comprometimento da renda", "Parece uma dívida gerenciável").
+
+Exemplo de resposta JSON:
+{
+  "interestRateClassification": {
+    "classification": "moderado",
+    "text": "A taxa de 34% a.a. é alta, mas comum para empréstimos pessoais não consignados."
+  },
+  "viability": "Com um DTI de ${debtPaymentToIncomeRatio}%, o comprometimento da sua renda é considerável. A dívida é viável, mas exige disciplina.",
+  "risk": "O risco é moderado. Atrasos podem levar a um rápido crescimento do saldo devido aos juros. O alto DTI limita sua capacidade de poupança.",
+  "riskBadge": "alert",
+  "recommendation": "A dívida é viável, mas avalie opções de crédito com juros menores e considere um plano de quitação agressivo."
+}
+`;
+};
+
 
 
 const safeGenerateContent = async (
@@ -1070,6 +1120,38 @@ export const fetchSafeToSpendTodayAdvice = async (
         error: errorMessage
     };
   }
+};
+
+export const fetchDebtAnalysis = async (debt: Partial<Debt>, context: FinancialContext): Promise<DebtAnalysisResult | null> => {
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
+        console.warn("Gemini API or ai.models not available for fetchDebtAnalysis.");
+        return null;
+    }
+    const prompt = constructPromptForDebtAnalysis(debt, context);
+    try {
+        const response: GenerateContentResponse = await ai.models!.generateContent({
+            model: "gemini-2.5-flash-preview-04-17",
+            contents: prompt,
+            config: { responseMimeType: "application/json" }
+        });
+        
+        let jsonStr = response.text?.trim() || '';
+        const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+        const match = jsonStr.match(fenceRegex);
+        if (match && match[2]) {
+            jsonStr = match[2].trim();
+        }
+        
+        const parsed = JSON.parse(jsonStr);
+        if (parsed && parsed.interestRateClassification && parsed.viability && parsed.risk && parsed.riskBadge && parsed.recommendation) {
+            return parsed as DebtAnalysisResult;
+        }
+        console.error("Invalid JSON structure received from Gemini for debt analysis:", parsed);
+        return null;
+    } catch (error) {
+        console.error("Error fetching debt analysis from Gemini:", error);
+        return null;
+    }
 };
 
 

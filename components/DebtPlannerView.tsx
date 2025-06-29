@@ -1,7 +1,8 @@
 
+
 import React from 'react';
-import { useState, useMemo } from 'react';
-import { Debt, DebtPayment, Account, DebtStrategy, DebtProjection, AIInsight } from '../types';
+import { useState, useMemo, useEffect } from 'react';
+import { Debt, DebtPayment, Account, DebtStrategy, DebtProjection, AIInsight, DebtAnalysisResult, AIConfig } from '../types';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import BanknotesIcon from './icons/BanknotesIcon';
@@ -15,19 +16,23 @@ import { calculateDebtPayoff } from '../utils/debtCalculator';
 import Select from './Select';
 import Input from './Input';
 import Modal from './Modal';
+import { LineChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Line, CartesianGrid, Legend } from 'recharts';
 
 
 interface DebtPlannerViewProps {
   debts: Debt[];
   debtPayments: DebtPayment[];
   accounts: Account[];
-  onAddDebt: (debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'>, createIncome: boolean, creditedAccountId?: string) => void;
-  onUpdateDebt: (debtData: Debt) => void;
+  onAddDebt: (debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'>, createIncome: boolean, creditedAccountId?: string, analysis?: DebtAnalysisResult | null) => void;
+  onUpdateDebt: (debtData: Debt, analysis?: DebtAnalysisResult | null) => void;
   onDeleteDebt: (debtId: string) => void;
   onAddDebtPayment: (paymentData: Omit<DebtPayment, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'linked_expense_transaction_id'>, createLinkedExpense: boolean, linkedAccountId?: string) => void;
   onFetchDebtStrategyExplanation: (strategy: DebtStrategy) => Promise<void>;
   onFetchDebtProjectionSummary: (projection: DebtProjection, debts: Debt[], strategy: DebtStrategy) => Promise<void>;
   isPrivacyModeEnabled?: boolean;
+  onAnalyzeDebt: (debt: Partial<Debt>) => Promise<DebtAnalysisResult | null>;
+  isAIFeatureEnabled: boolean;
+  aiConfig: AIConfig;
 }
 
 const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, onEdit: (debt:Debt)=>void, onDelete: (debtId: string) => void, hasPayments: boolean, isPrivacyModeEnabled?: boolean}> =
@@ -96,6 +101,18 @@ const DebtItem: React.FC<{debt: Debt, onRegisterPayment: (debt: Debt) => void, o
   );
 }
 
+const CustomTooltip: React.FC<any> = ({ active, payload, label, isPrivacyModeEnabled }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-surface dark:bg-surfaceDark p-2 border border-borderBase dark:border-borderBaseDark rounded shadow-lg">
+        <p className="text-sm font-semibold text-textBase dark:text-textBaseDark">Mês: {label}</p>
+        <p className="text-sm text-destructive dark:text-destructiveDark">{payload[0].name}: {formatCurrency(payload[0].value, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
 
 const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
   debts,
@@ -108,6 +125,9 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
   onFetchDebtStrategyExplanation,
   onFetchDebtProjectionSummary,
   isPrivacyModeEnabled,
+  onAnalyzeDebt,
+  isAIFeatureEnabled,
+  aiConfig,
 }) => {
   const [isDebtFormModalOpen, setIsDebtFormModalOpen] = useState(false);
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
@@ -150,13 +170,25 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
   const hasPaymentsForDebt = (debtId: string): boolean => {
     return debtPayments.some(dp => dp.debt_id === debtId);
   }
+  
+  const financialHealthScore = useMemo(() => {
+    if (!aiConfig.monthlyIncome || aiConfig.monthlyIncome <= 0 || totalMinimumPayments <= 0) {
+        return { score: -1, label: 'Indisponível', advice: 'Informe sua renda mensal no AI Coach e pagamentos mínimos das dívidas para calcular.', color: 'text-neutral' };
+    }
+    const dti = (totalMinimumPayments / aiConfig.monthlyIncome) * 100;
+
+    if (dti <= 15) return { score: 90, label: 'Excelente', advice: 'Seu nível de endividamento é baixo e saudável.', color: 'text-green-500 dark:text-green-400', bgColor: 'bg-green-500' };
+    if (dti <= 28) return { score: 70, label: 'Bom', advice: 'Seu endividamento está em um nível gerenciável. Continue assim!', color: 'text-emerald-500 dark:text-emerald-400', bgColor: 'bg-emerald-500' };
+    if (dti <= 36) return { score: 50, label: 'Alerta', advice: 'Seu nível de endividamento requer atenção. Evite novas dívidas.', color: 'text-yellow-500 dark:text-yellow-400', bgColor: 'bg-yellow-500' };
+    if (dti <= 43) return { score: 30, label: 'Crítico', advice: 'Nível de endividamento alto. Priorize a quitação urgentemente.', color: 'text-amber-500 dark:text-amber-400', bgColor: 'bg-amber-500' };
+    return { score: 10, label: 'Muito Crítico', advice: 'Nível de endividamento perigoso. Busque ajuda e renegocie suas dívidas.', color: 'text-red-500 dark:text-red-400', bgColor: 'bg-red-500' };
+  }, [aiConfig.monthlyIncome, totalMinimumPayments]);
 
   const handleCalculateProjection = () => {
     setIsLoadingProjection(true);
     setProjection(null);
     const activeDebts = debts.filter(d => !d.is_archived && d.current_balance > 0);
     if (activeDebts.length === 0) {
-      alert("Nenhuma dívida ativa para calcular o plano.");
       setIsLoadingProjection(false);
       return;
     }
@@ -164,30 +196,42 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
     setProjection(result);
     setIsLoadingProjection(false);
   };
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+        handleCalculateProjection();
+    }, 500); // Debounce calculation
+
+    return () => {
+        clearTimeout(handler);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraPayment, selectedStrategy, debts]);
   
   const handleFetchExplanation = async (strategy: DebtStrategy) => {
-    setIsExplanationModalOpen(true); // Open modal to show loading or result
+    setIsExplanationModalOpen(true); 
     await onFetchDebtStrategyExplanation(strategy);
-    // App.tsx will handle adding the insight, user will see it in AI Coach.
-    // Or, we can adjust to show it here directly if App.tsx returns the insight
-    // or updates a state prop passed to this component.
   };
   
   const handleFetchProjectionSummary = async () => {
     if (!projection) return;
-    setIsSummaryModalOpen(true); // Open modal
+    setIsSummaryModalOpen(true); 
     await onFetchDebtProjectionSummary(projection, debts.filter(d => !d.is_archived && d.current_balance > 0), selectedStrategy);
   };
 
-  const handleSaveDebt = (debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'> & {id?: string}, createIncome = false, creditedAccountId = '') => {
+  const handleSaveDebt = (
+      debtData: Omit<Debt, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at' | 'current_balance' | 'is_archived' | 'linked_income_transaction_id'> & { id?: string },
+      createIncome = false,
+      creditedAccountId = '',
+      analysis?: DebtAnalysisResult | null
+  ) => {
       if (editingDebt && debtData.id) {
-          onUpdateDebt({ ...editingDebt, ...debtData });
+          onUpdateDebt({ ...editingDebt, ...debtData }, analysis);
       } else {
           const { id, ...newDebtData } = debtData;
-          onAddDebt(newDebtData, createIncome, creditedAccountId);
+          onAddDebt(newDebtData, createIncome, creditedAccountId, analysis);
       }
   };
-
 
   const strategyOptions: { value: DebtStrategy; label: string }[] = [
     { value: 'minimums', label: 'Apenas Pagamentos Mínimos' },
@@ -208,7 +252,7 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
           <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">TOTAL DE DÍVIDAS ATUAIS</h2>
           <p className="text-3xl font-bold text-destructive dark:text-destructiveDark">
@@ -221,97 +265,123 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
             {formatCurrency(totalMinimumPayments, 'BRL', 'pt-BR', isPrivacyModeEnabled)} / mês
           </p>
         </div>
+        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+            <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-2 uppercase">Saúde Financeira</h2>
+            {financialHealthScore.score === -1 ? (
+                <p className="text-textMuted dark:text-textMutedDark text-xs">{financialHealthScore.advice}</p>
+            ) : (
+                <div className="flex items-center gap-4">
+                    <div className={`text-4xl font-bold ${financialHealthScore.color}`}>
+                        {financialHealthScore.score}
+                    </div>
+                    <div className="flex-1">
+                        <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-2">
+                            <div className={`${financialHealthScore.bgColor} h-2 rounded-full`} style={{width: `${financialHealthScore.score}%`}}></div>
+                        </div>
+                        <p className={`mt-1 font-semibold text-md ${financialHealthScore.color}`}>{financialHealthScore.label}</p>
+                    </div>
+                </div>
+            )}
+        </div>
       </div>
 
       <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 space-y-4">
-        <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark">Estratégia de Quitação</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-            <Input
-                label="Pagamento Extra Mensal (R$)"
-                id="extraPayment"
-                type="number"
-                step="0.01"
-                min="0"
-                value={extraPayment}
-                onChange={(e) => setExtraPayment(e.target.value)}
-                placeholder="Ex: 100.00"
-            />
-            <Select
-                label="Escolha a Estratégia"
-                id="debtStrategy"
-                options={strategyOptions}
-                value={selectedStrategy}
-                onChange={(e) => setSelectedStrategy(e.target.value as DebtStrategy)}
-            />
-        </div>
-         <div className="flex flex-wrap gap-2 text-sm">
-            <Button variant="ghost" size="sm" onClick={() => handleFetchExplanation('snowball')} className="!text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                <LightBulbIcon className="w-3.5 h-3.5 mr-1" /> Entenda: Bola de Neve
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => handleFetchExplanation('avalanche')} className="!text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                 <LightBulbIcon className="w-3.5 h-3.5 mr-1" /> Entenda: Avalanche
-            </Button>
-        </div>
-        <Button onClick={handleCalculateProjection} variant="primary" disabled={isLoadingProjection} className="w-full sm:w-auto">
-          {isLoadingProjection ? 'Calculando...' : 'Calcular Plano de Quitação'}
-        </Button>
-
-        {projection && (
-          <div className="mt-4 pt-4 border-t border-borderBase dark:border-borderBaseDark space-y-3">
-            <h3 className="text-lg font-semibold">Resultado da Projeção ({strategyOptions.find(s=>s.value === selectedStrategy)?.label}):</h3>
-            <p>Tempo para quitar todas as dívidas: <span className="font-bold">{(projection.monthsToPayoff / 12).toFixed(1)} anos</span> ({projection.monthsToPayoff} meses)</p>
-            <p>Total de Juros Pagos: <span className="font-bold">{formatCurrency(projection.totalInterestPaid, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span></p>
-            <p>Total Principal Pago: <span className="font-bold">{formatCurrency(projection.totalPrincipalPaid, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span></p>
+        <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark">Estratégia de Quitação Interativa</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            <div className="space-y-4">
+                <Select
+                    label="Estratégia de Pagamento"
+                    id="debtStrategy"
+                    options={strategyOptions}
+                    value={selectedStrategy}
+                    onChange={(e) => setSelectedStrategy(e.target.value as DebtStrategy)}
+                />
+                <Input
+                    label="Pagamento Extra Mensal (R$)"
+                    id="extraPayment"
+                    type="number"
+                    step="10"
+                    value={extraPayment}
+                    onChange={(e) => setExtraPayment(e.target.value)}
+                    placeholder="Ex: 100.00"
+                />
+                <Button variant="ghost" size="sm" onClick={() => handleFetchExplanation(selectedStrategy)}>
+                    <LightBulbIcon className="w-4 h-4 mr-1.5" /> O que é a estratégia "{strategyOptions.find(o => o.value === selectedStrategy)?.label}"?
+                </Button>
+            </div>
             
-            <h4 className="text-md font-semibold mt-2">Ordem de Quitação:</h4>
-            <ul className="list-decimal list-inside text-sm space-y-1">
-              {projection.payoffDetails.map(detail => {
-                const debt = debts.find(d => d.id === detail.debtId);
-                return (
-                  <li key={detail.debtId}>
-                    <strong>{debt?.name || 'Dívida Desconhecida'}</strong>: Quitada em {detail.monthsToPayoffThisDebt} meses. Juros pagos nesta dívida: {formatCurrency(detail.interestPaidThisDebt, 'BRL', 'pt-BR', isPrivacyModeEnabled)}.
-                  </li>
-                );
-              })}
-            </ul>
-            <Button variant="ghost" size="sm" onClick={handleFetchProjectionSummary} className="!text-xs text-blue-600 dark:text-blue-400 hover:underline mt-2">
-                <LightBulbIcon className="w-3.5 h-3.5 mr-1" /> Obter Resumo da IA sobre este plano
-            </Button>
-          </div>
+            <div className="p-4 bg-background dark:bg-backgroundDark rounded-lg h-full">
+                {isLoadingProjection && <p>Calculando...</p>}
+                {!isLoadingProjection && projection && projection.monthsToPayoff > 0 && (
+                    <div className="space-y-1 text-sm">
+                        <h3 className="font-semibold text-md mb-2">Resultados da Projeção:</h3>
+                        <p><strong>Tempo para Quitar:</strong> {(projection.monthsToPayoff / 12).toFixed(1)} anos ({projection.monthsToPayoff} meses)</p>
+                        <p><strong>Total de Juros Pagos:</strong> {formatCurrency(projection.totalInterestPaid, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+                        <p><strong>Total Pago:</strong> {formatCurrency(projection.totalPaid, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+                        {isAIFeatureEnabled && (
+                            <Button variant="secondary" size="sm" onClick={handleFetchProjectionSummary} className="!mt-3">
+                                <LightBulbIcon className="w-4 h-4 mr-1.5" /> Obter Resumo da IA
+                            </Button>
+                        )}
+                    </div>
+                )}
+                 {!isLoadingProjection && projection && projection.monthsToPayoff === -1 && (
+                     <p className="text-destructive dark:text-destructiveDark">Com base nos pagamentos, esta dívida levará mais de 60 anos para ser quitada.</p>
+                 )}
+                 {!isLoadingProjection && !projection && debts.filter(d => !d.is_archived && d.current_balance > 0).length > 0 && (
+                    <p className="text-textMuted dark:text-textMutedDark">Ajuste os valores para ver a projeção.</p>
+                 )}
+            </div>
+        </div>
+        {/* Chart */}
+        {projection && projection.monthsToPayoff > 0 && !isPrivacyModeEnabled && (
+            <div className="w-full h-80 mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={projection.monthlyTotalBalanceLog} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+                        <XAxis dataKey="month" name="Mês" tick={{fontSize:10}} />
+                        <YAxis tickFormatter={(val) => formatCurrency(val, 'BRL', 'pt-BR', true)} tick={{fontSize:10}}/>
+                        <Tooltip content={<CustomTooltip isPrivacyModeEnabled={isPrivacyModeEnabled} />} />
+                        <Legend formatter={(value) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} />
+                        <Line type="monotone" dataKey="totalBalance" name="Saldo Devedor Total" stroke="#ef4444" strokeWidth={2} dot={false} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
         )}
       </div>
 
+      <div>
+        <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-3">Minhas Dívidas</h2>
+        {debts.filter(d => !d.is_archived).length > 0 ? (
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {debts.filter(d => !d.is_archived).map(debt => (
+              <DebtItem
+                key={debt.id}
+                debt={debt}
+                onRegisterPayment={openPaymentFormModal}
+                onEdit={openDebtFormModalForEdit}
+                onDelete={onDeleteDebt}
+                hasPayments={hasPaymentsForDebt(debt.id)}
+                isPrivacyModeEnabled={isPrivacyModeEnabled}
+              />
+            ))}
+          </ul>
+        ) : (
+          <p className="text-center text-textMuted dark:text-textMutedDark py-8">Nenhuma dívida registrada. Adicione uma para começar!</p>
+        )}
+      </div>
 
-      {debts.filter(d => !d.is_archived).length > 0 ? (
-        <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {debts.filter(d => !d.is_archived).sort((a,b) => a.name.localeCompare(b.name)).map(debt => (
-            <DebtItem
-              key={debt.id}
-              debt={debt}
-              onRegisterPayment={openPaymentFormModal}
-              onEdit={openDebtFormModalForEdit}
-              onDelete={onDeleteDebt}
-              hasPayments={hasPaymentsForDebt(debt.id)}
-              isPrivacyModeEnabled={isPrivacyModeEnabled}
-            />
-          ))}
-        </ul>
-      ) : (
-        <p className="text-center text-textMuted dark:text-textMutedDark py-8">
-          Nenhuma dívida cadastrada. Adicione suas dívidas para começar a planejar!
-        </p>
-      )}
+      <DebtFormModal
+        isOpen={isDebtFormModalOpen}
+        onClose={() => setIsDebtFormModalOpen(false)}
+        onSave={handleSaveDebt}
+        onAnalyzeDebt={onAnalyzeDebt}
+        existingDebt={editingDebt}
+        accounts={accounts}
+        isAIFeatureEnabled={isAIFeatureEnabled}
+      />
 
-      {isDebtFormModalOpen && (
-        <DebtFormModal
-          isOpen={isDebtFormModalOpen}
-          onClose={() => setIsDebtFormModalOpen(false)}
-          onSave={handleSaveDebt}
-          existingDebt={editingDebt}
-          accounts={accounts}
-        />
-      )}
-      {isPaymentFormModalOpen && selectedDebtForPayment && (
+      {selectedDebtForPayment && (
         <DebtPaymentFormModal
           isOpen={isPaymentFormModalOpen}
           onClose={() => setIsPaymentFormModalOpen(false)}
@@ -320,13 +390,19 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
           accounts={accounts}
         />
       )}
-      
-      <Modal isOpen={isExplanationModalOpen} onClose={() => setIsExplanationModalOpen(false)} title="Explicação da Estratégia (IA)">
-        <p className="text-textMuted dark:text-textMutedDark">Buscando explicação da IA... Verifique o AI Coach para a resposta completa.</p>
-      </Modal>
-      <Modal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} title="Resumo do Plano (IA)">
-        <p className="text-textMuted dark:text-textMutedDark">Buscando resumo da IA... Verifique o AI Coach para a resposta completa.</p>
-      </Modal>
+
+      {isExplanationModalOpen && (
+          <Modal isOpen={isExplanationModalOpen} onClose={() => setIsExplanationModalOpen(false)} title="Explicação da Estratégia">
+             {/* The content will be filled by AI insights in App.tsx state, this is just a placeholder view */}
+             <p className="text-textMuted dark:text-textMutedDark">Carregando explicação da IA...</p>
+          </Modal>
+      )}
+      {isSummaryModalOpen && (
+          <Modal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} title="Resumo da Projeção (IA)">
+             {/* The content will be filled by AI insights in App.tsx state */}
+             <p className="text-textMuted dark:text-textMutedDark">Carregando resumo da IA...</p>
+          </Modal>
+      )}
 
     </div>
   );
