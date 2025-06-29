@@ -1,4 +1,6 @@
 
+
+
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
 import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState } from '../types'; 
@@ -16,6 +18,7 @@ import LightBulbIcon from './icons/LightBulbIcon';
 import SparklesIcon from './icons/SparklesIcon';
 import TrendingUpIcon from './icons/TrendingUpIcon'; // New Icon
 import ArrowPathIcon from './icons/ArrowPathIcon'; // For recalculate button
+import InfoTooltip from './InfoTooltip';
 
 
 interface DashboardViewProps {
@@ -70,18 +73,64 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     }, 0);
   }, [installmentPurchases]);
 
-  const totalOutstandingLoanReceivables = useMemo(() => {
-    return loans.reduce((total, loan) => {
+  const outstandingLoans = useMemo(() => {
+    return loans.map(loan => {
       const paidForThisLoan = loanRepayments
         .filter(rp => rp.loan_id === loan.id)
         .reduce((sum, rp) => sum + rp.amount_paid, 0);
-      return total + (loan.total_amount_to_reimburse - paidForThisLoan);
-    }, 0);
+      return {
+        ...loan,
+        outstandingBalance: loan.total_amount_to_reimburse - paidForThisLoan
+      };
+    }).filter(l => l.outstandingBalance > 0.01);
   }, [loans, loanRepayments]);
+
+  const totalOutstandingLoanReceivables = useMemo(() => {
+    return outstandingLoans.reduce((total, loan) => total + loan.outstandingBalance, 0);
+  }, [outstandingLoans]);
   
   const netWorth = useMemo(() => {
     return totalAccountBalance + totalMoneyBoxBalance + totalOutstandingLoanReceivables - totalOutstandingCreditCardDebt;
   }, [totalAccountBalance, totalMoneyBoxBalance, totalOutstandingLoanReceivables, totalOutstandingCreditCardDebt]);
+
+  const nextRecurringIncome = useMemo(() => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const upcomingIncomes = recurringTransactions
+        .filter(rt => rt.type === TransactionType.INCOME && new Date(rt.next_due_date + 'T00:00:00') >= today && !rt.is_paused)
+        .sort((a,b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
+    
+    if (upcomingIncomes.length > 0) {
+        const nextIncome = upcomingIncomes[0];
+        const dueDate = new Date(nextIncome.next_due_date + 'T00:00:00');
+        const diffTime = Math.abs(dueDate.getTime() - today.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const dayText = diffDays === 0 ? 'Hoje' : diffDays === 1 ? 'Amanhã' : `em ${diffDays} dias`;
+        return {
+            amount: nextIncome.amount,
+            text: `${dayText}`,
+        };
+    }
+    return null;
+  }, [recurringTransactions]);
+  
+  const closestMoneyBoxGoal = useMemo(() => {
+    let closestGoal = null;
+    let minAmountRemaining = Infinity;
+
+    moneyBoxes.forEach(mb => {
+        if (mb.goal_amount && mb.goal_amount > 0) {
+            const balance = calculateMoneyBoxBalance(mb.id);
+            const remaining = mb.goal_amount - balance;
+            if (remaining > 0 && remaining < minAmountRemaining) {
+                minAmountRemaining = remaining;
+                closestGoal = { name: mb.name, remaining: remaining };
+            }
+        }
+    });
+
+    return closestGoal;
+  }, [moneyBoxes, calculateMoneyBoxBalance]);
 
 
   const recentTransactions = useMemo(() => {
@@ -142,6 +191,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="flex items-center space-x-1.5">
                   <TrendingUpIcon className="w-6 h-6 text-green-500 dark:text-green-400" />
                   <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">GASTAR HOJE (IA)</h2>
+                  <InfoTooltip text="Sugestão de valor para gastos variáveis hoje, considerando seus saldos, despesas fixas futuras e orçamentos essenciais." />
               </div>
               <Button
                   onClick={handleRecalculateSafeToSpend}
@@ -193,44 +243,56 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-          <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO TOTAL (CONTAS)</h2>
+          <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO EM CONTAS</h2>
           <p className={`text-3xl font-bold ${totalAccountBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
             {formatCurrency(totalAccountBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
+           {nextRecurringIncome && !isPrivacyModeEnabled && (
+                <p className="text-xs mt-1 text-green-600 dark:text-green-500">
+                    Próxima receita: +{formatCurrency(nextRecurringIncome.amount)} {nextRecurringIncome.text}
+                </p>
+           )}
         </div>
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
           <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO CAIXINHAS</h2>
-          <p className={`text-3xl font-bold ${totalMoneyBoxBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
+          <p className={`text-3xl font-bold ${totalMoneyBoxBalance >= 0 ? 'text-blue-500 dark:text-blue-400' : 'text-destructive dark:text-destructiveDark'}`}>
             {formatCurrency(totalMoneyBoxBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
+          {closestMoneyBoxGoal && !isPrivacyModeEnabled && (
+                <p className="text-xs mt-1 text-blue-600 dark:text-blue-500">
+                    Faltam {formatCurrency(closestMoneyBoxGoal.remaining)} para "{closestMoneyBoxGoal.name}"
+                </p>
+          )}
         </div>
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+            <div className="flex items-center justify-between w-full mb-1">
+                <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">PATRIMÔNIO LÍQUIDO</h2>
+                <ScaleIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
+            </div>
+            <p className={`text-3xl font-bold ${netWorth >= 0 ? 'text-primary dark:text-primaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
+                {formatCurrency(netWorth, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+            </p>
+            {!isPrivacyModeEnabled && (
+                <div className="text-xs mt-1 space-y-0.5">
+                {totalOutstandingCreditCardDebt > 0 && (
+                    <p className="text-destructive/80 dark:text-destructiveDark/80">Dívida Cartões: {formatCurrency(totalOutstandingCreditCardDebt)}</p>
+                )}
+                {totalOutstandingLoanReceivables > 0 && (
+                    <p className="text-green-600/80 dark:text-green-500/80">Empréstimos a Receber: {formatCurrency(totalOutstandingLoanReceivables)}</p>
+                )}
+                </div>
+            )}
+        </div>
+        
+        {/* This takes the 4th slot on large screens */}
+        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 md:col-span-2 lg:col-span-4">
             <div className="flex items-center w-full justify-between">
-                 <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">A RECEBER (EMPRÉSTIMOS)</h2>
+                 <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">A RECEBER (EMPRÉSTIMOS) ({outstandingLoans.length})</h2>
                  <UsersIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
             </div>
-          <p className={`text-3xl font-bold text-primary dark:text-primaryDark`}>
+          <p className={`text-3xl font-bold text-green-600 dark:text-green-500`}>
             {formatCurrency(totalOutstandingLoanReceivables, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
-        </div>
-        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col items-start md:col-span-2 lg:col-span-4"> {/* Net worth takes full width on lg if safe-to-spend is moved here */}
-            <div className="flex items-center w-full justify-between">
-                 <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">PATRIMÔNIO LÍQUIDO</h2>
-                 <ScaleIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
-            </div>
-          <p className={`text-3xl font-bold ${netWorth >= 0 ? 'text-primary dark:text-primaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
-            {formatCurrency(netWorth, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
-          </p>
-          {!isPrivacyModeEnabled && (
-            <div className="text-xs mt-1 space-y-0.5">
-              {totalOutstandingCreditCardDebt > 0 && (
-                  <p className="text-destructive dark:text-destructiveDark/80">Dívida Cartões: {formatCurrency(totalOutstandingCreditCardDebt)}</p>
-              )}
-              {totalOutstandingLoanReceivables > 0 && (
-                  <p className="text-primary dark:text-primaryDark/80">Empréstimos a Receber: {formatCurrency(totalOutstandingLoanReceivables)}</p>
-              )}
-            </div>
-          )}
         </div>
       </div>
 

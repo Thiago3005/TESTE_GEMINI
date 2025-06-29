@@ -10,6 +10,7 @@ import PlusIcon from './icons/PlusIcon';
 import CreditCardIcon from './icons/CreditCardIcon'; 
 import SparklesIcon from './icons/SparklesIcon';
 import CheckCircleIcon from './icons/CheckCircleIcon'; // For paid installments
+import InfoTooltip from './InfoTooltip';
 
 interface CreditCardItemProps {
   card: CreditCard;
@@ -118,15 +119,18 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
       
       <div className="space-y-2">
         {isAIFeatureEnabled && (
-         <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => onGetBestPurchaseDay(card.id)} 
-            className="text-primary dark:text-primaryDark hover:underline !justify-start !p-1 w-full text-left !text-xs"
-            title="Ver melhor dia para compra com IA"
-          >
-           <SparklesIcon className="w-4 h-4 mr-1.5" /> Melhor Dia para Compra (IA)
-         </Button>
+         <div className="flex items-center gap-2">
+            <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => onGetBestPurchaseDay(card.id)} 
+                className="text-primary dark:text-primaryDark hover:underline !justify-start !p-1 !text-xs"
+                title="Ver melhor dia para compra com IA"
+            >
+            <SparklesIcon className="w-4 h-4 mr-1.5" /> Melhor Dia para Compra (IA)
+            </Button>
+            <InfoTooltip text="A IA calcula o melhor dia para comprar (geralmente o dia após o fechamento da fatura) para maximizar o prazo de pagamento." />
+         </div>
         )}
       </div>
       

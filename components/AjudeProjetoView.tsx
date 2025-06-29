@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import Button from './Button';
 import CopyIcon from './icons/CopyIcon'; // Import the new icon
 import { useToasts } from '../contexts/ToastContext'; // Import useToasts
 
-// Path to the QR code image, including the base URL for GitHub Pages
+// Path to the QR code image, assuming it's in public/assets/
 const qrCodeImagePath = import.meta.env.BASE_URL + 'assets/qrcode-pix.png';
 const pixKeyValue = "00020126470014br.gov.bcb.pix0125thiaguiinho3005@gmail.com5204000053039865802BR5923thiago augusto da silva6009Itabirito62180514TX67lsyfc8255663041F05";
 

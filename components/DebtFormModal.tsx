@@ -1,6 +1,7 @@
 
 
 
+
 import React from 'react';
 import { useState, useEffect, ChangeEvent, useCallback } from 'react';
 import { Debt, DebtType, Account, DebtRateAnalysis, DebtViabilityAnalysis } from '../types';
@@ -13,6 +14,7 @@ import LightBulbIcon from './icons/LightBulbIcon';
 import ShieldCheckIcon from './icons/ShieldCheckIcon';
 import ExclamationTriangleIcon from './icons/ExclamationTriangleIcon';
 import ShieldExclamationIcon from './icons/ShieldExclamationIcon';
+import InfoTooltip from './InfoTooltip';
 
 
 const debtTypeOptions: { value: DebtType; label: string }[] = [
@@ -388,21 +390,27 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({
             </div>
             {isAIFeatureEnabled && (
               <div className="space-y-4">
-                <Button variant="secondary" size="sm" onClick={handleAnalyzeRateClick} disabled={isAnalyzingRate || !interestRateAnnual} className="w-full">
-                    <LightBulbIcon className="w-4 h-4 mr-2"/>
-                    {isAnalyzingRate ? 'Analisando Taxa...' : 'Analisar Taxa de Juros'}
-                </Button>
+                 <div className="flex items-center gap-2">
+                    <Button variant="secondary" size="sm" onClick={handleAnalyzeRateClick} disabled={isAnalyzingRate || !interestRateAnnual} className="w-full">
+                        <LightBulbIcon className="w-4 h-4 mr-2"/>
+                        {isAnalyzingRate ? 'Analisando Taxa...' : 'Analisar Taxa de Juros'}
+                    </Button>
+                    <InfoTooltip text="A IA compara a taxa de juros calculada com as taxas de mercado para o tipo de dívida selecionado." />
+                </div>
                 
                 {rateAnalysis && !isAnalyzingRate && (
                     <div className="text-sm p-2 bg-background dark:bg-backgroundDark rounded animate-fadeIn">
                        <p><strong className="text-primary dark:text-primaryDark">Análise da Taxa:</strong> {rateAnalysis.text} <span className="font-semibold">({rateAnalysis.classification})</span></p>
                     </div>
                 )}
-
-                <Button variant="secondary" size="sm" onClick={handleAnalyzeViabilityClick} disabled={isAnalyzingViability || !interestRateAnnual} className="w-full">
-                    <LightBulbIcon className="w-4 h-4 mr-2"/>
-                    {isAnalyzingViability ? 'Analisando Viabilidade...' : 'Analisar Viabilidade'}
-                </Button>
+                
+                 <div className="flex items-center gap-2">
+                    <Button variant="secondary" size="sm" onClick={handleAnalyzeViabilityClick} disabled={isAnalyzingViability || !interestRateAnnual} className="w-full">
+                        <LightBulbIcon className="w-4 h-4 mr-2"/>
+                        {isAnalyzingViability ? 'Analisando Viabilidade...' : 'Analisar Viabilidade'}
+                    </Button>
+                    <InfoTooltip text="A IA analisa o impacto desta dívida em sua saúde financeira geral, considerando sua renda e outros compromissos." />
+                </div>
                  {viabilityAnalysis && !isAnalyzingViability && (
                     <div className="space-y-2 text-sm p-2 bg-background dark:bg-backgroundDark rounded animate-fadeIn">
                         <div className="font-semibold">{getRiskBadge()}</div>

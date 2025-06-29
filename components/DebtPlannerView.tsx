@@ -1,6 +1,7 @@
 
 
 
+
 import React from 'react';
 import { useState, useMemo, useEffect } from 'react';
 import { Debt, DebtPayment, Account, DebtStrategy, DebtProjection, AIInsight, DebtRateAnalysis, DebtViabilityAnalysis, AIConfig, DebtType } from '../types';
@@ -18,6 +19,7 @@ import Select from './Select';
 import Input from './Input';
 import Modal from './Modal';
 import { LineChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Line, CartesianGrid, Legend } from 'recharts';
+import InfoTooltip from './InfoTooltip';
 
 
 interface DebtPlannerViewProps {
@@ -187,10 +189,10 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
   
   const financialHealthScore = useMemo(() => {
     if (!aiConfig.monthlyIncome || aiConfig.monthlyIncome <= 0) {
-        return { score: -1, label: 'Indisponível', advice: 'Informe sua renda mensal no AI Coach e pagamentos mínimos das dívidas para calcular.', color: 'text-neutral', bgColor: 'bg-neutral-500' };
+        return { score: -1, label: 'Indisponível', advice: 'Informe sua renda mensal no AI Coach para calcular.', color: 'text-neutral', bgColor: 'bg-neutral-500' };
     }
     if (totalMinimumPayments <= 0) {
-        return { score: -1, label: 'Indisponível', advice: 'Adicione dívidas com um pagamento mínimo maior que zero para calcular.', color: 'text-neutral', bgColor: 'bg-neutral-500' };
+        return { score: 100, label: 'Excelente', advice: 'Você não possui dívidas com pagamentos mínimos registrados. Ótimo!', color: 'text-green-500 dark:text-green-400', bgColor: 'bg-green-500' };
     }
     const dti = (totalMinimumPayments / aiConfig.monthlyIncome) * 100;
 
@@ -284,7 +286,10 @@ const DebtPlannerView: React.FC<DebtPlannerViewProps> = ({
           </p>
         </div>
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-            <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-2 uppercase">Saúde Financeira</h2>
+            <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark uppercase">Saúde Financeira</h2>
+                <InfoTooltip text="Calculado com base na sua relação dívida/renda (DTI), que compara os pagamentos mínimos de dívidas com sua renda mensal informada." />
+            </div>
             {financialHealthScore.score === -1 ? (
                 <p className="text-textMuted dark:text-textMutedDark text-xs">{financialHealthScore.advice}</p>
             ) : (
