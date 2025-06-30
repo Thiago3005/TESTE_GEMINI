@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { Transaction, TransactionType, ChartData } from '../types';
@@ -12,12 +13,23 @@ interface DailySummaryBarChartProps {
 
 const CustomTooltip: React.FC<any> = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
+    const descriptions = payload[0].payload.descriptions || [];
     return (
-      <div className="bg-surface dark:bg-surfaceDark p-2 border border-borderBase dark:border-borderBaseDark rounded shadow-lg">
+      <div className="bg-surface dark:bg-surfaceDark p-2 border border-borderBase dark:border-borderBaseDark rounded shadow-lg max-w-xs">
         <p className="text-sm font-semibold text-textBase dark:text-textBaseDark">Dia {label}</p>
         <p className={`text-sm ${payload[0].fill === '#00C49F' ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
           {payload[0].name}: {formatCurrency(payload[0].value)}
         </p>
+        {descriptions.length > 0 && (
+          <div className="mt-2 pt-1 border-t border-borderBase/50 dark:border-borderBaseDark/50">
+            <ul className="text-xs text-textMuted dark:text-textMutedDark list-disc list-inside">
+              {descriptions.slice(0, 3).map((desc: string, index: number) => (
+                <li key={index} className="truncate">{desc}</li>
+              ))}
+              {descriptions.length > 3 && <li>... e mais {descriptions.length - 3}</li>}
+            </ul>
+          </div>
+        )}
       </div>
     );
   }
@@ -32,13 +44,17 @@ const DailySummaryBarChart: React.FC<DailySummaryBarChartProps> = ({ transaction
     const dailyData: ChartData[] = Array.from({ length: daysInMonth }, (_, i) => ({
       name: (i + 1).toString().padStart(2, '0'), // Day as "01", "02", ...
       value: 0,
+      descriptions: [],
     }));
 
     transactions.forEach(t => {
       if (t.type === type && t.date.startsWith(month)) {
         const dayOfMonth = parseInt(t.date.split('-')[2], 10) -1; // 0-indexed
-        if (dayOfMonth >= 0 && dayOfMonth < daysInMonth) {
+        if (dayOfMonth >= 0 && dayOfMonth < daysInMonth && dailyData[dayOfMonth]) {
           dailyData[dayOfMonth].value += t.amount;
+          if(dailyData[dayOfMonth].descriptions) {
+            dailyData[dayOfMonth].descriptions!.push(t.description || (type === TransactionType.INCOME ? "Receita" : "Despesa"));
+          }
         }
       }
     });

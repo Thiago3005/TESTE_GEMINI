@@ -1,11 +1,5 @@
 
 
-
-
-
-
-
-
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
 import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis, DebtType, ExtractedTransaction } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
@@ -599,50 +593,62 @@ Exemplo de resposta JSON:
 };
 
 
-const constructPromptForFileStatementParsing = (): string => {
+const constructPromptForFileStatementParsing = (categories: Category[]): string => {
+  const expenseCategories = categories.filter(c => c.type === 'EXPENSE').map(c => `'${c.name}'`).join(', ');
+  const incomeCategories = categories.filter(c => c.type === 'INCOME').map(c => `'${c.name}'`).join(', ');
+
   return `Você é um expert em extração de dados financeiros. Sua tarefa é analisar o arquivo (imagem ou PDF) de um extrato bancário e extrair todas as transações individuais para um array JSON estruturado.
-
-Siga estas regras ESTRITAMENTE:
-1. Identifique cada linha de transação individual. Ignore sumários, cabeçalhos ou rodapés (ex: "Saldo anterior", "Total de entradas", "Saldo final do período", "EXTRATO DE CONTA CORRENTE", "Internet Banking", números de página, etc.). Foque apenas nas linhas que representam uma única movimentação financeira.
-2. Para cada transação, extraia os seguintes campos em um objeto JSON:
-    - "date": A data completa da transação. Converta para o formato "YYYY-MM-DD". O ano é provavelmente 2025, baseado no contexto do documento. Para datas como "02 JUN 2025", o resultado deve ser "2025-06-02".
-    - "description": A descrição completa da transação da forma mais precisa possível.
-    - "amount": O valor da transação como um número positivo. Use um ponto (.) como separador decimal e remova quaisquer símbolos de moeda ou separadores de milhar. Por exemplo, "1.200,00" vira 1200.00 e "-10,00" vira 10.00.
-    - "type": Determine se é "INCOME" (entrada) ou "EXPENSE" (saída).
-        - Em extratos com colunas "Crédito" e "Débito", um valor em "Crédito (R$)" é "INCOME". Um valor em "Débito (R$)" ou com um sinal de menos na frente é "EXPENSE".
-        - Em extratos com seções "entradas" e "saídas", transações sob "entradas" são "INCOME" e sob "saídas" são "EXPENSE".
-        - Termos como "Transferência recebida", "PIX RECEBIDO", "Crédito em conta" indicam "INCOME".
-        - Termos como "Transferência enviada", "PIX ENVIADO", "Pagamento de fatura", "Compra no débito" indicam "EXPENSE".
-3. A saída final DEVE ser apenas um array JSON válido desses objetos de transação. Não inclua nenhum outro texto, explicações ou blocos de markdown como \`\`\`json. Se nenhuma transação for encontrada, retorne um array vazio [].
-
-Exemplo do formato de saída esperado:
-[
-  {"date": "2025-06-30", "description": "PIX ENVIADO XODO DA TERRA LTDA", "amount": 10.00, "type": "EXPENSE"},
-  {"date": "2025-06-30", "description": "PIX RECEBIDO Gilmara Aparecida Alves O", "amount": 195.29, "type": "INCOME"}
-]
-
-Agora, analise o arquivo fornecido e extraia as transações.`;
-};
-
-const constructPromptForTextStatementParsing = (): string => {
-  return `Você é um expert em extração de dados financeiros. Sua tarefa é analisar o seguinte texto, que é o conteúdo de um extrato bancário (provavelmente em formato CSV ou de texto simples), e extrair todas as transações individuais para um array JSON estruturado.
 
 Siga estas regras ESTRITAMENTE:
 1. Identifique cada linha de transação individual. Ignore sumários, cabeçalhos ou rodapés. Foque apenas nas linhas que representam uma única movimentação financeira.
 2. Para cada transação, extraia os seguintes campos em um objeto JSON:
-    - "date": A data completa da transação. Converta para o formato "YYYY-MM-DD". Tente inferir o ano se não estiver presente (assuma o ano atual, se possível).
+    - "date": A data completa da transação. Converta para o formato "YYYY-MM-DD". O ano é provavelmente 2025.
     - "description": A descrição completa da transação.
-    - "amount": O valor da transação como um número positivo, usando um ponto (.) como separador decimal.
-    - "type": Determine se é "INCOME" (entrada) ou "EXPENSE" (saída), baseado no contexto das colunas, sinais (+/-) ou palavras-chave.
-3. A saída final DEVE ser apenas um array JSON válido. Não inclua nenhum outro texto, explicações ou markdown como \`\`\`json. Se nenhuma transação for encontrada, retorne um array vazio [].
+    - "amount": O valor da transação como um número positivo, com ponto (.) como separador decimal.
+    - "type": Determine se é "INCOME" (entrada) ou "EXPENSE" (saída).
+    - "suggestedCategoryName": Baseado na descrição, sugira a categoria mais provável da lista fornecida. Se uma categoria da lista corresponder bem (ex: "Posto de Combustível" -> "Transporte"), use seu nome exato. Se nenhuma corresponder bem, sugira um NOME DE CATEGORIA NOVO, lógico e curto (ex: para "POSTO DE GASOLINA", sugira "Combustível").
 
-Exemplo do formato de saída esperado:
+Categorias de Despesa disponíveis: [${expenseCategories}]
+Categorias de Receita disponíveis: [${incomeCategories}]
+
+3. A saída final DEVE ser apenas um array JSON válido. Não inclua nenhum outro texto ou markdown como \`\`\`json. Se nenhuma transação for encontrada, retorne um array vazio [].
+
+Exemplo de saída:
 [
-  {"date": "2025-06-30", "description": "PIX ENVIADO XODO DA TERRA LTDA", "amount": 10.00, "type": "EXPENSE"},
-  {"date": "2025-06-30", "description": "PIX RECEBIDO Gilmara Aparecida Alves O", "amount": 195.29, "type": "INCOME"}
+  {"date": "2025-06-30", "description": "PIX ENVIADO XODO DA TERRA LTDA", "amount": 10.00, "type": "EXPENSE", "suggestedCategoryName": "Alimentação"},
+  {"date": "2025-06-30", "description": "PIX RECEBIDO Gilmara Aparecida Alves O", "amount": 195.29, "type": "INCOME", "suggestedCategoryName": "Outras Receitas"}
 ]
 
-Agora, analise o texto fornecido e extraia as transações.`;
+Analise o arquivo e extraia as transações.`;
+};
+
+const constructPromptForTextStatementParsing = (categories: Category[]): string => {
+  const expenseCategories = categories.filter(c => c.type === 'EXPENSE').map(c => `'${c.name}'`).join(', ');
+  const incomeCategories = categories.filter(c => c.type === 'INCOME').map(c => `'${c.name}'`).join(', ');
+
+  return `Você é um expert em extração de dados financeiros. Sua tarefa é analisar o seguinte texto de um extrato bancário e extrair todas as transações individuais para um array JSON estruturado.
+
+Siga estas regras ESTRITAMENTE:
+1. Identifique cada linha de transação individual. Ignore sumários e cabeçalhos.
+2. Para cada transação, extraia os seguintes campos em um objeto JSON:
+    - "date": A data completa da transação no formato "YYYY-MM-DD".
+    - "description": A descrição completa da transação.
+    - "amount": O valor da transação como um número positivo, com ponto (.) como separador decimal.
+    - "type": Determine se é "INCOME" (entrada) ou "EXPENSE" (saída).
+    - "suggestedCategoryName": Baseado na descrição, sugira a categoria mais provável da lista fornecida. Se uma categoria da lista corresponder bem, use seu nome exato. Se nenhuma corresponder bem, sugira um NOME DE CATEGORIA NOVO, lógico e curto (ex: para "POSTO DE GASOLINA", sugira "Combustível").
+
+Categorias de Despesa disponíveis: [${expenseCategories}]
+Categorias de Receita disponíveis: [${incomeCategories}]
+
+3. A saída final DEVE ser apenas um array JSON válido. Não inclua nenhum outro texto ou markdown como \`\`\`json. Se nenhuma transação for encontrada, retorne um array vazio [].
+
+Exemplo de saída:
+[
+  {"date": "2025-06-30", "description": "PIX ENVIADO XODO DA TERRA LTDA", "amount": 10.00, "type": "EXPENSE", "suggestedCategoryName": "Alimentação"},
+  {"date": "2025-06-30", "description": "PIX RECEBIDO Gilmara Aparecida Alves O", "amount": 195.29, "type": "INCOME", "suggestedCategoryName": "Outras Receitas"}
+]
+
+Analise o texto e extraia as transações.`;
 };
 
 
@@ -1248,14 +1254,15 @@ export const fetchDebtViabilityAnalysis = async (debt: Partial<Debt>, context: F
 
 export const parseTransactionsFromFile = async (
     fileBase64: string,
-    mimeType: string
+    mimeType: string,
+    categories: Category[]
 ): Promise<ExtractedTransaction[] | null> => {
     if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
         console.warn("Gemini API not available for statement parsing.");
         return null;
     }
 
-    const prompt = constructPromptForFileStatementParsing();
+    const prompt = constructPromptForFileStatementParsing(categories);
     const filePart = {
         inlineData: {
             mimeType: mimeType,
@@ -1291,14 +1298,15 @@ export const parseTransactionsFromFile = async (
 };
 
 export const parseTransactionsFromText = async (
-    statementText: string
+    statementText: string,
+    categories: Category[]
 ): Promise<ExtractedTransaction[] | null> => {
     if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
         console.warn("Gemini API not available for text parsing.");
         return null;
     }
 
-    const prompt = constructPromptForTextStatementParsing();
+    const prompt = constructPromptForTextStatementParsing(categories);
     
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({

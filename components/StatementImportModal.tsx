@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { ReviewedTransaction, Account, Category, TransactionType } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
@@ -29,7 +30,8 @@ const StatementImportModal: React.FC<StatementImportModalProps> = ({
   const [reviewedTxs, setReviewedTxs] = useState<ReviewedTransaction[]>([]);
 
   useEffect(() => {
-    setReviewedTxs(initialTransactions);
+    // When new transactions load, map them and ensure error field is reset
+    setReviewedTxs(initialTransactions.map(tx => ({ ...tx, error: undefined })));
   }, [initialTransactions]);
 
   const handleToggleSelect = (id: string) => {
@@ -43,13 +45,36 @@ const StatementImportModal: React.FC<StatementImportModalProps> = ({
   };
 
   const handleFieldChange = (id: string, field: 'accountId' | 'categoryId', value: string) => {
+    // When a field is changed, clear its specific error message
     setReviewedTxs(prev =>
-      prev.map(tx => (tx.id === id ? { ...tx, [field]: value } : tx))
+      prev.map(tx => (tx.id === id ? { ...tx, [field]: value, error: undefined } : tx))
     );
   };
 
   const handleConfirmClick = () => {
     const toImport = reviewedTxs.filter(tx => tx.selected);
+    let hasError = false;
+
+    // Create a new array with validation results
+    const validatedTxs = reviewedTxs.map(tx => {
+      // Only validate selected transactions
+      if (tx.selected && !tx.categoryId) {
+        hasError = true;
+        // Return a new object with the error message
+        return { ...tx, error: 'Categoria é obrigatória' };
+      }
+      // If valid or not selected, ensure no error is present
+      return { ...tx, error: undefined };
+    });
+
+    // Update the state to show errors on the UI
+    setReviewedTxs(validatedTxs);
+
+    // If there was an error, stop the submission
+    if (hasError) {
+      return;
+    }
+
     onConfirm(toImport);
   };
   
@@ -81,6 +106,18 @@ const StatementImportModal: React.FC<StatementImportModalProps> = ({
               {reviewedTxs.map(tx => {
                 const typeColor = tx.type === TransactionType.INCOME ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark';
                 const sign = tx.type === TransactionType.INCOME ? '+' : '-';
+
+                const categoryOptions = categories
+                  .filter(c => c.type === tx.type)
+                  .map(c => ({ value: c.id, label: c.name }));
+
+                if (tx.categoryId.startsWith('_CREATE_NEW_')) {
+                  categoryOptions.unshift({
+                    value: tx.categoryId,
+                    label: `(+) Criar: "${tx.categoryId.replace('_CREATE_NEW_', '')}"`,
+                  });
+                }
+                
                 return (
                   <li key={tx.id} className={`p-3 rounded-lg flex flex-col md:flex-row gap-4 transition-colors ${tx.selected ? 'bg-surface dark:bg-surfaceDark' : 'bg-neutral/30 dark:bg-neutralDark/30 opacity-60'}`}>
                     <div className="flex items-center flex-shrink-0">
@@ -110,10 +147,11 @@ const StatementImportModal: React.FC<StatementImportModalProps> = ({
                             label="Categoria"
                             value={tx.categoryId}
                             onChange={(e) => handleFieldChange(tx.id, 'categoryId', e.target.value)}
-                            options={categories.filter(c => c.type === tx.type).map(c => ({ value: c.id, label: c.name }))}
+                            options={categoryOptions}
                             disabled={!tx.selected}
                             placeholder="Selecione..."
                             className="text-xs"
+                            error={tx.error}
                          />
                       </div>
                     </div>
@@ -125,7 +163,7 @@ const StatementImportModal: React.FC<StatementImportModalProps> = ({
         )}
         <div className="flex justify-end space-x-3 pt-4 border-t border-borderBase dark:border-borderBaseDark">
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={handleConfirmClick} disabled={isLoading || totalSelected === 0}>
+          <Button variant="primary" onClick={handleConfirmClick} disabled={isLoading || (reviewedTxs.length > 0 && totalSelected === 0)}>
             {isLoading ? 'Importando...' : `Importar ${totalSelected} Transações`}
           </Button>
         </div>

@@ -1,11 +1,5 @@
 
 
-
-
-
-
-
-
 import React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef }from 'react';
 import { supabase } from './services/supabaseClient';
@@ -1544,15 +1538,22 @@ const AppContent: React.FC = () => {
         if (extracted && extracted.length > 0) {
             const defaultAccountId = accounts[0].id;
             const reviewed: ReviewedTransaction[] = extracted.map(tx => {
-                const lowerDesc = tx.description.toLowerCase();
-                const guessedCategory = categories.find(cat => cat.type === tx.type && lowerDesc.includes(cat.name.toLowerCase()));
-                
+                const suggestedName = tx.suggestedCategoryName || '';
+                const guessedCategory = suggestedName ? categories.find(cat => cat.type === tx.type && cat.name.toLowerCase() === suggestedName.toLowerCase()) : null;
+
+                let finalCategoryId = '';
+                if (guessedCategory) {
+                    finalCategoryId = guessedCategory.id;
+                } else if (suggestedName) {
+                    finalCategoryId = `_CREATE_NEW_${suggestedName}`;
+                }
+
                 return {
                     ...tx,
                     id: generateClientSideId(),
                     selected: true,
                     accountId: defaultAccountId,
-                    categoryId: guessedCategory?.id || '',
+                    categoryId: finalCategoryId,
                 };
             });
             setReviewedTransactions(reviewed);
@@ -1576,7 +1577,7 @@ const AppContent: React.FC = () => {
             reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64String = (reader.result as string).split(',')[1];
-                const extracted = await geminiService.parseTransactionsFromFile(base64String, file.type);
+                const extracted = await geminiService.parseTransactionsFromFile(base64String, file.type, categories);
                 processExtractedTxs(extracted);
             };
             reader.onerror = () => handleError("Erro ao ler o arquivo selecionado.");
@@ -1590,7 +1591,7 @@ const AppContent: React.FC = () => {
                     const sheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[sheetName];
                     const csvText = XLSX.utils.sheet_to_csv(worksheet);
-                    const extracted = await geminiService.parseTransactionsFromText(csvText);
+                    const extracted = await geminiService.parseTransactionsFromText(csvText, categories);
                     processExtractedTxs(extracted);
                 } else {
                     handleError("Não foi possível ler o conteúdo do arquivo Excel.");
@@ -1608,16 +1609,45 @@ const AppContent: React.FC = () => {
 
   const handleConfirmStatementImport = async (transactionsToImport: ReviewedTransaction[]) => {
       if (!user || !activeUserProfile) return;
+
+      const newCategoryNames = [...new Set(
+        transactionsToImport
+          .filter(tx => tx.categoryId.startsWith('_CREATE_NEW_'))
+          .map(tx => tx.categoryId.replace('_CREATE_NEW_', ''))
+      )];
+
+      const createdCategories: Category[] = [];
+      for (const name of newCategoryNames) {
+          const correspondingTx = transactionsToImport.find(tx => tx.categoryId === `_CREATE_NEW_${name}`);
+          if (correspondingTx) {
+              const newCategory = await handleAddCategory({ name, type: correspondingTx.type });
+              if (newCategory) {
+                  createdCategories.push(newCategory);
+              }
+          }
+      }
+
+      const newCategoryMap = new Map(createdCategories.map(cat => [cat.name, cat.id]));
       
       let successCount = 0;
       for (const tx of transactionsToImport) {
+          let finalCategoryId = tx.categoryId;
+          if (tx.categoryId.startsWith('_CREATE_NEW_')) {
+              const categoryName = tx.categoryId.replace('_CREATE_NEW_', '');
+              finalCategoryId = newCategoryMap.get(categoryName) || '';
+              if (!finalCategoryId) {
+                  console.warn(`Could not find newly created category ID for name: ${categoryName}`);
+                  continue; // Skip this transaction if we failed to create its category
+              }
+          }
+
           const transactionData: Omit<Transaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> = {
               type: tx.type,
               amount: tx.amount,
               description: tx.description,
               date: tx.date,
               account_id: tx.accountId,
-              category_id: tx.categoryId || undefined,
+              category_id: finalCategoryId || undefined,
           };
           const result = await addOrUpdateRecord('transactions', transactionData, setTransactions, (a,b)=> new Date(b.date).getTime() - new Date(a.date).getTime());
           if (result) successCount++;

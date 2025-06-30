@@ -328,6 +328,7 @@ export interface ChartData {
   value: number; // The primary value for this data point (e.g., total expense amount)
   value2?: number; // Optional secondary value (e.g., total income amount for comparison)
   fill?: string; // Optional color for this data point in charts
+  descriptions?: string[]; // For bar chart tooltip to show transaction details
 }
 
 
@@ -376,6 +377,7 @@ export interface ExtractedTransaction {
   description: string;
   amount: number;
   type: TransactionType.INCOME | TransactionType.EXPENSE;
+  suggestedCategoryName?: string;
 }
 
 export interface ReviewedTransaction extends ExtractedTransaction {
