@@ -1,4 +1,3 @@
-
 export const generateId = (): string => { // Keep for client-side only IDs, e.g., toast messages
   return crypto.randomUUID();
 };
@@ -33,6 +32,16 @@ export const getISODateString = (dateInput: Date | string = new Date()): string 
   return date.toISOString().split('T')[0];
 };
 
+export const daysUntil = (dateString: string): number => {
+  const targetDate = new Date(dateString + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const diffTime = targetDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays;
+};
 
 export const calculateInstallmentDueDate = (purchaseDateStr: string, installmentNumber: number, cardDueDay: number): Date => {
   const purchaseDate = new Date(purchaseDateStr + 'T00:00:00'); // Work with local date
