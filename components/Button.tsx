@@ -37,10 +37,10 @@ const Button: React.FC<ButtonProps> = ({
       sizeStyle = 'px-3 py-1.5 text-sm';
       break;
     case 'md':
-      sizeStyle = 'px-4 py-2 text-base';
+      sizeStyle = 'px-3 py-2 text-sm md:px-4 md:text-base';
       break;
     case 'lg':
-      sizeStyle = 'px-6 py-3 text-lg';
+      sizeStyle = 'px-4 py-2 text-base md:px-6 md:py-3 md:text-lg';
       break;
   }
 

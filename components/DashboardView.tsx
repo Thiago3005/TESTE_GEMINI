@@ -217,7 +217,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-textBase dark:text-textBaseDark">Painel Geral</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-textBase dark:text-textBaseDark">Painel Geral</h1>
           <p className="text-textMuted dark:text-textMutedDark">Bem-vindo ao seu controle financeiro.</p>
         </div>
         <div className="flex items-center gap-x-2 sm:gap-x-3">
@@ -238,7 +238,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Safe to Spend Today Card - Moved into the grid */}
-        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-1">
               <div className="flex items-center space-x-1.5">
                   <TrendingUpIcon className="w-6 h-6 text-green-500 dark:text-green-400" />
@@ -261,7 +261,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           {safeToSpendToday.isLoading && !safeToSpendToday.safeAmount && !isPrivacyModeEnabled ? (
               <p className="text-center text-textMuted dark:text-textMutedDark py-3 text-xs">Calculando...</p>
           ) : safeToSpendToday.safeAmount !== null ? (
-              <p className={`text-3xl font-bold text-center my-2 ${
+              <p className={`text-2xl sm:text-3xl font-bold text-center my-2 ${
                   safeToSpendToday.safeAmount === 0 && (safeToSpendToday.explanation || '').toLowerCase().includes('evite')
                   ? 'text-amber-500 dark:text-amber-400'
                   : safeToSpendToday.safeAmount > 0
@@ -271,7 +271,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               {formatCurrency(safeToSpendToday.safeAmount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
               </p>
           ) : (
-              <p className={`text-2xl font-bold text-center my-2 text-amber-500 dark:text-amber-400`}>
+              <p className={`text-xl sm:text-2xl font-bold text-center my-2 text-amber-500 dark:text-amber-400`}>
                   {isPrivacyModeEnabled ? formatCurrency(0, 'BRL','pt-BR', true) : "---"}
               </p>
           )}
@@ -294,9 +294,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           </p>
         </div>
 
-        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col">
+        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col">
           <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO EM CONTAS</h2>
-          <p className={`text-3xl font-bold ${totalAccountBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
+          <p className={`text-2xl sm:text-3xl font-bold ${totalAccountBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
             {formatCurrency(totalAccountBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
            {!isPrivacyModeEnabled && (
@@ -328,9 +328,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 )}
             </ul>
         </div>
-        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col">
+        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col">
           <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO CAIXINHAS</h2>
-          <p className={`text-3xl font-bold ${totalMoneyBoxBalance >= 0 ? 'text-blue-500 dark:text-blue-400' : 'text-destructive dark:text-destructiveDark'}`}>
+          <p className={`text-2xl sm:text-3xl font-bold ${totalMoneyBoxBalance >= 0 ? 'text-blue-500 dark:text-blue-400' : 'text-destructive dark:text-destructiveDark'}`}>
             {formatCurrency(totalMoneyBoxBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
             <ul className="space-y-4 mt-4 overflow-y-auto max-h-[140px] flex-grow pr-2">
@@ -379,13 +379,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 )}
             </ul>
         </div>
-        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
             <div className="flex items-center justify-between w-full mb-1">
                 <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">PATRIMÔNIO LÍQUIDO</h2>
                 <ScaleIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
             </div>
             <div className="flex items-baseline space-x-2">
-                <p className={`text-3xl font-bold ${netWorth >= 0 ? 'text-primary dark:text-primaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
+                <p className={`text-2xl sm:text-3xl font-bold ${netWorth >= 0 ? 'text-primary dark:text-primaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
                     {formatCurrency(netWorth, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
                 </p>
                 {!isPrivacyModeEnabled && (
@@ -425,12 +425,12 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
         
         {/* This takes the 4th slot on large screens, now we have more cards, this might break layout on some screens */}
-        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 md:col-span-2 lg:col-span-4">
+        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 md:col-span-2 lg:col-span-4">
             <div className="flex items-center w-full justify-between">
                  <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">A RECEBER (EMPRÉSTIMOS) ({outstandingLoans.length})</h2>
                  <UsersIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
             </div>
-          <p className={`text-3xl font-bold text-green-600 dark:text-green-500`}>
+          <p className={`text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-500`}>
             {formatCurrency(totalOutstandingLoanReceivables, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
         </div>
@@ -446,7 +446,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       
       <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
-            <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark">Resumo Mensal ({currentMonthYYYYMM.split('-')[1]}/{currentMonthYYYYMM.split('-')[0]})</h2>
+            <h2 className="text-lg sm:text-xl font-semibold text-textBase dark:text-textBaseDark">Resumo Mensal ({currentMonthYYYYMM.split('-')[1]}/{currentMonthYYYYMM.split('-')[0]})</h2>
             <div className="flex flex-wrap gap-2 items-center">
                 <Button 
                     variant={expenseIncomeChartType === TransactionType.EXPENSE ? 'primary' : 'ghost'}
@@ -502,8 +502,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
       
       {budgetedCategories.length > 0 && (
-        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-          <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Orçamento Mensal ({currentMonthYYYYMM.split('-')[1]}/{currentMonthYYYYMM.split('-')[0]})</h2>
+        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+          <h2 className="text-lg sm:text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Orçamento Mensal ({currentMonthYYYYMM.split('-')[1]}/{currentMonthYYYYMM.split('-')[0]})</h2>
           <div className="mb-3">
             <div className="flex justify-between text-sm">
               <span>Total Gasto (Orçado): {formatCurrency(budgetSummary.totalSpentInBudgetedCategories, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
@@ -547,8 +547,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       )}
 
 
-      <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-        <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Transações Recentes</h2>
+      <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+        <h2 className="text-lg sm:text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Transações Recentes</h2>
         {recentTransactions.length > 0 ? (
           <ul className="space-y-3">
             {recentTransactions.map(tx => {

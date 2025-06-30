@@ -1,6 +1,8 @@
 
 
 
+
+
 import React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef }from 'react';
 import { supabase } from './services/supabaseClient';
@@ -68,7 +70,7 @@ import PowerIcon from './components/icons/PowerIcon';
 import BanknotesIcon from './components/icons/BanknotesIcon';
 import PresentationChartLineIcon from './components/icons/PresentationChartLineIcon';
 import HeartIcon from './components/icons/HeartIcon'; 
-import ChevronDoubleLeftIcon from './components/icons/ChevronDoubleLeftIcon';
+import Bars3Icon from './components/icons/Bars3Icon';
 
 // Services
 import * as geminiService from './services/geminiService';
@@ -99,7 +101,7 @@ const AppContent: React.FC = () => {
     autoBackupToFileEnabled: false,
   });
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [aiInsightModalContent, setAiInsightModalContent] = useState<AIInsight | null>(null);
 
 
@@ -1519,9 +1521,13 @@ const AppContent: React.FC = () => {
     icon: JSX.Element;
     label: string;
     hasIndicator?: boolean;
-  }> = ({ view, icon, label, hasIndicator }) => (
+    isMobile: boolean;
+  }> = ({ view, icon, label, hasIndicator, isMobile }) => (
     <li
-      onClick={() => setActiveView(view)}
+      onClick={() => {
+        setActiveView(view);
+        if (isMobile) setIsMobileSidebarOpen(false);
+      }}
       className={`flex items-center py-2.5 px-4 rounded-md cursor-pointer transition-colors group
                   ${activeView === view 
                     ? 'bg-primary dark:bg-primaryDark text-white shadow-lg' 
@@ -1529,13 +1535,16 @@ const AppContent: React.FC = () => {
                   }`}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveView(view); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
+          setActiveView(view);
+          if (isMobile) setIsMobileSidebarOpen(false);
+      }}}
       aria-label={`Navegar para ${label}`}
       aria-current={activeView === view ? 'page' : undefined}
     >
       {React.cloneElement(icon, { className: "w-5 h-5 mr-3 flex-shrink-0"})}
-      <span className={`flex-grow whitespace-nowrap ${isSidebarCollapsed ? 'opacity-0 hidden group-hover:block group-hover:opacity-100 group-hover:absolute group-hover:left-full group-hover:ml-2 group-hover:px-2 group-hover:py-1 group-hover:bg-slate-800 group-hover:rounded-md group-hover:text-white' : ''} transition-opacity`}>{label}</span>
-      {hasIndicator && !isSidebarCollapsed && <span className="w-2.5 h-2.5 bg-green-400 rounded-full ml-auto animate-pulse"></span>}
+      <span className={`flex-grow whitespace-nowrap transition-opacity`}>{label}</span>
+      {hasIndicator && <span className="w-2.5 h-2.5 bg-green-400 rounded-full ml-auto animate-pulse"></span>}
     </li>
   );
 
@@ -1642,25 +1651,55 @@ const AppContent: React.FC = () => {
     { view: 'AJUDE_PROJETO', icon: <HeartIcon className="text-red-500"/>, label: 'Ajude o Projeto' },
   ];
 
+  const viewLabels: Record<AppView, string> = {
+    DASHBOARD: 'Painel Geral',
+    CASH_FLOW: 'Fluxo de Caixa',
+    TRANSACTIONS: 'Transações',
+    ACCOUNTS: 'Contas',
+    CATEGORIES: 'Categorias',
+    CREDIT_CARDS: 'Cartões de Crédito',
+    MONEY_BOXES: 'Caixinhas',
+    FUTURE_PURCHASES: 'Compras Futuras',
+    TAGS: 'Tags',
+    RECURRING_TRANSACTIONS: 'Recorrências',
+    LOANS: 'Empréstimos',
+    DEBT_PLANNER: 'Planejador de Dívidas',
+    AI_COACH: 'AI Coach',
+    AJUDE_PROJETO: 'Ajude o Projeto',
+    LOGIN: 'Login'
+  };
+  
+  const activeViewLabel = viewLabels[activeView] || APP_NAME;
+
+
   return (
     <div className="flex h-screen bg-background dark:bg-backgroundDark">
-      <aside className={`bg-slate-50 dark:bg-slate-900 flex flex-col shadow-2xl fixed inset-y-0 left-0 z-40 transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}>
-        <div className={`p-4 border-b border-slate-200 dark:border-slate-700 transition-all duration-300 ${isSidebarCollapsed ? 'h-[148px]' : ''}`}>
-          <h1 className={`text-xl font-bold text-slate-900 dark:text-white transition-opacity ${isSidebarCollapsed ? 'opacity-0 h-0' : 'opacity-100'}`}>{APP_NAME}</h1>
+        {/* Mobile sidebar overlay */}
+        {isMobileSidebarOpen && (
+            <div 
+                className="fixed inset-0 z-30 bg-black/50 md:hidden" 
+                onClick={() => setIsMobileSidebarOpen(false)}
+                aria-hidden="true"
+            ></div>
+        )}
+
+      <aside className={`bg-slate-50 dark:bg-slate-900 flex flex-col shadow-2xl fixed inset-y-0 left-0 z-40 w-64 transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`p-4 border-b border-slate-200 dark:border-slate-700`}>
+          <h1 className={`text-xl font-bold text-slate-900 dark:text-white`}>{APP_NAME}</h1>
           {user && (
             <>
-              <div className={`mt-3 flex items-center space-x-3 ${isSidebarCollapsed ? 'flex-col space-x-0 space-y-2' : ''}`}>
+              <div className={`mt-3 flex items-center space-x-3`}>
                 {userAvatarUrl ? (
                   <img src={userAvatarUrl} alt="Avatar" className="w-10 h-10 rounded-full border-2 border-primary dark:border-primaryDark" />
                 ) : (
                   <UserCircleIcon className="w-10 h-10 text-slate-500 dark:text-slate-400" />
                 )}
-                <div className={isSidebarCollapsed ? 'hidden' : ''}>
+                <div>
                   <p className="text-sm font-semibold text-slate-800 dark:text-white truncate" title={activeUserDisplayName}>{activeUserDisplayName}</p>
                 </div>
               </div>
               <div 
-                className={`mt-2 flex items-center space-x-2 px-1 py-1.5 rounded-md cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${isSidebarCollapsed ? 'justify-center' : ''}`}
+                className={`mt-2 flex items-center space-x-2 px-1 py-1.5 rounded-md cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors`}
                 onClick={togglePrivacyMode}
                 role="button"
                 tabIndex={0}
@@ -1668,7 +1707,7 @@ const AppContent: React.FC = () => {
                 title={isPrivacyModeEnabled ? "Modo Privacidade Ativado" : "Modo Privacidade Desativado"}
               >
                 {isPrivacyModeEnabled ? <EyeSlashIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" /> : <EyeIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />}
-                <span className={`text-sm text-slate-600 dark:text-slate-300 ${isSidebarCollapsed ? 'hidden' : ''}`}>{isPrivacyModeEnabled ? 'Privado' : 'Normal'}</span>
+                <span className={`text-sm text-slate-600 dark:text-slate-300`}>{isPrivacyModeEnabled ? 'Privado' : 'Normal'}</span>
               </div>
             </>
           )}
@@ -1676,7 +1715,7 @@ const AppContent: React.FC = () => {
         <nav className="flex-grow p-3 space-y-1.5 overflow-y-auto">
           <ul>
             {sidebarItems.map(item => (
-              <SidebarItem key={item.view} {...item} />
+              <SidebarItem key={item.view} {...item} isMobile={true} />
             ))}
           </ul>
         </nav>
@@ -1685,38 +1724,42 @@ const AppContent: React.FC = () => {
            <Button 
                 variant="ghost" 
                 onClick={handleSignOut}
-                className={`w-full mt-2 !justify-start !px-3 !py-2 text-sm text-slate-600 dark:text-slate-300 hover:!bg-red-500 dark:hover:!bg-red-600 hover:!text-white dark:hover:!text-white ${isSidebarCollapsed ? '!justify-center' : ''}`}
+                className={`w-full mt-2 !justify-start !px-3 !py-2 text-sm text-slate-600 dark:text-slate-300 hover:!bg-red-500 dark:hover:!bg-red-600 hover:!text-white dark:hover:!text-white`}
             >
                 <PowerIcon className="w-5 h-5" />
-                <span className={isSidebarCollapsed ? 'hidden' : 'ml-2.5'}>Sair</span>
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="w-full mt-2 !justify-center !px-3 !py-2 text-sm text-slate-600 dark:text-slate-300 hover:!bg-slate-200 dark:hover:!bg-slate-700"
-              title={isSidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-            >
-                <ChevronDoubleLeftIcon className={`w-5 h-5 transition-transform duration-300 ${isSidebarCollapsed ? 'rotate-180' : ''}`} />
+                <span className={'ml-2.5'}>Sair</span>
             </Button>
         </div>
       </aside>
 
-      <main className={`flex-1 overflow-y-auto bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
-        {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} onFetchSavingOpportunities={handleFetchSavingOpportunities} safeToSpendToday={safeToSpendToday} onFetchSafeToSpendToday={handleFetchSafeToSpendToday} />}
-        {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}
-        {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'ACCOUNTS' && <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'CATEGORIES' && <CategoriesView categories={categories} transactions={transactions} aiConfig={aiConfig} onAddCategory={handleAddCategory} onUpdateCategory={handleUpdateCategory} onDeleteCategory={handleDeleteCategory} onSuggestBudget={handleSuggestBudgetForCategory} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'CREDIT_CARDS' && <CreditCardsView creditCards={creditCards} installmentPurchases={installmentPurchases} accounts={accounts} aiConfig={aiConfig} onAddCreditCard={handleAddCreditCard} onUpdateCreditCard={handleUpdateCreditCard} onDeleteCreditCard={handleDeleteCreditCard} onAddInstallmentPurchase={handleAddInstallmentPurchase} onUpdateInstallmentPurchase={handleUpdateInstallmentPurchase} onDeleteInstallmentPurchase={handleDeleteInstallmentPurchase} onMarkInstallmentPaid={handleMarkInstallmentPaid} onPayCreditCardBill={handlePayCreditCardBill} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'MONEY_BOXES' && <MoneyBoxesView moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions} accounts={accounts} onAddMoneyBox={handleAddMoneyBox} onUpdateMoneyBox={handleUpdateMoneyBox} onDeleteMoneyBox={handleDeleteMoneyBox} onAddMoneyBoxTransaction={handleAddMoneyBoxTransaction} onDeleteMoneyBoxTransaction={handleDeleteMoneyBoxTransaction} calculateMoneyBoxBalance={calculateMoneyBoxBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'FUTURE_PURCHASES' && <FuturePurchasesView futurePurchases={futurePurchases} onAddFuturePurchase={handleAddFuturePurchase} onUpdateFuturePurchase={handleUpdateFuturePurchase} onDeleteFuturePurchase={handleDeleteFuturePurchase} onAnalyzeFuturePurchase={handleAnalyzeFuturePurchase} onInitiateTransaction={handleInitiateTransactionFromFuturePurchase} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'TAGS' && <TagsView tags={tags} transactions={transactions} onAddTag={handleAddTag} onUpdateTag={handleUpdateTag} onDeleteTag={handleDeleteTag} />}
-        {activeView === 'RECURRING_TRANSACTIONS' && <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} creditCards={creditCards} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates}/>}
-        {activeView === 'LOANS' && <LoansView loans={loans} loanRepayments={loanRepayments} accounts={accounts} creditCards={creditCards} onAddLoan={handleAddLoan} onUpdateLoan={handleUpdateLoan} onDeleteLoan={handleDeleteLoan} onAddLoanRepayment={handleAddLoanRepayment} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'DEBT_PLANNER' && <DebtPlannerView debts={debts} debtPayments={debtPayments} accounts={accounts} onAddDebt={handleAddDebt} onUpdateDebt={handleUpdateDebt} onDeleteDebt={handleDeleteDebt} onAddDebtPayment={handleAddDebtPayment} onFetchDebtStrategyExplanation={handleFetchDebtStrategyExplanation} onFetchDebtProjectionSummary={handleFetchDebtProjectionSummary} isPrivacyModeEnabled={isPrivacyModeEnabled} onAnalyzeRate={handleFetchDebtRateAnalysis} onAnalyzeViability={handleFetchDebtViabilityAnalysis} isAIFeatureEnabled={aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available'} aiConfig={aiConfig} />}
-        {activeView === 'AI_COACH' && <AICoachView aiConfig={aiConfig} setAiConfig={updateAiConfig} insights={aiInsights} onUpdateInsight={handleUpdateAIInsight} isPrivacyModeEnabled={isPrivacyModeEnabled} onDeleteAllInsights={handleDeleteAllAIInsights}/>}
-        {activeView === 'AJUDE_PROJETO' && <AjudeProjetoView />}
-      </main>
+      <div className="md:ml-64 flex-1 flex flex-col w-full">
+         {/* Mobile Header */}
+        <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-surface/80 dark:bg-surfaceDark/80 backdrop-blur-sm border-b border-borderBase dark:border-borderBaseDark md:hidden">
+            <Button variant="ghost" size="sm" onClick={() => setIsMobileSidebarOpen(true)} className="!p-2">
+                <Bars3Icon className="w-6 h-6" />
+            </Button>
+            <h2 className="text-lg font-semibold">{activeViewLabel}</h2>
+            {/* Placeholder for potential right-side icons like a plus button */}
+            <div className="w-8"></div> 
+        </header>
+
+        <main className={`flex-1 overflow-y-auto bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark`}>
+            {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} onFetchSavingOpportunities={handleFetchSavingOpportunities} safeToSpendToday={safeToSpendToday} onFetchSafeToSpendToday={handleFetchSafeToSpendToday} />}
+            {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}
+            {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+            {activeView === 'ACCOUNTS' && <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+            {activeView === 'CATEGORIES' && <CategoriesView categories={categories} transactions={transactions} aiConfig={aiConfig} onAddCategory={handleAddCategory} onUpdateCategory={handleUpdateCategory} onDeleteCategory={handleDeleteCategory} onSuggestBudget={handleSuggestBudgetForCategory} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+            {activeView === 'CREDIT_CARDS' && <CreditCardsView creditCards={creditCards} installmentPurchases={installmentPurchases} accounts={accounts} aiConfig={aiConfig} onAddCreditCard={handleAddCreditCard} onUpdateCreditCard={handleUpdateCreditCard} onDeleteCreditCard={handleDeleteCreditCard} onAddInstallmentPurchase={handleAddInstallmentPurchase} onUpdateInstallmentPurchase={handleUpdateInstallmentPurchase} onDeleteInstallmentPurchase={handleDeleteInstallmentPurchase} onMarkInstallmentPaid={handleMarkInstallmentPaid} onPayCreditCardBill={handlePayCreditCardBill} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+            {activeView === 'MONEY_BOXES' && <MoneyBoxesView moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions} accounts={accounts} onAddMoneyBox={handleAddMoneyBox} onUpdateMoneyBox={handleUpdateMoneyBox} onDeleteMoneyBox={handleDeleteMoneyBox} onAddMoneyBoxTransaction={handleAddMoneyBoxTransaction} onDeleteMoneyBoxTransaction={handleDeleteMoneyBoxTransaction} calculateMoneyBoxBalance={calculateMoneyBoxBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+            {activeView === 'FUTURE_PURCHASES' && <FuturePurchasesView futurePurchases={futurePurchases} onAddFuturePurchase={handleAddFuturePurchase} onUpdateFuturePurchase={handleUpdateFuturePurchase} onDeleteFuturePurchase={handleDeleteFuturePurchase} onAnalyzeFuturePurchase={handleAnalyzeFuturePurchase} onInitiateTransaction={handleInitiateTransactionFromFuturePurchase} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+            {activeView === 'TAGS' && <TagsView tags={tags} transactions={transactions} onAddTag={handleAddTag} onUpdateTag={handleUpdateTag} onDeleteTag={handleDeleteTag} />}
+            {activeView === 'RECURRING_TRANSACTIONS' && <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} creditCards={creditCards} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates}/>}
+            {activeView === 'LOANS' && <LoansView loans={loans} loanRepayments={loanRepayments} accounts={accounts} creditCards={creditCards} onAddLoan={handleAddLoan} onUpdateLoan={handleUpdateLoan} onDeleteLoan={handleDeleteLoan} onAddLoanRepayment={handleAddLoanRepayment} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+            {activeView === 'DEBT_PLANNER' && <DebtPlannerView debts={debts} debtPayments={debtPayments} accounts={accounts} onAddDebt={handleAddDebt} onUpdateDebt={handleUpdateDebt} onDeleteDebt={handleDeleteDebt} onAddDebtPayment={handleAddDebtPayment} onFetchDebtStrategyExplanation={handleFetchDebtStrategyExplanation} onFetchDebtProjectionSummary={handleFetchDebtProjectionSummary} isPrivacyModeEnabled={isPrivacyModeEnabled} onAnalyzeRate={handleFetchDebtRateAnalysis} onAnalyzeViability={handleFetchDebtViabilityAnalysis} isAIFeatureEnabled={aiConfig.isEnabled && aiConfig.apiKeyStatus === 'available'} aiConfig={aiConfig} />}
+            {activeView === 'AI_COACH' && <AICoachView aiConfig={aiConfig} setAiConfig={updateAiConfig} insights={aiInsights} onUpdateInsight={handleUpdateAIInsight} isPrivacyModeEnabled={isPrivacyModeEnabled} onDeleteAllInsights={handleDeleteAllAIInsights}/>}
+            {activeView === 'AJUDE_PROJETO' && <AjudeProjetoView />}
+        </main>
+      </div>
 
       {isTransactionModalOpen && (
         <Modal isOpen={isTransactionModalOpen} onClose={() => { setIsTransactionModalOpen(false); setEditingTransaction(null);}} title={editingTransaction && 'id' in editingTransaction ? 'Editar Transação' : 'Nova Transação'} size="lg">
