@@ -140,7 +140,7 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 className="hidden"
-                accept="image/png, image/jpeg, image/jpg"
+                accept="image/png, image/jpeg, image/jpg, application/pdf, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
             />
             <Button onClick={handleImportClick} variant="secondary">
                 <DocumentArrowUpIcon className="w-5 h-5 mr-2" />

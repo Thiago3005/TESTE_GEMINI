@@ -39,7 +39,7 @@ const StatementImportModal: React.FC<StatementImportModalProps> = ({
   };
 
   const handleSelectAll = (select: boolean) => {
-    setReviewedTxs(prev => prev.map(tx => ({ ...tx, selected })));
+    setReviewedTxs(prev => prev.map(tx => ({ ...tx, selected: select })));
   };
 
   const handleFieldChange = (id: string, field: 'accountId' | 'categoryId', value: string) => {

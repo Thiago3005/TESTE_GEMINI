@@ -4,6 +4,8 @@
 
 
 
+
+
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
 import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis, DebtType, ExtractedTransaction } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
@@ -597,8 +599,8 @@ Exemplo de resposta JSON:
 };
 
 
-const constructPromptForStatementParsing = (): string => {
-  return `Você é um expert em extração de dados financeiros. Sua tarefa é analisar a imagem de um extrato bancário e extrair todas as transações individuais para um array JSON estruturado.
+const constructPromptForFileStatementParsing = (): string => {
+  return `Você é um expert em extração de dados financeiros. Sua tarefa é analisar o arquivo (imagem ou PDF) de um extrato bancário e extrair todas as transações individuais para um array JSON estruturado.
 
 Siga estas regras ESTRITAMENTE:
 1. Identifique cada linha de transação individual. Ignore sumários, cabeçalhos ou rodapés (ex: "Saldo anterior", "Total de entradas", "Saldo final do período", "EXTRATO DE CONTA CORRENTE", "Internet Banking", números de página, etc.). Foque apenas nas linhas que representam uma única movimentação financeira.
@@ -619,7 +621,28 @@ Exemplo do formato de saída esperado:
   {"date": "2025-06-30", "description": "PIX RECEBIDO Gilmara Aparecida Alves O", "amount": 195.29, "type": "INCOME"}
 ]
 
-Agora, analise a imagem fornecida e extraia as transações.`;
+Agora, analise o arquivo fornecido e extraia as transações.`;
+};
+
+const constructPromptForTextStatementParsing = (): string => {
+  return `Você é um expert em extração de dados financeiros. Sua tarefa é analisar o seguinte texto, que é o conteúdo de um extrato bancário (provavelmente em formato CSV ou de texto simples), e extrair todas as transações individuais para um array JSON estruturado.
+
+Siga estas regras ESTRITAMENTE:
+1. Identifique cada linha de transação individual. Ignore sumários, cabeçalhos ou rodapés. Foque apenas nas linhas que representam uma única movimentação financeira.
+2. Para cada transação, extraia os seguintes campos em um objeto JSON:
+    - "date": A data completa da transação. Converta para o formato "YYYY-MM-DD". Tente inferir o ano se não estiver presente (assuma o ano atual, se possível).
+    - "description": A descrição completa da transação.
+    - "amount": O valor da transação como um número positivo, usando um ponto (.) como separador decimal.
+    - "type": Determine se é "INCOME" (entrada) ou "EXPENSE" (saída), baseado no contexto das colunas, sinais (+/-) ou palavras-chave.
+3. A saída final DEVE ser apenas um array JSON válido. Não inclua nenhum outro texto, explicações ou markdown como \`\`\`json. Se nenhuma transação for encontrada, retorne um array vazio [].
+
+Exemplo do formato de saída esperado:
+[
+  {"date": "2025-06-30", "description": "PIX ENVIADO XODO DA TERRA LTDA", "amount": 10.00, "type": "EXPENSE"},
+  {"date": "2025-06-30", "description": "PIX RECEBIDO Gilmara Aparecida Alves O", "amount": 195.29, "type": "INCOME"}
+]
+
+Agora, analise o texto fornecido e extraia as transações.`;
 };
 
 
@@ -1223,8 +1246,8 @@ export const fetchDebtViabilityAnalysis = async (debt: Partial<Debt>, context: F
     }
 };
 
-export const parseTransactionsFromStatement = async (
-    imageBase64: string,
+export const parseTransactionsFromFile = async (
+    fileBase64: string,
     mimeType: string
 ): Promise<ExtractedTransaction[] | null> => {
     if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
@@ -1232,11 +1255,11 @@ export const parseTransactionsFromStatement = async (
         return null;
     }
 
-    const prompt = constructPromptForStatementParsing();
-    const imagePart = {
+    const prompt = constructPromptForFileStatementParsing();
+    const filePart = {
         inlineData: {
             mimeType: mimeType,
-            data: imageBase64,
+            data: fileBase64,
         },
     };
     const textPart = { text: prompt };
@@ -1244,7 +1267,7 @@ export const parseTransactionsFromStatement = async (
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: "gemini-2.5-flash-preview-04-17",
-            contents: { parts: [imagePart, textPart] },
+            contents: { parts: [filePart, textPart] },
             config: { responseMimeType: "application/json" },
         });
 
@@ -1262,7 +1285,42 @@ export const parseTransactionsFromStatement = async (
         }
         return null;
     } catch (error) {
-        console.error("Error parsing statement with Gemini:", error);
+        console.error("Error parsing file statement with Gemini:", error);
+        return null;
+    }
+};
+
+export const parseTransactionsFromText = async (
+    statementText: string
+): Promise<ExtractedTransaction[] | null> => {
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
+        console.warn("Gemini API not available for text parsing.");
+        return null;
+    }
+
+    const prompt = constructPromptForTextStatementParsing();
+    
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-04-17",
+            contents: `${prompt}\n\nAqui está o texto do extrato:\n\n${statementText}`,
+            config: { responseMimeType: "application/json" },
+        });
+
+        let jsonStr = response.text?.trim() || '[]';
+        const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+        const match = jsonStr.match(fenceRegex);
+        if (match && match[2]) {
+            jsonStr = match[2].trim();
+        }
+
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed)) {
+            return parsed as ExtractedTransaction[];
+        }
+        return null;
+    } catch (error) {
+        console.error("Error parsing text statement with Gemini:", error);
         return null;
     }
 };

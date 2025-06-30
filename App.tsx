@@ -5,10 +5,12 @@
 
 
 
+
 import React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef }from 'react';
 import { supabase } from './services/supabaseClient';
 import type { Session as SupabaseSession, User as SupabaseUser } from '@supabase/supabase-js';
+import * as XLSX from 'xlsx';
 
 import {
   Transaction, Account, Category, TransactionType, AppView, CreditCard, InstallmentPurchase,
@@ -1538,45 +1540,69 @@ const AppContent: React.FC = () => {
     setIsStatementModalOpen(true);
     setReviewedTransactions([]);
 
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = async () => {
-        const base64String = (reader.result as string).split(',')[1];
-        const extracted = await geminiService.parseTransactionsFromStatement(base64String, file.type);
-        
-        if (extracted) {
-          const defaultAccountId = accounts[0].id;
-          const reviewed: ReviewedTransaction[] = extracted.map(tx => {
-            // Simple category guessing
-            const lowerDesc = tx.description.toLowerCase();
-            const guessedCategory = categories.find(cat => cat.type === tx.type && lowerDesc.includes(cat.name.toLowerCase()));
-            
-            return {
-              ...tx,
-              id: generateClientSideId(),
-              selected: true,
-              accountId: defaultAccountId,
-              categoryId: guessedCategory?.id || '',
-            };
-          });
-          setReviewedTransactions(reviewed);
-          addToast(`${extracted.length} transações extraídas para revisão.`, 'info');
+    const processExtractedTxs = (extracted: ExtractedTransaction[] | null) => {
+        if (extracted && extracted.length > 0) {
+            const defaultAccountId = accounts[0].id;
+            const reviewed: ReviewedTransaction[] = extracted.map(tx => {
+                const lowerDesc = tx.description.toLowerCase();
+                const guessedCategory = categories.find(cat => cat.type === tx.type && lowerDesc.includes(cat.name.toLowerCase()));
+                
+                return {
+                    ...tx,
+                    id: generateClientSideId(),
+                    selected: true,
+                    accountId: defaultAccountId,
+                    categoryId: guessedCategory?.id || '',
+                };
+            });
+            setReviewedTransactions(reviewed);
+            addToast(`${extracted.length} transações extraídas para revisão.`, 'info');
         } else {
-          addToast("Não foi possível extrair transações do extrato. Tente uma imagem mais nítida ou um formato diferente.", 'error');
-          setIsStatementModalOpen(false);
+            addToast("Não foi possível extrair transações do documento. Tente um arquivo mais nítido ou com formato padrão.", 'error');
+            setIsStatementModalOpen(false);
         }
         setIsProcessingStatement(false);
-      };
-      reader.onerror = () => {
-        addToast("Erro ao ler o arquivo selecionado.", 'error');
+    };
+
+    const handleError = (message: string) => {
+        addToast(message, 'error');
         setIsProcessingStatement(false);
         setIsStatementModalOpen(false);
-      };
+    };
+
+    try {
+        if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async () => {
+                const base64String = (reader.result as string).split(',')[1];
+                const extracted = await geminiService.parseTransactionsFromFile(base64String, file.type);
+                processExtractedTxs(extracted);
+            };
+            reader.onerror = () => handleError("Erro ao ler o arquivo selecionado.");
+        } else if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.type === 'application/vnd.ms-excel') {
+            const reader = new FileReader();
+            reader.readAsArrayBuffer(file);
+            reader.onload = async (e) => {
+                const data = e.target?.result;
+                if (data) {
+                    const workbook = XLSX.read(data, { type: 'buffer' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const csvText = XLSX.utils.sheet_to_csv(worksheet);
+                    const extracted = await geminiService.parseTransactionsFromText(csvText);
+                    processExtractedTxs(extracted);
+                } else {
+                    handleError("Não foi possível ler o conteúdo do arquivo Excel.");
+                }
+            };
+            reader.onerror = () => handleError("Erro ao ler o arquivo Excel.");
+        } else {
+            handleError(`Tipo de arquivo não suportado: ${file.type}`);
+        }
     } catch(err) {
-       addToast("Ocorreu um erro inesperado durante a importação.", 'error');
-       setIsProcessingStatement(false);
-       setIsStatementModalOpen(false);
+       handleError("Ocorreu um erro inesperado durante a importação.");
+       console.error(err);
     }
   };
 
