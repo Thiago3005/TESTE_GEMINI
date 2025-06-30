@@ -9,8 +9,7 @@ import MoneyBoxHistoryModal from './MoneyBoxHistoryModal';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import { formatCurrency } from '../utils/helpers';
-import TrashIcon from './icons/TrashIcon';
-import ReallocateFundsModal from './ReallocateFundsModal';
+import TrashIcon from './icons/TrashIcon'; // Import TrashIcon
 
 
 interface MoneyBoxesViewProps {
@@ -19,12 +18,11 @@ interface MoneyBoxesViewProps {
   accounts: Account[];
   onAddMoneyBox: (moneyBox: Omit<MoneyBox, 'id'|'user_id'|'created_at'|'updated_at'>) => void;
   onUpdateMoneyBox: (moneyBox: MoneyBox) => void;
-  onDeleteMoneyBox: (moneyBoxId: string) => void; 
+  onDeleteMoneyBox: (moneyBoxId: string) => void; // New prop for deleting money box itself
   onAddMoneyBoxTransaction: (transaction: Omit<MoneyBoxTransaction, 'id'|'user_id'|'created_at'|'updated_at'|'linked_transaction_id'>, createLinkedTransaction: boolean, linkedAccountId?: string) => void;
   onDeleteMoneyBoxTransaction: (transactionId: string, linkedTransactionId?: string) => void;
   calculateMoneyBoxBalance: (moneyBoxId: string) => number;
   isPrivacyModeEnabled?: boolean;
-  onReallocateMoneyBoxFunds: (fromId: string, toId: string, amount: number) => void;
 }
 
 const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
@@ -33,12 +31,11 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
   accounts,
   onAddMoneyBox,
   onUpdateMoneyBox,
-  onDeleteMoneyBox,
+  onDeleteMoneyBox, // Use new prop
   onAddMoneyBoxTransaction,
   onDeleteMoneyBoxTransaction,
   calculateMoneyBoxBalance,
   isPrivacyModeEnabled,
-  onReallocateMoneyBoxFunds,
 }) => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingMoneyBox, setEditingMoneyBox] = useState<MoneyBox | null>(null);
@@ -49,8 +46,6 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
 
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [selectedMoneyBoxForHistory, setSelectedMoneyBoxForHistory] = useState<MoneyBox | null>(null);
-  
-  const [isReallocateModalOpen, setIsReallocateModalOpen] = useState(false);
 
 
   const openFormModalForNew = () => {
@@ -75,6 +70,7 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
   };
   
   const handleDeleteMoneyBoxClick = (moneyBoxId: string) => {
+    // Confirmation and actual deletion logic is handled by onDeletMoneyBox in App.tsx
     onDeleteMoneyBox(moneyBoxId);
   };
 
@@ -93,17 +89,10 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
             </p>
           )}
         </div>
-        <div className="flex gap-2">
-            {moneyBoxes.length > 1 && (
-                <Button onClick={() => setIsReallocateModalOpen(true)} variant="secondary" size="md">
-                    Realocar Fundos
-                </Button>
-            )}
-            <Button onClick={openFormModalForNew} variant="primary">
-            <PlusIcon className="w-5 h-5 mr-2" />
-            Nova Caixinha
-            </Button>
-        </div>
+        <Button onClick={openFormModalForNew} variant="primary">
+          <PlusIcon className="w-5 h-5 mr-2" />
+          Nova Caixinha
+        </Button>
       </div>
 
       {moneyBoxes.length > 0 ? (
@@ -114,7 +103,7 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
               moneyBox={mb}
               balance={calculateMoneyBoxBalance(mb.id)}
               onEdit={openFormModalForEdit}
-              onDelete={handleDeleteMoneyBoxClick}
+              onDelete={handleDeleteMoneyBoxClick} // Updated prop name
               onOpenTransactionModal={openTransactionModal}
               onOpenHistoryModal={openHistoryModal}
               isPrivacyModeEnabled={isPrivacyModeEnabled}
@@ -154,16 +143,6 @@ const MoneyBoxesView: React.FC<MoneyBoxesViewProps> = ({
           isPrivacyModeEnabled={isPrivacyModeEnabled}
         />
       )}
-       {isReallocateModalOpen && (
-        <ReallocateFundsModal 
-            isOpen={isReallocateModalOpen}
-            onClose={() => setIsReallocateModalOpen(false)}
-            moneyBoxes={moneyBoxes}
-            onConfirmReallocation={onReallocateMoneyBoxFunds}
-            calculateMoneyBoxBalance={calculateMoneyBoxBalance}
-            isPrivacyModeEnabled={isPrivacyModeEnabled}
-        />
-       )}
     </div>
   );
 };

@@ -1,4 +1,6 @@
 
+
+
 import React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef }from 'react';
 import { supabase } from './services/supabaseClient';
@@ -587,7 +589,7 @@ const AppContent: React.FC = () => {
     }, 0);
   }, [moneyBoxTransactions, user, activeUserProfile]);
   
-  const generateFinancialContext = useCallback((): FinancialContext | null => {
+  const generateFinancialContext = useCallback((simulatedTx?: SimulatedTransactionForProjection): FinancialContext | null => {
     if (!user || !activeUserProfile) return null;
     const currentDateObj = new Date();
     const currentDate = getISODateString(currentDateObj);
@@ -596,23 +598,35 @@ const AppContent: React.FC = () => {
     const currentMonth = currentDateObj.getMonth();
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
+    let effectiveTransactions = [...transactions];
+    if (simulatedTx) {
+        const tempSimulatedTx: Transaction = {
+            id: `simulated-${generateClientSideId()}`,
+            user_id: user.id,
+            profile_id: activeUserProfile.id, 
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            type: simulatedTx.type,
+            amount: simulatedTx.amount,
+            date: simulatedTx.date,
+            description: simulatedTx.description,
+            account_id: 'simulated_account', // Needs a valid account ID or handling for simulated accounts
+        };
+        effectiveTransactions.push(tempSimulatedTx);
+    }
+
     const getAppliedTheme = (): 'light' | 'dark' => {
       if (theme === 'system') {
         return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       }
       return theme;
     };
-    
-    const totalDebt = debts.filter(d => !d.is_archived).reduce((sum, debt) => sum + debt.current_balance, 0);
-    const monthlyDebtPayment = debts.filter(d => !d.is_archived && d.current_balance > 0).reduce((sum, debt) => sum + debt.minimum_payment, 0);
-
-
     return {
         currentDate, dayOfMonth, daysInMonth,
         accounts: accounts.map(a => ({ id: a.id, name: a.name })),
         accountBalances: accounts.map(a => ({ accountId: a.id, balance: calculateAccountBalance(a.id) })),
         categories: categories.map(c => ({ id: c.id, name: c.name, type: c.type, monthly_budget: c.monthly_budget })),
-        transactions,
+        transactions: effectiveTransactions,
         moneyBoxes: moneyBoxes.map(mb => ({ id: mb.id, name: mb.name, goal_amount: mb.goal_amount })),
         moneyBoxBalances: moneyBoxes.map(mb => ({ moneyBoxId: mb.id, balance: calculateMoneyBoxBalance(mb.id) })),
         loans: loans.map(l => ({ id: l.id, person_name: l.person_name, total_amount_to_reimburse: l.total_amount_to_reimburse })),
@@ -624,9 +638,8 @@ const AppContent: React.FC = () => {
         futurePurchases: futurePurchases.map(fp => ({id: fp.id, name: fp.name, estimated_cost: fp.estimated_cost, priority: fp.priority, status: fp.status })),
         theme: getAppliedTheme(),
         monthlyIncome: aiConfig.monthlyIncome,
-        debts,
-        total_debt: totalDebt,
-        monthly_debt_payment: monthlyDebtPayment,
+        simulatedTransactionData: simulatedTx,
+        debts: debts,
     };
   }, [user, activeUserProfile, accounts, transactions, categories, moneyBoxes, moneyBoxTransactions, loans, loanRepayments, recurringTransactions, futurePurchases, theme, aiConfig.monthlyIncome, debts, calculateAccountBalance, calculateMoneyBoxBalance]);
 
@@ -1038,46 +1051,6 @@ const AppContent: React.FC = () => {
         deleteRecord('money_box_transactions', id, setMoneyBoxTransactions);
       }
   };
-   const handleReallocateMoneyBoxFunds = async (fromMoneyBoxId: string, toMoneyBoxId: string, amount: number) => {
-    if (!user || !activeUserProfile || fromMoneyBoxId === toMoneyBoxId || amount <= 0) return;
-    const date = getISODateString();
-    
-    const fromMoneyBoxName = moneyBoxes.find(mb => mb.id === fromMoneyBoxId)?.name || 'Caixinha de Origem';
-    const toMoneyBoxName = moneyBoxes.find(mb => mb.id === toMoneyBoxId)?.name || 'Caixinha de Destino';
-
-    // 1. Withdrawal from source
-    const withdrawalData: Omit<MoneyBoxTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
-        money_box_id: fromMoneyBoxId,
-        type: MoneyBoxTransactionType.WITHDRAWAL,
-        amount,
-        date,
-        description: `Transferência para "${toMoneyBoxName}"`,
-    };
-    const withdrawalResult = await addOrUpdateRecord('money_box_transactions', withdrawalData, setMoneyBoxTransactions, (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    if (!withdrawalResult) {
-        addToast(`Falha ao retirar fundos de "${fromMoneyBoxName}". A operação foi cancelada.`, 'error');
-        return;
-    }
-
-    // 2. Deposit to destination
-    const depositData: Omit<MoneyBoxTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
-        money_box_id: toMoneyBoxId,
-        type: MoneyBoxTransactionType.DEPOSIT,
-        amount,
-        date,
-        description: `Transferência de "${fromMoneyBoxName}"`,
-    };
-    const depositResult = await addOrUpdateRecord('money_box_transactions', depositData, setMoneyBoxTransactions, (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    if (!depositResult) {
-        addToast(`Falha ao depositar fundos em "${toMoneyBoxName}". A retirada foi feita mas o depósito falhou. Verifique os saldos.`, 'error');
-        // Ideally, we'd have a transaction rollback here, but for simplicity, we'll just error.
-        return;
-    }
-    
-    addToast(`${formatCurrency(amount)} transferido de "${fromMoneyBoxName}" para "${toMoneyBoxName}" com sucesso!`, 'success');
-  };
   
   // Tag Handlers
   const handleAddTag = (data: Omit<Tag, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>) => addOrUpdateRecord('tags', data, setTags, (a: Tag,b: Tag) => a.name.localeCompare(b.name));
@@ -1222,34 +1195,6 @@ const AppContent: React.FC = () => {
         if (insight) handleAddAIInsight(insight);
     }
   };
-  
-  const handleFetchAccountBalanceInsight = useCallback(async () => {
-    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
-    const context = generateFinancialContext();
-    if (context) {
-        const insight = await geminiService.fetchAccountBalanceInsight(context);
-        if (insight) handleAddAIInsight(insight);
-    }
-  }, [aiConfig.isEnabled, aiConfig.apiKeyStatus, generateFinancialContext]);
-  
-  const handleFetchMoneyBoxSuggestion = useCallback(async () => {
-    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
-    const context = generateFinancialContext();
-    if (context) {
-        const insight = await geminiService.fetchMoneyBoxSuggestion(context);
-        if (insight) handleAddAIInsight(insight);
-    }
-  }, [aiConfig.isEnabled, aiConfig.apiKeyStatus, generateFinancialContext]);
-
-  const handleFetchNetWorthConcentrationAlert = useCallback(async () => {
-    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
-    const context = generateFinancialContext();
-    if (context) {
-        const insight = await geminiService.fetchNetWorthConcentrationAlert(context);
-        if (insight) handleAddAIInsight(insight);
-    }
-  }, [aiConfig.isEnabled, aiConfig.apiKeyStatus, generateFinancialContext]);
-
 
   const handleGenerateCommentForTransaction = async (transaction: Transaction) => {
     if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') return;
@@ -1341,13 +1286,10 @@ const AppContent: React.FC = () => {
         addToast("AI Coach desativado ou API Key não configurada.", 'warning');
         return;
     }
-    let context = generateFinancialContext();
+    let context = generateFinancialContext(simulatedTransaction);
     if (!context) {
         addToast("Não foi possível gerar contexto financeiro para a projeção.", 'error');
         return;
-    }
-     if (simulatedTransaction) {
-        context.simulatedTransactionData = simulatedTransaction;
     }
     
     const insightData = await geminiService.fetchCashFlowProjectionInsight(context, projectionPeriodDays);
@@ -1580,7 +1522,7 @@ const AppContent: React.FC = () => {
   }> = ({ view, icon, label, hasIndicator }) => (
     <li
       onClick={() => setActiveView(view)}
-      className={`flex items-center py-2.5 px-4 rounded-md cursor-pointer transition-colors group relative
+      className={`flex items-center py-2.5 px-4 rounded-md cursor-pointer transition-colors group
                   ${activeView === view 
                     ? 'bg-primary dark:bg-primaryDark text-white shadow-lg' 
                     : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-100'
@@ -1592,7 +1534,7 @@ const AppContent: React.FC = () => {
       aria-current={activeView === view ? 'page' : undefined}
     >
       {React.cloneElement(icon, { className: "w-5 h-5 mr-3 flex-shrink-0"})}
-      <span className={`flex-grow whitespace-nowrap transition-opacity duration-200 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>{label}</span>
+      <span className={`flex-grow whitespace-nowrap ${isSidebarCollapsed ? 'opacity-0 hidden group-hover:block group-hover:opacity-100 group-hover:absolute group-hover:left-full group-hover:ml-2 group-hover:px-2 group-hover:py-1 group-hover:bg-slate-800 group-hover:rounded-md group-hover:text-white' : ''} transition-opacity`}>{label}</span>
       {hasIndicator && !isSidebarCollapsed && <span className="w-2.5 h-2.5 bg-green-400 rounded-full ml-auto animate-pulse"></span>}
     </li>
   );
@@ -1760,13 +1702,13 @@ const AppContent: React.FC = () => {
       </aside>
 
       <main className={`flex-1 overflow-y-auto bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
-        {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} onFetchSavingOpportunities={handleFetchSavingOpportunities} safeToSpendToday={safeToSpendToday} onFetchSafeToSpendToday={handleFetchSafeToSpendToday} onFetchAccountBalanceInsight={handleFetchAccountBalanceInsight} onFetchMoneyBoxSuggestion={handleFetchMoneyBoxSuggestion} onFetchNetWorthConcentrationAlert={handleFetchNetWorthConcentrationAlert} onReallocateMoneyBoxFunds={handleReallocateMoneyBoxFunds} />}
+        {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} onFetchSavingOpportunities={handleFetchSavingOpportunities} safeToSpendToday={safeToSpendToday} onFetchSafeToSpendToday={handleFetchSafeToSpendToday} />}
         {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}
         {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'ACCOUNTS' && <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'CATEGORIES' && <CategoriesView categories={categories} transactions={transactions} aiConfig={aiConfig} onAddCategory={handleAddCategory} onUpdateCategory={handleUpdateCategory} onDeleteCategory={handleDeleteCategory} onSuggestBudget={handleSuggestBudgetForCategory} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'CREDIT_CARDS' && <CreditCardsView creditCards={creditCards} installmentPurchases={installmentPurchases} accounts={accounts} aiConfig={aiConfig} onAddCreditCard={handleAddCreditCard} onUpdateCreditCard={handleUpdateCreditCard} onDeleteCreditCard={handleDeleteCreditCard} onAddInstallmentPurchase={handleAddInstallmentPurchase} onUpdateInstallmentPurchase={handleUpdateInstallmentPurchase} onDeleteInstallmentPurchase={handleDeleteInstallmentPurchase} onMarkInstallmentPaid={handleMarkInstallmentPaid} onPayCreditCardBill={handlePayCreditCardBill} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-        {activeView === 'MONEY_BOXES' && <MoneyBoxesView moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions} accounts={accounts} onAddMoneyBox={handleAddMoneyBox} onUpdateMoneyBox={handleUpdateMoneyBox} onDeleteMoneyBox={handleDeleteMoneyBox} onAddMoneyBoxTransaction={handleAddMoneyBoxTransaction} onDeleteMoneyBoxTransaction={handleDeleteMoneyBoxTransaction} calculateMoneyBoxBalance={calculateMoneyBoxBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} onReallocateMoneyBoxFunds={handleReallocateMoneyBoxFunds}/>}
+        {activeView === 'MONEY_BOXES' && <MoneyBoxesView moneyBoxes={moneyBoxes} moneyBoxTransactions={moneyBoxTransactions} accounts={accounts} onAddMoneyBox={handleAddMoneyBox} onUpdateMoneyBox={handleUpdateMoneyBox} onDeleteMoneyBox={handleDeleteMoneyBox} onAddMoneyBoxTransaction={handleAddMoneyBoxTransaction} onDeleteMoneyBoxTransaction={handleDeleteMoneyBoxTransaction} calculateMoneyBoxBalance={calculateMoneyBoxBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'FUTURE_PURCHASES' && <FuturePurchasesView futurePurchases={futurePurchases} onAddFuturePurchase={handleAddFuturePurchase} onUpdateFuturePurchase={handleUpdateFuturePurchase} onDeleteFuturePurchase={handleDeleteFuturePurchase} onAnalyzeFuturePurchase={handleAnalyzeFuturePurchase} onInitiateTransaction={handleInitiateTransactionFromFuturePurchase} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
         {activeView === 'TAGS' && <TagsView tags={tags} transactions={transactions} onAddTag={handleAddTag} onUpdateTag={handleUpdateTag} onDeleteTag={handleDeleteTag} />}
         {activeView === 'RECURRING_TRANSACTIONS' && <RecurringTransactionsView recurringTransactions={recurringTransactions} accounts={accounts} creditCards={creditCards} categories={categories} onAddRecurringTransaction={handleAddRecurringTransaction} onUpdateRecurringTransaction={handleUpdateRecurringTransaction} onDeleteRecurringTransaction={handleDeleteRecurringTransaction} onProcessRecurringTransactions={handleProcessRecurringTransactions} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchRecurringPaymentCandidates={handleFetchRecurringPaymentCandidates}/>}

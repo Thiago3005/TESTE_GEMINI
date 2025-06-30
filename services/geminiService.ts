@@ -1,4 +1,7 @@
 
+
+
+
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
 import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis, DebtType } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
@@ -44,10 +47,8 @@ export interface FinancialContext {
   futurePurchases?: Pick<FuturePurchase, 'id' | 'name' | 'estimated_cost' | 'priority' | 'status'>[];
   theme?: 'light' | 'dark';
   monthlyIncome?: number | null; 
-  simulatedTransactionData?: SimulatedTransactionData;
-  debts?: Debt[];
-  total_debt: number;
-  monthly_debt_payment: number;
+  simulatedTransactionData?: SimulatedTransactionData; // Added for cash flow projection
+  debts?: Debt[]; // Added for debt strategy/projection context
 }
 
 const constructPromptForGeneralAdvice = (context: FinancialContext): string => {
@@ -594,82 +595,6 @@ Exemplo de resposta JSON:
 };
 
 
-const constructPromptForAccountBalanceInsight = (context: FinancialContext): string => {
-  const endDate = new Date(context.currentDate);
-  endDate.setDate(endDate.getDate() + 7);
-  const endDateStr = getISODateString(endDate);
-
-  const upcomingTransactions = context.recurringTransactions
-    ?.filter(rt => new Date(rt.next_due_date) <= endDate)
-    .sort((a, b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime())
-    .map(rt => `- ${rt.type === 'INCOME' ? 'Receita' : 'Despesa'} de ${formatCurrency(rt.amount)} (${rt.description}) em ${formatDate(rt.next_due_date)}`)
-    .join('\n');
-
-  return `Você é um assistente financeiro. Analise o saldo e as próximas transações.
-  Saldo total atual nas contas: ${formatCurrency(context.accountBalances.reduce((sum, acc) => sum + acc.balance, 0))}
-  Próximas transações recorrentes nos próximos 7 dias:
-  ${upcomingTransactions || 'Nenhuma transação recorrente nos próximos 7 dias.'}
-  
-  Forneça uma observação concisa (1-2 frases) sobre o fluxo de caixa de curto prazo.
-  Ex: "Seu saldo parece estável. Fique atento à despesa de 'Aluguel' no dia 25."
-  ou "Você tem uma receita de 'Salário' chegando, o que deve aumentar sua liquidez."
-  Se não houver nada notável, diga algo neutro como "Seu fluxo de caixa para a próxima semana parece estável."
-  Não use markdown. Responda apenas com a observação.
-  Observação:`;
-};
-
-const constructPromptForMoneyBoxSuggestion = (context: FinancialContext): string => {
-  const totalBalance = context.accountBalances.reduce((sum, acc) => sum + acc.balance, 0);
-  const moneyBoxesDetails = context.moneyBoxBalances
-    ?.map(mbb => {
-      const mb = context.moneyBoxes?.find(m => m.id === mbb.moneyBoxId);
-      if (!mb) return null;
-      const progress = mb.goal_amount ? ((mbb.balance / mb.goal_amount) * 100).toFixed(0) : 'N/A';
-      return `- "${mb.name}": ${formatCurrency(mbb.balance)} de ${formatCurrency(mb.goal_amount || 0)} (${progress}%)`;
-    })
-    .filter(Boolean)
-    .join('\n');
-
-  return `Você é um coach financeiro. Analise a situação das metas de economia do usuário.
-  Saldo total disponível nas contas: ${formatCurrency(totalBalance)}.
-  Progresso das Caixinhas (Metas):
-  ${moneyBoxesDetails || 'Nenhuma caixinha configurada.'}
-  
-  Identifique a meta que está mais atrasada ou uma oportunidade de contribuição.
-  Sugira uma ação específica e encorajadora (1 frase).
-  Ex: "Que tal transferir ${formatCurrency(50)} do seu saldo para a meta 'Viagem' para acelerar seu progresso?"
-  ou "Você está perto de atingir sua meta 'Reserva'! Continue assim."
-  Se o saldo em conta for baixo, sugira cautela.
-  Não use markdown. Responda apenas com a sugestão.
-  Sugestão:`;
-};
-
-const constructPromptForNetWorthConcentrationAlert = (context: FinancialContext): string => {
-    const totalBalance = context.accountBalances.reduce((sum, acc) => sum + acc.balance, 0);
-    const totalSavings = context.moneyBoxBalances?.reduce((sum, mb) => sum + mb.balance, 0) || 0;
-    const totalReceivables = context.outstandingLoanBalances?.reduce((sum, l) => sum + l.outstanding, 0) || 0;
-    const totalAssets = totalBalance + totalSavings + totalReceivables;
-
-    if (totalAssets <= 0) {
-        return "Seu patrimônio líquido está negativo. Foque em quitar dívidas e construir uma base de ativos. NORMAL";
-    }
-
-    const balancePercentage = (totalBalance / totalAssets * 100).toFixed(0);
-    const savingsPercentage = (totalSavings / totalAssets * 100).toFixed(0);
-    const receivablesPercentage = (totalReceivables / totalAssets * 100).toFixed(0);
-
-    return `Você é um analista de risco financeiro. Analise a composição do patrimônio do usuário.
-    Composição dos Ativos:
-    - Saldo em Contas (liquidez alta): ${balancePercentage}%
-    - Caixinhas/Metas (liquidez média): ${savingsPercentage}%
-    - Empréstimos a Receber (liquidez baixa): ${receivablesPercentage}%
-    
-    Analise se há uma concentração de risco. Por exemplo, se mais de 70% do patrimônio está em "Empréstimos a Receber", isso representa um risco de liquidez.
-    Se houver um risco claro de concentração, forneça um alerta curto (1 frase).
-    Ex: "Alerta: Seu patrimônio está muito concentrado em valores a receber. Considere aumentar sua liquidez em contas ou caixinhas."
-    Se a distribuição parecer saudável (ex: boa parte em contas/caixinhas), responda APENAS com a palavra "NORMAL".
-    Alerta:`;
-};
 
 
 const safeGenerateContent = async (
@@ -1270,46 +1195,4 @@ export const fetchDebtViabilityAnalysis = async (debt: Partial<Debt>, context: F
         console.error("Error fetching debt viability analysis:", error);
         return null;
     }
-};
-
-export const fetchAccountBalanceInsight = async (context: FinancialContext): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-    const prompt = constructPromptForAccountBalanceInsight(context);
-    const content = await safeGenerateContent(prompt, 'account_balance_insight');
-    if (content) {
-        return {
-            timestamp: new Date().toISOString(),
-            type: 'account_balance_insight',
-            content: content,
-            is_read: false,
-        };
-    }
-    return null;
-};
-
-export const fetchMoneyBoxSuggestion = async (context: FinancialContext): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-    const prompt = constructPromptForMoneyBoxSuggestion(context);
-    const content = await safeGenerateContent(prompt, 'money_box_suggestion');
-    if (content) {
-        return {
-            timestamp: new Date().toISOString(),
-            type: 'money_box_suggestion',
-            content: content,
-            is_read: false,
-        };
-    }
-    return null;
-};
-
-export const fetchNetWorthConcentrationAlert = async (context: FinancialContext): Promise<Omit<AIInsight, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> | null> => {
-    const prompt = constructPromptForNetWorthConcentrationAlert(context);
-    const content = await safeGenerateContent(prompt, 'net_worth_concentration_alert');
-    if (content) {
-        return {
-            timestamp: new Date().toISOString(),
-            type: 'net_worth_concentration_alert',
-            content: content,
-            is_read: false,
-        };
-    }
-    return null;
 };

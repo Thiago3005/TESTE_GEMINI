@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ResponsiveContainer, LineChart, Line, Tooltip } from 'recharts';
 import { formatCurrency } from '../utils/helpers';
@@ -20,7 +21,7 @@ const CustomTooltip: React.FC<any> = ({ active, payload, label, isPrivacyModeEna
 };
 
 const SparkLineChart: React.FC<SparkLineChartProps> = ({ data, isPrivacyModeEnabled }) => {
-  const lineColor = (data[data.length - 1]?.balance ?? 0) >= (data[0]?.balance ?? 0) ? '#22c55e' : '#ef4444';
+  const lineCo lor = (data[data.length - 1]?.balance ?? 0) >= (data[0]?.balance ?? 0) ? '#22c55e' : '#ef4444';
 
   return (
     <ResponsiveContainer width="100%" height={50}>

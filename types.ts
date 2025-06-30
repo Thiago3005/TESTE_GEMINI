@@ -164,9 +164,6 @@ export type AIInsightType =
   | 'debt_analysis' // New insight type for storing debt analysis
   | 'debt_rate_analysis' // For specific rate analysis
   | 'debt_viability_analysis' // For specific viability analysis
-  | 'account_balance_insight' // For dashboard account card
-  | 'money_box_suggestion' // For dashboard money box card
-  | 'net_worth_concentration_alert' // For dashboard net worth card
   | 'error_message';
 
 export interface AIInsight extends SupabaseManaged {

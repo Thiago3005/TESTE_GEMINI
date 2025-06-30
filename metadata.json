@@ -1,4 +1,6 @@
 {
-  "name": "Empty",
-  "description": "An empty app"
+  "name": "Meu Financeiro Pessoal",
+  "description": "A personal finance management web application to track income, expenses, accounts, and categories with data visualization and management features.",
+  "requestFramePermissions": [],
+  "prompt": ""
 }
