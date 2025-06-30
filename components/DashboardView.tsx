@@ -1,6 +1,8 @@
 
 
 
+
+
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
 import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState } from '../types'; 
@@ -16,9 +18,11 @@ import BarChartIcon from './icons/BarChartIcon';
 import BillsAlerts from './BillsAlerts'; 
 import LightBulbIcon from './icons/LightBulbIcon';
 import SparklesIcon from './icons/SparklesIcon';
-import TrendingUpIcon from './icons/TrendingUpIcon'; // New Icon
+import TrendingUpIcon from './icons/TrendingUpIcon'; 
+import TrendingDownIcon from './icons/TrendingDownIcon';
 import ArrowPathIcon from './icons/ArrowPathIcon'; // For recalculate button
 import InfoTooltip from './InfoTooltip';
+import { LineChart, Line, BarChart, Bar, Tooltip as RechartsTooltip, YAxis, XAxis, ResponsiveContainer } from 'recharts';
 
 
 interface DashboardViewProps {
@@ -41,6 +45,19 @@ interface DashboardViewProps {
   safeToSpendToday: SafeToSpendTodayState; // New prop
   onFetchSafeToSpendToday: () => void; // New prop
 }
+
+const MiniChartTooltip = ({ active, payload, label, formatter, name }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-surface dark:bg-surfaceDark/90 p-2 border border-borderBase dark:border-borderBaseDark rounded shadow-lg text-xs backdrop-blur-sm">
+          <p className="font-semibold">{label}</p>
+          <p style={{ color: payload[0].color }}>{`${name}: ${formatter(payload[0].value)}`}</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
 
 const DashboardView: React.FC<DashboardViewProps> = ({ 
     transactions, accounts, categories, creditCards, installmentPurchases, moneyBoxes,
@@ -93,44 +110,86 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     return totalAccountBalance + totalMoneyBoxBalance + totalOutstandingLoanReceivables - totalOutstandingCreditCardDebt;
   }, [totalAccountBalance, totalMoneyBoxBalance, totalOutstandingLoanReceivables, totalOutstandingCreditCardDebt]);
 
-  const nextRecurringIncome = useMemo(() => {
+  const upcomingTransactions = useMemo(() => {
     const today = new Date();
+    const limitDate = new Date();
+    limitDate.setDate(today.getDate() + 7);
     today.setHours(0,0,0,0);
-    const upcomingIncomes = recurringTransactions
-        .filter(rt => rt.type === TransactionType.INCOME && new Date(rt.next_due_date + 'T00:00:00') >= today && !rt.is_paused)
-        .sort((a,b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
     
-    if (upcomingIncomes.length > 0) {
-        const nextIncome = upcomingIncomes[0];
-        const dueDate = new Date(nextIncome.next_due_date + 'T00:00:00');
-        const diffTime = Math.abs(dueDate.getTime() - today.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        const dayText = diffDays === 0 ? 'Hoje' : diffDays === 1 ? 'Amanhã' : `em ${diffDays} dias`;
-        return {
-            amount: nextIncome.amount,
-            text: `${dayText}`,
-        };
-    }
-    return null;
+    return recurringTransactions
+        .filter(rt => !rt.is_paused && new Date(rt.next_due_date + 'T00:00:00') >= today && new Date(rt.next_due_date + 'T00:00:00') <= limitDate)
+        .sort((a,b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
   }, [recurringTransactions]);
-  
-  const closestMoneyBoxGoal = useMemo(() => {
-    let closestGoal = null;
-    let minAmountRemaining = Infinity;
 
-    moneyBoxes.forEach(mb => {
-        if (mb.goal_amount && mb.goal_amount > 0) {
-            const balance = calculateMoneyBoxBalance(mb.id);
-            const remaining = mb.goal_amount - balance;
-            if (remaining > 0 && remaining < minAmountRemaining) {
-                minAmountRemaining = remaining;
-                closestGoal = { name: mb.name, remaining: remaining };
+  const balanceProjectionData = useMemo(() => {
+    let balance = totalAccountBalance;
+    const projection: { day: string, balance: number }[] = [{ day: 'Hoje', balance }];
+    
+    for (let i = 1; i <= 7; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() + i);
+        const dateStr = getISODateString(date);
+        
+        const txsOnThisDay = upcomingTransactions.filter(rt => rt.next_due_date === dateStr);
+        for (const tx of txsOnThisDay) {
+            if (tx.type === TransactionType.INCOME) {
+                balance += tx.amount;
+            } else { // EXPENSE, and TRANSFER is from an account so it's a debit
+                balance -= tx.amount;
             }
         }
+        projection.push({ day: `D+${i}`, balance });
+    }
+    return projection;
+  }, [totalAccountBalance, upcomingTransactions]);
+  
+  const moneyBoxChartData = useMemo(() => {
+    return moneyBoxes.map(mb => {
+        const balance = calculateMoneyBoxBalance(mb.id);
+        return {
+            name: mb.name.length > 5 ? mb.name.substring(0, 4) + '.' : mb.name,
+            fullName: mb.name,
+            balance: balance,
+        };
     });
-
-    return closestGoal;
   }, [moneyBoxes, calculateMoneyBoxBalance]);
+  
+  const netWorthCalculations = useMemo(() => {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0,0,0,0);
+    const startOfMonthStr = getISODateString(startOfMonth);
+    
+    const netFlowThisMonth = transactions
+        .filter(t => t.date >= startOfMonthStr)
+        .reduce((sum, t) => {
+            if (t.type === TransactionType.INCOME) return sum + t.amount;
+            if (t.type === TransactionType.EXPENSE) return sum - t.amount;
+            return sum;
+        }, 0);
+
+    const netWorthAtStartOfMonth = netWorth - netFlowThisMonth;
+    
+    let changePercentage = 0;
+    if (netWorthAtStartOfMonth !== 0 && netWorthAtStartOfMonth) { // check for NaN/null/undefined
+        changePercentage = ((netWorth - netWorthAtStartOfMonth) / Math.abs(netWorthAtStartOfMonth)) * 100;
+    } else if (netWorth > 0) {
+        changePercentage = 100;
+    }
+    
+    const totalAssets = totalAccountBalance + totalMoneyBoxBalance + totalOutstandingLoanReceivables;
+    let loanConcentration = 0;
+    if (totalAssets > 0) {
+        loanConcentration = (totalOutstandingLoanReceivables / totalAssets) * 100;
+    }
+    
+    return {
+        changePercentage,
+        showLiquidityAlert: loanConcentration > 80,
+        totalAssets,
+        totalLiabilities: totalOutstandingCreditCardDebt,
+    };
+  }, [netWorth, transactions, totalAccountBalance, totalMoneyBoxBalance, totalOutstandingLoanReceivables, totalOutstandingCreditCardDebt]);
 
 
   const recentTransactions = useMemo(() => {
@@ -242,49 +301,123 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           </p>
         </div>
 
-        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col">
           <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO EM CONTAS</h2>
           <p className={`text-3xl font-bold ${totalAccountBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
             {formatCurrency(totalAccountBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
-           {nextRecurringIncome && !isPrivacyModeEnabled && (
-                <p className="text-xs mt-1 text-green-600 dark:text-green-500">
-                    Próxima receita: +{formatCurrency(nextRecurringIncome.amount)} {nextRecurringIncome.text}
-                </p>
-           )}
+           {!isPrivacyModeEnabled && (
+                <div className="w-full h-16 mt-2 mb-1">
+                    <ResponsiveContainer>
+                        <LineChart data={balanceProjectionData} margin={{ top: 5, right: 5, bottom: 0, left: -35 }}>
+                            <RechartsTooltip content={<MiniChartTooltip formatter={(v:number) => formatCurrency(v)} name="Saldo"/>} />
+                            <Line type="monotone" dataKey="balance" stroke="#2563EB" strokeWidth={2} dot={false} />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
+            <h3 className="text-xs font-semibold text-textMuted dark:text-textMutedDark mt-2">PRÓXIMOS 7 DIAS</h3>
+            <ul className="space-y-1 text-xs mt-1 overflow-y-auto max-h-[70px] flex-grow">
+                {isPrivacyModeEnabled ? <li className="text-center">...</li> : upcomingTransactions.length > 0 ? (
+                upcomingTransactions.map(rt => (
+                    <li key={rt.id} className="flex justify-between items-center">
+                    <div className="flex items-center gap-1">
+                        {rt.type === TransactionType.INCOME ? <TrendingUpIcon className="w-3 h-3 text-green-500"/> : <TrendingDownIcon className="w-3 h-3 text-red-500"/>}
+                        <span className="truncate" title={rt.description}>{rt.description}</span>
+                    </div>
+                    <span className={`font-semibold ${rt.type === TransactionType.INCOME ? 'text-green-600' : 'text-red-600'}`}>
+                        ({formatDate(rt.next_due_date, 'pt-BR', {day: '2-digit', month: '2-digit'})}) {formatCurrency(rt.amount)}
+                    </span>
+                    </li>
+                ))
+                ) : (
+                <p className="text-xs text-textMuted/70 dark:text-textMutedDark/70">Nenhuma movimentação recorrente prevista.</p>
+                )}
+            </ul>
         </div>
-        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+        <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 flex flex-col">
           <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">SALDO CAIXINHAS</h2>
           <p className={`text-3xl font-bold ${totalMoneyBoxBalance >= 0 ? 'text-blue-500 dark:text-blue-400' : 'text-destructive dark:text-destructiveDark'}`}>
             {formatCurrency(totalMoneyBoxBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
-          {closestMoneyBoxGoal && !isPrivacyModeEnabled && (
-                <p className="text-xs mt-1 text-blue-600 dark:text-blue-500">
-                    Faltam {formatCurrency(closestMoneyBoxGoal.remaining)} para "{closestMoneyBoxGoal.name}"
-                </p>
-          )}
+            {!isPrivacyModeEnabled && moneyBoxChartData.length > 0 && (
+                <div className="w-full h-16 mt-2 mb-1">
+                    <ResponsiveContainer>
+                        <BarChart data={moneyBoxChartData} margin={{ top: 5, right: 5, bottom: 0, left: -35 }}>
+                            <RechartsTooltip content={<MiniChartTooltip formatter={(v:number) => formatCurrency(v)} name="Guardado" />} cursor={{fill: 'rgba(0,0,0,0.05)'}}/>
+                            <Bar dataKey="balance" fill="#3B82F6" radius={[2,2,0,0]}/>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
+            <h3 className="text-xs font-semibold text-textMuted dark:text-textMutedDark mt-2">METAS</h3>
+            <ul className="space-y-1 text-xs mt-1 overflow-y-auto max-h-[70px] flex-grow">
+            {isPrivacyModeEnabled ? <li className="text-center">...</li> : moneyBoxes.length > 0 ? (
+                moneyBoxes.map(mb => {
+                const balance = calculateMoneyBoxBalance(mb.id);
+                const progress = mb.goal_amount ? (balance / mb.goal_amount) * 100 : 0;
+                return (
+                    <li key={mb.id}>
+                    <div className="flex justify-between items-center">
+                        <span className="truncate" title={mb.name}>{mb.name}</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-500">
+                            {formatCurrency(balance)} {mb.goal_amount ? `(${(progress).toFixed(0)}%)` : ''}
+                        </span>
+                    </div>
+                    </li>
+                );
+                })
+            ) : (
+                <p className="text-xs text-textMuted/70 dark:text-textMutedDark/70">Nenhuma caixinha criada.</p>
+            )}
+            </ul>
         </div>
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
             <div className="flex items-center justify-between w-full mb-1">
                 <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">PATRIMÔNIO LÍQUIDO</h2>
                 <ScaleIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
             </div>
-            <p className={`text-3xl font-bold ${netWorth >= 0 ? 'text-primary dark:text-primaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
-                {formatCurrency(netWorth, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
-            </p>
-            {!isPrivacyModeEnabled && (
-                <div className="text-xs mt-1 space-y-0.5">
-                {totalOutstandingCreditCardDebt > 0 && (
-                    <p className="text-destructive/80 dark:text-destructiveDark/80">Dívida Cartões: {formatCurrency(totalOutstandingCreditCardDebt)}</p>
+            <div className="flex items-baseline space-x-2">
+                <p className={`text-3xl font-bold ${netWorth >= 0 ? 'text-primary dark:text-primaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
+                    {formatCurrency(netWorth, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+                </p>
+                {!isPrivacyModeEnabled && (
+                    <span className={`flex items-center text-sm font-bold ${netWorthCalculations.changePercentage >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {netWorthCalculations.changePercentage >= 0 ? <TrendingUpIcon className="w-4 h-4"/> : <TrendingDownIcon className="w-4 h-4"/>}
+                        {netWorthCalculations.changePercentage.toFixed(1)}%
+                    </span>
                 )}
-                {totalOutstandingLoanReceivables > 0 && (
-                    <p className="text-green-600/80 dark:text-green-500/80">Empréstimos a Receber: {formatCurrency(totalOutstandingLoanReceivables)}</p>
-                )}
+            </div>
+             <p className="text-xs text-textMuted/80 dark:text-textMutedDark/80">vs. início do mês</p>
+
+             <div className="text-xs mt-3 space-y-2">
+                <div>
+                    <h4 className="font-semibold text-green-600 dark:text-green-500 flex items-center gap-1"><TrendingUpIcon className="w-3 h-3"/>Ativos: {formatCurrency(netWorthCalculations.totalAssets, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</h4>
+                    {!isPrivacyModeEnabled && (
+                        <ul className="list-disc list-inside pl-3 text-textMuted dark:text-textMutedDark text-xs">
+                            <li>Contas: {formatCurrency(totalAccountBalance)}</li>
+                            <li>Caixinhas: {formatCurrency(totalMoneyBoxBalance)}</li>
+                            <li>A Receber: {formatCurrency(totalOutstandingLoanReceivables)}</li>
+                        </ul>
+                    )}
+                </div>
+                <div>
+                    <h4 className="font-semibold text-red-600 dark:text-red-500 flex items-center gap-1"><TrendingDownIcon className="w-3 h-3"/>Passivos: {formatCurrency(netWorthCalculations.totalLiabilities, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</h4>
+                     {!isPrivacyModeEnabled && (
+                        <ul className="list-disc list-inside pl-3 text-textMuted dark:text-textMutedDark text-xs">
+                            <li>Cartões: {formatCurrency(totalOutstandingCreditCardDebt)}</li>
+                        </ul>
+                    )}
+                </div>
+            </div>
+            {netWorthCalculations.showLiquidityAlert && !isPrivacyModeEnabled && (
+                <div className="mt-2 p-1.5 text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded-md text-center">
+                    <span className="font-bold">Alerta:</span> Patrimônio pouco líquido, muito concentrado em valores a receber.
                 </div>
             )}
         </div>
         
-        {/* This takes the 4th slot on large screens */}
+        {/* This takes the 4th slot on large screens, now we have more cards, this might break layout on some screens */}
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 md:col-span-2 lg:col-span-4">
             <div className="flex items-center w-full justify-between">
                  <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">A RECEBER (EMPRÉSTIMOS) ({outstandingLoans.length})</h2>
