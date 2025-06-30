@@ -2,6 +2,8 @@
 
 
 
+
+
 import React from 'react';
 import { useState, useEffect, ChangeEvent, useCallback } from 'react';
 import { Debt, DebtType, Account, DebtRateAnalysis, DebtViabilityAnalysis } from '../types';
@@ -35,7 +37,7 @@ interface DebtFormModalProps {
       createIncome: boolean,
       creditedAccountId?: string,
       rateAnalysis?: DebtRateAnalysis | null,
-      viabilityAnalysis?: DebtViabilityAnalysis | null,
+      viabilityAnalysis?: DebtViabilityAnalysis | null
   ) => void;
   onAnalyzeRate: (debt: Partial<Debt>) => Promise<DebtRateAnalysis | null>;
   onAnalyzeViability: (debt: Partial<Debt>) => Promise<DebtViabilityAnalysis | null>;
