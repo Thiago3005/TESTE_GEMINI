@@ -1,135 +1,152 @@
 
 import React from 'react'; 
-import { useState, useMemo, useCallback }from 'react'; 
-import { Transaction, Account, Category, TransactionType, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState } from '../types'; 
-import { formatCurrency, getISODateString, formatDate } from '../utils/helpers'; 
+import { useMemo } from 'react'; 
+import { Transaction, Account, Category, TransactionType, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState, InstallmentPurchase, CreditCard, Tag } from '../types'; 
+import { formatCurrency, getISODateString, formatDate, daysUntil } from '../utils/helpers'; 
 import PlusIcon from './icons/PlusIcon';
-import ScaleIcon from './icons/ScaleIcon'; 
-import UsersIcon from './icons/UsersIcon'; 
 import Button from './Button';
-import SparkLineChart from './SparkLineChart';
 import InfoTooltip from './InfoTooltip';
-import LightBulbIcon from './icons/LightBulbIcon';
-import SparklesIcon from './icons/SparklesIcon';
-import TrendingUpIcon from './icons/TrendingUpIcon';
 import ArrowPathIcon from './icons/ArrowPathIcon';
-import ReallocateFundsModal from './ReallocateFundsModal';
-import ArrowUpIcon from './icons/ArrowUpIcon';
-import ArrowDownIcon from './icons/ArrowDownIcon';
-import BanknotesIcon from './icons/BanknotesIcon';
-import PiggyBankIcon from './icons/PiggyBankIcon';
+import TransactionItem from './TransactionItem';
+
+// New Components for the dashboard
+import BillsAlerts from './BillsAlerts';
+import MonthlySummary from './MonthlySummary';
 
 
 interface DashboardViewProps {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
+  creditCards: CreditCard[];
+  installmentPurchases: InstallmentPurchase[];
   moneyBoxes: MoneyBox[]; 
   loans: Loan[]; 
   loanRepayments: LoanRepayment[]; 
   recurringTransactions: RecurringTransaction[]; 
+  tags: Tag[];
   onAddTransaction: () => void;
+  onEditTransaction: (transaction: Transaction) => void;
+  onDeleteTransaction: (transactionId: string) => void;
   calculateAccountBalance: (accountId: string) => number;
   calculateMoneyBoxBalance: (moneyBoxId: string) => number; 
   isPrivacyModeEnabled?: boolean; 
   safeToSpendToday: SafeToSpendTodayState;
   onFetchSafeToSpendToday: () => void;
-  onFetchAccountBalanceInsight: () => void;
-  onFetchMoneyBoxSuggestion: () => void;
-  onFetchNetWorthConcentrationAlert: () => void;
-  onReallocateMoneyBoxFunds: (fromId: string, toId: string, amount: number) => void;
 }
 
 const DashboardView: React.FC<DashboardViewProps> = ({ 
-    transactions, accounts, categories, moneyBoxes,
-    loans, loanRepayments, recurringTransactions, 
-    onAddTransaction, calculateAccountBalance, calculateMoneyBoxBalance,
+    transactions, accounts, categories, creditCards, installmentPurchases, moneyBoxes,
+    loans, loanRepayments, recurringTransactions, tags,
+    onAddTransaction, onEditTransaction, onDeleteTransaction, 
+    calculateAccountBalance, calculateMoneyBoxBalance,
     isPrivacyModeEnabled,
     safeToSpendToday, 
     onFetchSafeToSpendToday, 
-    onFetchAccountBalanceInsight,
-    onFetchMoneyBoxSuggestion,
-    onFetchNetWorthConcentrationAlert,
-    onReallocateMoneyBoxFunds
 }) => {
-  const [isReallocateModalOpen, setIsReallocateModalOpen] = useState(false);
-  const currentMonthYYYYMM = getISODateString(new Date()).substring(0, 7); 
-  const lastMonthDate = new Date();
-  lastMonthDate.setDate(0); // Go to last day of previous month
-  const lastMonthYYYYMM = getISODateString(lastMonthDate).substring(0, 7);
-
 
   // Memoized KPIs
   const totalAccountBalance = useMemo(() => accounts.reduce((sum, acc) => sum + calculateAccountBalance(acc.id), 0), [accounts, calculateAccountBalance]);
   const totalMoneyBoxBalance = useMemo(() => moneyBoxes.reduce((sum, mb) => sum + calculateMoneyBoxBalance(mb.id), 0), [moneyBoxes, calculateMoneyBoxBalance]);
-  const totalLoanReceivables = useMemo(() => loans.reduce((sum, loan) => sum + (loan.total_amount_to_reimburse - loanRepayments.filter(rp => rp.loan_id === loan.id).reduce((s, rp) => s + rp.amount_paid, 0)), 0), [loans, loanRepayments]);
   
-  const calculateNetWorth = useCallback((targetMonth?: string) => {
-    const targetTransactions = targetMonth ? transactions.filter(t => t.date.substring(0, 7) <= targetMonth) : transactions;
-    const initialAccountBalance = accounts.reduce((sum, acc) => sum + acc.initial_balance, 0);
+  const activeLoans = useMemo(() => loans.filter(loan => {
+      const totalPaid = loanRepayments.filter(rp => rp.loan_id === loan.id).reduce((s, rp) => s + rp.amount_paid, 0);
+      return totalPaid < loan.total_amount_to_reimburse;
+  }), [loans, loanRepayments]);
 
-    const balanceAtDate = targetTransactions.reduce((balance, tx) => {
-        if (tx.type === TransactionType.INCOME) return balance + tx.amount;
-        if (tx.type === TransactionType.EXPENSE) return balance - tx.amount;
-        return balance;
-    }, initialAccountBalance);
+  const totalLoanReceivables = useMemo(() => activeLoans.reduce((sum, loan) => sum + (loan.total_amount_to_reimburse - loanRepayments.filter(rp => rp.loan_id === loan.id).reduce((s, rp) => s + rp.amount_paid, 0)), 0), [activeLoans, loanRepayments]);
 
-    // This is a simplified net worth calculation for demonstration.
-    // A more accurate one would require historical snapshots of all asset/liability types.
-    return balanceAtDate + totalMoneyBoxBalance + totalLoanReceivables; // simplified for now
-  }, [transactions, accounts, totalMoneyBoxBalance, totalLoanReceivables]);
-
-  const currentNetWorth = useMemo(() => calculateNetWorth(), [calculateNetWorth]);
-  const lastMonthNetWorth = useMemo(() => calculateNetWorth(lastMonthYYYYMM), [calculateNetWorth, lastMonthYYYYMM]);
+  const totalCreditCardDebt = useMemo(() => {
+      return installmentPurchases.reduce((sum, p) => {
+        if (p.installments_paid >= p.number_of_installments) return sum;
+        const installmentValue = p.total_amount / p.number_of_installments;
+        const remainingInstallments = p.number_of_installments - p.installments_paid;
+        return sum + (installmentValue * remainingInstallments);
+      }, 0);
+  }, [installmentPurchases]);
   
-  const netWorthChange = useMemo(() => {
-    if (lastMonthNetWorth === 0) return currentNetWorth > 0 ? 100 : 0;
-    return ((currentNetWorth - lastMonthNetWorth) / Math.abs(lastMonthNetWorth)) * 100;
-  }, [currentNetWorth, lastMonthNetWorth]);
-
-
-  const upcomingTransactions = useMemo(() => {
-    const today = new Date();
-    const limitDate = new Date();
-    limitDate.setDate(today.getDate() + 7);
-    return recurringTransactions
-        .filter(rt => !rt.is_paused && new Date(rt.next_due_date) >= today && new Date(rt.next_due_date) <= limitDate)
+  const netWorth = useMemo(() => {
+      const totalAssets = totalAccountBalance + totalMoneyBoxBalance + totalLoanReceivables;
+      const totalLiabilities = totalCreditCardDebt; // Can be expanded with Debts module
+      return totalAssets - totalLiabilities;
+  }, [totalAccountBalance, totalMoneyBoxBalance, totalLoanReceivables, totalCreditCardDebt]);
+  
+  const nextUpcomingIncome = useMemo(() => {
+    const today = getISODateString();
+    const futureIncomes = recurringTransactions
+        .filter(rt => rt.type === TransactionType.INCOME && !rt.is_paused && rt.next_due_date >= today)
         .sort((a,b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
-  }, [recurringTransactions]);
-
-  const balanceForecast = useMemo(() => {
-    let forecast = [{ date: 'Hoje', balance: totalAccountBalance }];
-    let currentBalance = totalAccountBalance;
-    for (let i = 1; i <= 7; i++) {
-        const date = new Date();
-        date.setDate(date.getDate() + i);
-        const dateStr = getISODateString(date);
-        const dailyNet = upcomingTransactions
-            .filter(rt => rt.next_due_date === dateStr)
-            .reduce((sum, rt) => rt.type === TransactionType.INCOME ? sum + rt.amount : sum - rt.amount, 0);
-        currentBalance += dailyNet;
-        forecast.push({ date: formatDate(dateStr, 'pt-BR', { day: 'numeric', month: 'short'}), balance: currentBalance });
+    
+    if (futureIncomes.length > 0) {
+        const nextIncome = futureIncomes[0];
+        const days = daysUntil(nextIncome.next_due_date);
+        return { amount: nextIncome.amount, days: days };
     }
-    return forecast;
-  }, [totalAccountBalance, upcomingTransactions]);
+    return null;
+  }, [recurringTransactions]);
+  
+   const closestMoneyBoxGoal = useMemo(() => {
+    let closestGoal: { name: string, remaining: number } | null = null;
+    let minRemaining = Infinity;
 
-  const moneyBoxDetails = useMemo(() => {
-      return moneyBoxes.map(mb => {
-          const balance = calculateMoneyBoxBalance(mb.id);
-          let completionDate = 'N/A';
-          if (mb.goal_amount && balance < mb.goal_amount) {
-              const deposits = transactions.filter(t => t.description?.includes(mb.name) && t.type === TransactionType.EXPENSE); // Simplified
-              const avgMonthlyDeposit = deposits.reduce((sum, d) => sum + d.amount, 0) / (deposits.length || 1);
-              if (avgMonthlyDeposit > 0) {
-                  const monthsRemaining = (mb.goal_amount - balance) / avgMonthlyDeposit;
-                  const targetDate = new Date();
-                  targetDate.setMonth(targetDate.getMonth() + Math.ceil(monthsRemaining));
-                  completionDate = formatDate(getISODateString(targetDate), 'pt-BR', { month: 'long', year: 'numeric' });
-              }
-          }
-          return { ...mb, balance, completionDate };
-      });
-  }, [moneyBoxes, calculateMoneyBoxBalance, transactions]);
+    moneyBoxes.forEach(mb => {
+      if (mb.goal_amount && mb.goal_amount > 0) {
+        const balance = calculateMoneyBoxBalance(mb.id);
+        const remaining = mb.goal_amount - balance;
+        if (remaining > 0 && remaining < minRemaining) {
+          minRemaining = remaining;
+          closestGoal = { name: mb.name, remaining: remaining };
+        }
+      }
+    });
+
+    return closestGoal;
+  }, [moneyBoxes, calculateMoneyBoxBalance]);
+  
+  const budgetSummary = useMemo(() => {
+    const expenseCategoriesWithBudget = categories.filter(c => 
+        c.type === TransactionType.EXPENSE && 
+        c.monthly_budget && 
+        c.monthly_budget > 0
+    );
+
+    if (expenseCategoriesWithBudget.length === 0) return [];
+    
+    const currentMonthYYYYMM = getISODateString().substring(0, 7);
+    const currentMonthTransactions = transactions.filter(t => 
+        t.date.startsWith(currentMonthYYYYMM) && 
+        t.type === TransactionType.EXPENSE
+    );
+
+    return expenseCategoriesWithBudget.map(category => {
+        const spending = currentMonthTransactions
+            .filter(t => t.category_id === category.id)
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const budget = category.monthly_budget!;
+        const progress = budget > 0 ? Math.min((spending / budget) * 100, 100) : 0;
+        const isOverBudget = spending > budget;
+
+        return {
+            categoryId: category.id,
+            categoryName: category.name,
+            spending,
+            budget,
+            progress,
+            isOverBudget
+        };
+    }).sort((a, b) => (b.spending / b.budget) - (a.spending / a.budget)); // Sort by most spent %
+  }, [categories, transactions]);
+
+  const recentTransactions = useMemo(() => {
+      return [...transactions]
+          .sort((a, b) => {
+              const dateComparison = new Date(b.date).getTime() - new Date(a.date).getTime();
+              if (dateComparison !== 0) return dateComparison;
+              return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          })
+          .slice(0, 5);
+  }, [transactions]);
 
 
   return (
@@ -137,7 +154,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-textBase dark:text-textBaseDark">Painel Geral</h1>
-          <p className="text-textMuted dark:text-textMutedDark">Bem-vindo(a) de volta!</p>
+          <p className="text-textMuted dark:text-textMutedDark">Bem-vindo ao seu controle financeiro.</p>
         </div>
         <Button onClick={onAddTransaction} variant="primary" size="lg">
           <PlusIcon className="w-5 h-5 mr-2" />
@@ -145,122 +162,130 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         </Button>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Safe to Spend Card */}
+      {/* Top Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Safe to Spend */}
         <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-          <div className="flex items-center justify-between mb-2 gap-1">
-              <div className="flex items-center space-x-1.5">
-                  <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">GASTAR HOJE (IA)</h2>
-                  <InfoTooltip text="Sugestão de valor para gastos variáveis hoje, considerando seus saldos, despesas fixas futuras e orçamentos essenciais." />
-              </div>
-              <Button onClick={onFetchSafeToSpendToday} variant="ghost" size="sm" disabled={safeToSpendToday.isLoading} className="!text-xs !py-1 !px-2" title="Recalcular sugestão da IA">
-                  <ArrowPathIcon className={`w-3 h-3 mr-1 ${safeToSpendToday.isLoading ? 'animate-spin' : ''}`} />
-                  {safeToSpendToday.isLoading ? '...' : 'Recalcular'}
-              </Button>
+          <div className="flex items-center justify-between gap-1">
+            <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark flex items-center">
+              GASTAR HOJE (IA)
+              <InfoTooltip text="Sugestão de valor para gastos variáveis hoje, considerando seus saldos, despesas fixas futuras e orçamentos essenciais." />
+            </h2>
+            <Button onClick={onFetchSafeToSpendToday} variant="ghost" size="sm" disabled={safeToSpendToday.isLoading} className="!text-xs !py-0.5 !px-1.5" title="Recalcular sugestão da IA">
+              <ArrowPathIcon className={`w-3 h-3 mr-1 ${safeToSpendToday.isLoading ? 'animate-spin' : ''}`} /> Recalcular
+            </Button>
           </div>
-          <p className={`text-3xl font-bold text-center my-2 ${safeToSpendToday.safeAmount !== null && safeToSpendToday.safeAmount > 0 ? 'text-green-600 dark:text-green-500' : 'text-amber-500 dark:text-amber-400'}`}>
-              {safeToSpendToday.safeAmount !== null ? formatCurrency(safeToSpendToday.safeAmount, 'BRL', 'pt-BR', isPrivacyModeEnabled) : (isPrivacyModeEnabled ? formatCurrency(0,'BRL','pt-BR', true) : '---')}
+          <p className={`text-3xl font-bold ${safeToSpendToday.safeAmount && safeToSpendToday.safeAmount > 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {safeToSpendToday.safeAmount !== null ? formatCurrency(safeToSpendToday.safeAmount, 'BRL', 'pt-BR', isPrivacyModeEnabled) : (isPrivacyModeEnabled ? 'R$ ***' : 'R$ 0,00')}
           </p>
-          <p className="text-xs text-textMuted dark:text-textMutedDark text-center break-words min-h-[28px] leading-tight">
-              {safeToSpendToday.isLoading ? 'Calculando...' : safeToSpendToday.explanation}
+          <p className="text-xs text-textMuted dark:text-textMutedDark min-h-[42px]">
+            {safeToSpendToday.isLoading ? 'Calculando...' : safeToSpendToday.explanation || 'Sugestão da IA. Use com discernimento.'}
           </p>
         </div>
-        {/* Account Balance Card */}
-        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30 md:col-span-2 lg:col-span-3">
-            <div className="flex justify-between items-start">
-                <div className="flex items-center space-x-2">
-                    <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark uppercase">Saldo em Contas</h2>
-                    <InfoTooltip text="Soma de todas as suas contas correntes e poupança." />
-                </div>
-                 <Button onClick={onFetchAccountBalanceInsight} variant="ghost" size="sm" className="!p-1" title="Obter Insight da IA"><SparklesIcon className="w-4 h-4 text-teal-400"/></Button>
-            </div>
-            <p className={`text-3xl font-bold ${totalAccountBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
-                {formatCurrency(totalAccountBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
-            </p>
-             <div className="mt-2">
-                {!isPrivacyModeEnabled && <SparkLineChart data={balanceForecast} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
-                <ul className="text-xs mt-2 space-y-1">
-                {upcomingTransactions.slice(0, 2).map(rt => (
-                    <li key={rt.id} className={`flex justify-between items-center ${rt.type === 'INCOME' ? 'text-green-600 dark:text-green-500' : 'text-red-500 dark:text-red-400'}`}>
-                    <span>{rt.description} ({formatDate(rt.next_due_date, 'pt-BR', {day: '2-digit', month:'2-digit'})})</span>
-                    <span>{formatCurrency(rt.amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
-                    </li>
-                ))}
-                </ul>
-            </div>
+        {/* Account Balance */}
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+          <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">SALDO EM CONTAS</h2>
+          <p className={`text-3xl font-bold ${totalAccountBalance >= 0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
+            {formatCurrency(totalAccountBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </p>
+           <p className="text-xs text-textMuted dark:text-textMutedDark min-h-[42px]">
+            {nextUpcomingIncome ? `Próxima receita: +${formatCurrency(nextUpcomingIncome.amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)} em ${nextUpcomingIncome.days} dia(s)` : 'Nenhuma receita recorrente prevista.'}
+          </p>
+        </div>
+        {/* Money Boxes */}
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+          <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">SALDO CAIXINHAS</h2>
+          <p className="text-3xl font-bold text-primary dark:text-primaryDark">
+            {formatCurrency(totalMoneyBoxBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </p>
+           <p className="text-xs text-textMuted dark:text-textMutedDark min-h-[42px]">
+            {closestMoneyBoxGoal ? `Faltam ${formatCurrency(closestMoneyBoxGoal.remaining, 'BRL', 'pt-BR', isPrivacyModeEnabled)} para "${closestMoneyBoxGoal.name}"` : 'Nenhuma meta ativa.'}
+          </p>
+        </div>
+        {/* Net Worth */}
+        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+          <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">PATRIMÔNIO LÍQUIDO</h2>
+          <p className={`text-3xl font-bold ${netWorth >= 0 ? 'text-textBase dark:text-textBaseDark' : 'text-destructive dark:text-destructiveDark'}`}>
+            {formatCurrency(netWorth, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </p>
+           <div className="text-xs text-textMuted dark:text-textMutedDark min-h-[42px] space-y-0.5">
+            <p className="text-red-500">Dívida Cartões: {formatCurrency(totalCreditCardDebt, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+            <p className="text-green-500">Empréstimos a Receber: {formatCurrency(totalLoanReceivables, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Money Boxes Card */}
-        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30 md:col-span-2 lg:col-span-2">
-           <div className="flex justify-between items-start mb-2">
-                <div className="flex items-center space-x-2">
-                    <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark uppercase">Caixinhas (Metas)</h2>
-                    <InfoTooltip text="Suas metas de economia e o progresso de cada uma." />
-                </div>
-                 <div className="flex gap-2">
-                    <Button onClick={() => setIsReallocateModalOpen(true)} variant="ghost" size="sm" className="!p-1.5 !text-xs" title="Realocar fundos entre caixinhas">Realocar</Button>
-                    <Button onClick={onFetchMoneyBoxSuggestion} variant="ghost" size="sm" className="!p-1" title="Obter Sugestão da IA"><SparklesIcon className="w-4 h-4 text-teal-400"/></Button>
-                </div>
-            </div>
-            <div className="space-y-3">
-            {moneyBoxDetails.length > 0 ? moneyBoxDetails.map(mb => (
-                <div key={mb.id} className="text-sm">
-                    <div className="flex justify-between items-center">
-                        <span className="font-semibold text-textBase dark:text-textBaseDark flex items-center"><PiggyBankIcon className="w-4 h-4 mr-2" style={{color: mb.color}}/>{mb.name}</span>
-                        <span className="font-medium" style={{color: mb.color}}>{formatCurrency(mb.balance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
-                    </div>
-                    {mb.goal_amount && mb.goal_amount > 0 && (
-                        <>
-                         <div className="w-full progress-bar-bg rounded-full h-1.5 mt-1 dark:progress-bar-bg">
-                            <div className="h-1.5 rounded-full" style={{ width: `${Math.min(100, (mb.balance/mb.goal_amount)*100)}%`, backgroundColor: mb.color }}></div>
-                         </div>
-                         <div className="flex justify-between text-xs text-textMuted dark:text-textMutedDark mt-0.5">
-                            <span>Meta: {formatCurrency(mb.goal_amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
-                            <span>Prev: {mb.completionDate}</span>
-                         </div>
-                        </>
-                    )}
-                </div>
-            )) : <p className="text-xs text-textMuted dark:text-textMutedDark text-center py-4">Nenhuma caixinha criada.</p>}
-            </div>
-        </div>
-        {/* Net Worth Card */}
-        <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-           <div className="flex justify-between items-start mb-2">
-                <div className="flex items-center space-x-2">
-                    <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark uppercase">Patrimônio Líquido</h2>
-                    <InfoTooltip text="Seus ativos (o que você tem) menos seus passivos (o que você deve)." />
-                </div>
-                <Button onClick={onFetchNetWorthConcentrationAlert} variant="ghost" size="sm" className="!p-1" title="Obter Insight da IA"><SparklesIcon className="w-4 h-4 text-teal-400"/></Button>
-            </div>
-             <p className={`text-3xl font-bold ${currentNetWorth >= 0 ? 'text-primary dark:text-primaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
-                {formatCurrency(currentNetWorth, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
-            </p>
-            {lastMonthNetWorth !== 0 && (
-                 <div className={`flex items-center text-sm font-semibold ${netWorthChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                    {netWorthChange >= 0 ? <ArrowUpIcon className="w-4 h-4"/> : <ArrowDownIcon className="w-4 h-4"/>}
-                    <span>{Math.abs(netWorthChange).toFixed(1)}%</span>
-                    <span className="text-xs font-normal text-textMuted dark:text-textMutedDark ml-1">vs. mês passado</span>
-                </div>
-            )}
-            <div className="text-xs mt-2 space-y-2 pt-2 border-t border-borderBase/50 dark:border-borderBaseDark/50">
-                 <div className="flex justify-between"><span><BanknotesIcon className="w-3 h-3 inline mr-1"/>Ativos</span><span className="font-semibold">{formatCurrency(totalAccountBalance + totalMoneyBoxBalance + totalLoanReceivables, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span></div>
-                 <div className="flex justify-between text-destructive/80 dark:text-destructiveDark/80"><span><ScaleIcon className="w-3 h-3 inline mr-1"/>Passivos</span><span className="font-semibold">{formatCurrency(0, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span></div>
-            </div>
-        </div>
+      {/* Loan Receivables */}
+      <div className="bg-surface dark:bg-surfaceDark p-4 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+        <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark">A RECEBER (EMPRÉSTIMOS) ({activeLoans.length})</h2>
+        <p className="text-3xl font-bold text-green-500">
+            {formatCurrency(totalLoanReceivables, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+        </p>
       </div>
-       {isReallocateModalOpen && (
-        <ReallocateFundsModal 
-            isOpen={isReallocateModalOpen}
-            onClose={() => setIsReallocateModalOpen(false)}
-            moneyBoxes={moneyBoxes}
-            onConfirmReallocation={onReallocateMoneyBoxFunds}
-            calculateMoneyBoxBalance={calculateMoneyBoxBalance}
-            isPrivacyModeEnabled={isPrivacyModeEnabled}
-        />
-       )}
+
+      {/* Bills Alerts */}
+      <BillsAlerts 
+        recurringTransactions={recurringTransactions}
+        accounts={accounts}
+        categories={categories}
+        isPrivacyModeEnabled={isPrivacyModeEnabled}
+      />
+      
+      {/* Monthly Summary */}
+      <MonthlySummary
+        transactions={transactions}
+        categories={categories}
+        isPrivacyModeEnabled={isPrivacyModeEnabled}
+      />
+
+      {/* Budget Tracking */}
+      {budgetSummary.length > 0 && (
+        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+          <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Acompanhamento de Orçamento</h2>
+          <ul className="space-y-4">
+            {budgetSummary.map(item => (
+              <li key={item.categoryId}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="font-medium text-textBase dark:text-textBaseDark">{item.categoryName}</span>
+                  <span className={`font-semibold ${item.isOverBudget ? 'text-destructive dark:text-destructiveDark' : 'text-textMuted dark:text-textMutedDark'}`}>
+                    {formatCurrency(item.spending, 'BRL', 'pt-BR', isPrivacyModeEnabled)} / {formatCurrency(item.budget, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+                  </span>
+                </div>
+                <div className="w-full bg-neutral/10 dark:bg-neutralDark/20 rounded-full h-2.5">
+                  <div
+                    className={`h-2.5 rounded-full ${item.isOverBudget ? 'bg-destructive dark:bg-destructiveDark' : 'bg-primary dark:bg-primaryDark'}`}
+                    style={{ width: `${item.progress}%` }}
+                  ></div>
+                </div>
+                {item.isOverBudget && <p className="text-xs text-destructive dark:text-destructiveDark text-right mt-1">Orçamento excedido!</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Recent Transactions */}
+      {recentTransactions.length > 0 && (
+        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
+          <h2 className="text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Transações Recentes</h2>
+          <ul className="space-y-3">
+            {recentTransactions.map(tx => (
+              <TransactionItem
+                key={tx.id}
+                transaction={tx}
+                accounts={accounts}
+                categories={categories}
+                tags={tags}
+                installmentPurchases={installmentPurchases}
+                onEdit={() => onEditTransaction(tx)}
+                onDelete={() => onDeleteTransaction(tx.id)}
+                isPrivacyModeEnabled={isPrivacyModeEnabled}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+
     </div>
   );
 };
