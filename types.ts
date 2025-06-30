@@ -1,4 +1,5 @@
 
+
 import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 
 export { SupabaseUser, SupabaseSession };
@@ -366,4 +367,21 @@ export interface MoneyBoxRelatedTransactionData {
 
   // For updates, if applicable (simplified for now, main transaction edit won't auto-adjust MBT)
   id?: string; // id of the main transaction if updating
+}
+
+
+// Statement Import Types
+export interface ExtractedTransaction {
+  date: string; // YYYY-MM-DD
+  description: string;
+  amount: number;
+  type: TransactionType.INCOME | TransactionType.EXPENSE;
+}
+
+export interface ReviewedTransaction extends ExtractedTransaction {
+  id: string; // Client-side unique ID for the list key
+  selected: boolean;
+  accountId: string;
+  categoryId: string;
+  error?: string;
 }

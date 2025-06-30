@@ -3,6 +3,8 @@
 
 
 
+
+
 import React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef }from 'react';
 import { supabase } from './services/supabaseClient';
@@ -16,7 +18,8 @@ import {
   AIConfig, AIInsight, AIInsightType,
   FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile,
   Debt, DebtPayment, DebtStrategy, DebtProjection, AuthModalType,
-  MoneyBoxRelatedTransactionData, SimulatedTransactionForProjection, SafeToSpendTodayState, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis
+  MoneyBoxRelatedTransactionData, SimulatedTransactionForProjection, SafeToSpendTodayState, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis,
+  ExtractedTransaction, ReviewedTransaction
 } from './types';
 import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts, TRANSACTION_TYPE_OPTIONS } from './constants'; // Added TRANSACTION_TYPE_OPTIONS
 import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency, getEligibleInstallmentsForBillingCycle } from './utils/helpers';
@@ -49,6 +52,7 @@ import Button from './components/Button';
 import AuthModal from './components/AuthModal';
 import OnboardingWizard from './components/OnboardingWizard';
 import AIInsightModal from './components/AIInsightModal';
+import StatementImportModal from './components/StatementImportModal';
 
 
 // Icons
@@ -126,6 +130,11 @@ const AppContent: React.FC = () => {
   const [activeView, setActiveView] = useState<AppView>('DASHBOARD');
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | Partial<Transaction> | null>(null);
+
+  // Statement Import State
+  const [isStatementModalOpen, setIsStatementModalOpen] = useState(false);
+  const [isProcessingStatement, setIsProcessingStatement] = useState(false);
+  const [reviewedTransactions, setReviewedTransactions] = useState<ReviewedTransaction[]>([]);
 
   const [safeToSpendToday, setSafeToSpendToday] = useState<SafeToSpendTodayState>({
     safeAmount: null,
@@ -1514,6 +1523,86 @@ const AppContent: React.FC = () => {
       if (insight) handleAddAIInsight(insight);
   };
 
+  // Statement Import Handlers
+  const handleImportStatement = async (file: File) => {
+    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available') {
+      addToast("AI Coach precisa estar ativado para importar extratos.", 'warning');
+      return;
+    }
+    if (!accounts.length) {
+      addToast("Você precisa ter pelo menos uma conta cadastrada para importar transações.", "error");
+      return;
+    }
+    
+    setIsProcessingStatement(true);
+    setIsStatementModalOpen(true);
+    setReviewedTransactions([]);
+
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        const base64String = (reader.result as string).split(',')[1];
+        const extracted = await geminiService.parseTransactionsFromStatement(base64String, file.type);
+        
+        if (extracted) {
+          const defaultAccountId = accounts[0].id;
+          const reviewed: ReviewedTransaction[] = extracted.map(tx => {
+            // Simple category guessing
+            const lowerDesc = tx.description.toLowerCase();
+            const guessedCategory = categories.find(cat => cat.type === tx.type && lowerDesc.includes(cat.name.toLowerCase()));
+            
+            return {
+              ...tx,
+              id: generateClientSideId(),
+              selected: true,
+              accountId: defaultAccountId,
+              categoryId: guessedCategory?.id || '',
+            };
+          });
+          setReviewedTransactions(reviewed);
+          addToast(`${extracted.length} transações extraídas para revisão.`, 'info');
+        } else {
+          addToast("Não foi possível extrair transações do extrato. Tente uma imagem mais nítida ou um formato diferente.", 'error');
+          setIsStatementModalOpen(false);
+        }
+        setIsProcessingStatement(false);
+      };
+      reader.onerror = () => {
+        addToast("Erro ao ler o arquivo selecionado.", 'error');
+        setIsProcessingStatement(false);
+        setIsStatementModalOpen(false);
+      };
+    } catch(err) {
+       addToast("Ocorreu um erro inesperado durante a importação.", 'error');
+       setIsProcessingStatement(false);
+       setIsStatementModalOpen(false);
+    }
+  };
+
+  const handleConfirmStatementImport = async (transactionsToImport: ReviewedTransaction[]) => {
+      if (!user || !activeUserProfile) return;
+      
+      let successCount = 0;
+      for (const tx of transactionsToImport) {
+          const transactionData: Omit<Transaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'> = {
+              type: tx.type,
+              amount: tx.amount,
+              description: tx.description,
+              date: tx.date,
+              account_id: tx.accountId,
+              category_id: tx.categoryId || undefined,
+          };
+          const result = await addOrUpdateRecord('transactions', transactionData, setTransactions, (a,b)=> new Date(b.date).getTime() - new Date(a.date).getTime());
+          if (result) successCount++;
+      }
+      
+      addToast(`${successCount} de ${transactionsToImport.length} transações importadas com sucesso!`, 'success');
+      setIsStatementModalOpen(false);
+      setReviewedTransactions([]);
+  };
+
+
 
   // Helper for sidebar items
   const SidebarItem: React.FC<{
@@ -1746,7 +1835,7 @@ const AppContent: React.FC = () => {
         <main className={`flex-1 overflow-y-auto bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark`}>
             {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} onFetchSavingOpportunities={handleFetchSavingOpportunities} safeToSpendToday={safeToSpendToday} onFetchSafeToSpendToday={handleFetchSafeToSpendToday} />}
             {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}
-            {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
+            {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} onImportStatement={handleImportStatement} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
             {activeView === 'ACCOUNTS' && <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
             {activeView === 'CATEGORIES' && <CategoriesView categories={categories} transactions={transactions} aiConfig={aiConfig} onAddCategory={handleAddCategory} onUpdateCategory={handleUpdateCategory} onDeleteCategory={handleDeleteCategory} onSuggestBudget={handleSuggestBudgetForCategory} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
             {activeView === 'CREDIT_CARDS' && <CreditCardsView creditCards={creditCards} installmentPurchases={installmentPurchases} accounts={accounts} aiConfig={aiConfig} onAddCreditCard={handleAddCreditCard} onUpdateCreditCard={handleUpdateCreditCard} onDeleteCreditCard={handleDeleteCreditCard} onAddInstallmentPurchase={handleAddInstallmentPurchase} onUpdateInstallmentPurchase={handleUpdateInstallmentPurchase} onDeleteInstallmentPurchase={handleDeleteInstallmentPurchase} onMarkInstallmentPaid={handleMarkInstallmentPaid} onPayCreditCardBill={handlePayCreditCardBill} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
@@ -1798,6 +1887,15 @@ const AppContent: React.FC = () => {
           clearAuthError={() => setAuthError(null)}
         />
       )}
+      <StatementImportModal
+          isOpen={isStatementModalOpen}
+          onClose={() => setIsStatementModalOpen(false)}
+          transactions={reviewedTransactions}
+          accounts={accounts}
+          categories={categories}
+          onConfirm={handleConfirmStatementImport}
+          isLoading={isProcessingStatement}
+      />
     </div>
   );
 };

@@ -1,6 +1,7 @@
 
+
 import React from 'react'; 
-import { useState, useMemo, useCallback, ChangeEvent }from 'react'; 
+import { useState, useMemo, useCallback, ChangeEvent, useRef }from 'react'; 
 import { Transaction, Account, Category, TransactionType, Tag, InstallmentPurchase } from '../types';
 import { PERIOD_FILTER_OPTIONS, TRANSACTION_TYPE_OPTIONS } from '../constants';
 import { getISODateString } from '../utils/helpers';
@@ -9,6 +10,7 @@ import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
 import Select from './Select';
 import Input from './Input';
+import DocumentArrowUpIcon from './icons/DocumentArrowUpIcon';
 
 interface TransactionsViewProps {
   transactions: Transaction[];
@@ -19,6 +21,7 @@ interface TransactionsViewProps {
   onAddTransaction: () => void;
   onEditTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
+  onImportStatement: (file: File) => void;
   isLoading?: boolean; // New prop for loading state
   isPrivacyModeEnabled?: boolean; // New prop
 }
@@ -32,6 +35,7 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
   onAddTransaction,
   onEditTransaction,
   onDeleteTransaction,
+  onImportStatement,
   isLoading,
   isPrivacyModeEnabled,
 }) => {
@@ -42,11 +46,26 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [filterTags, setFilterTags] = useState<string[]>([]); 
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const accountOptions = [{ value: 'all', label: 'Todas as Contas' }, ...accounts.map(a => ({ value: a.id, label: a.name }))];
   const categoryOptions = [{ value: 'all', label: 'Todas as Categorias' }, ...categories.map(c => ({ value: c.id, label: c.name }))];
   const typeOptions = [{ value: 'all', label: 'Todos os Tipos' }, ...TRANSACTION_TYPE_OPTIONS];
   const tagOptions = tags.map(t => ({ value: t.id, label: t.name })); 
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      onImportStatement(file);
+      // Reset file input value to allow re-uploading the same file
+      event.target.value = '';
+    }
+  };
+
 
   const filteredTransactions = useMemo(() => {
     let items = [...transactions];
@@ -115,10 +134,23 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-2xl font-bold text-textBase dark:text-textBaseDark">Transações</h1>
-        <Button onClick={onAddTransaction} variant="primary">
-          <PlusIcon className="w-5 h-5 mr-2" />
-          Nova Transação
-        </Button>
+        <div className="flex items-center gap-2">
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                accept="image/png, image/jpeg, image/jpg"
+            />
+            <Button onClick={handleImportClick} variant="secondary">
+                <DocumentArrowUpIcon className="w-5 h-5 mr-2" />
+                Importar Extrato
+            </Button>
+            <Button onClick={onAddTransaction} variant="primary">
+                <PlusIcon className="w-5 h-5 mr-2" />
+                Nova Transação
+            </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-4 p-4 bg-surface dark:bg-surfaceDark rounded-lg shadow dark:shadow-neutralDark/30">

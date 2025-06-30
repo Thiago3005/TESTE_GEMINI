@@ -2,8 +2,10 @@
 
 
 
+
+
 import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
-import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis, DebtType } from '../types';
+import { Transaction, Account, Category, MoneyBox, Loan, RecurringTransaction, AIInsightType, AIInsight, TransactionType, FuturePurchase, FuturePurchaseStatus, CreditCard, BestPurchaseDayInfo, RecurringTransactionFrequency, Debt, DebtStrategy, DebtProjection, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis, DebtType, ExtractedTransaction } from '../types';
 import { generateId, getISODateString, formatCurrency, formatDate } from '../utils/helpers';
 
 const GEMINI_API_KEY_FROM_ENV = process.env.GEMINI_API_KEY;
@@ -595,6 +597,30 @@ Exemplo de resposta JSON:
 };
 
 
+const constructPromptForStatementParsing = (): string => {
+  return `Você é um expert em extração de dados financeiros. Sua tarefa é analisar a imagem de um extrato bancário e extrair todas as transações individuais para um array JSON estruturado.
+
+Siga estas regras ESTRITAMENTE:
+1. Identifique cada linha de transação individual. Ignore sumários, cabeçalhos ou rodapés (ex: "Saldo anterior", "Total de entradas", "Saldo final do período", "EXTRATO DE CONTA CORRENTE", "Internet Banking", números de página, etc.). Foque apenas nas linhas que representam uma única movimentação financeira.
+2. Para cada transação, extraia os seguintes campos em um objeto JSON:
+    - "date": A data completa da transação. Converta para o formato "YYYY-MM-DD". O ano é provavelmente 2025, baseado no contexto do documento. Para datas como "02 JUN 2025", o resultado deve ser "2025-06-02".
+    - "description": A descrição completa da transação da forma mais precisa possível.
+    - "amount": O valor da transação como um número positivo. Use um ponto (.) como separador decimal e remova quaisquer símbolos de moeda ou separadores de milhar. Por exemplo, "1.200,00" vira 1200.00 e "-10,00" vira 10.00.
+    - "type": Determine se é "INCOME" (entrada) ou "EXPENSE" (saída).
+        - Em extratos com colunas "Crédito" e "Débito", um valor em "Crédito (R$)" é "INCOME". Um valor em "Débito (R$)" ou com um sinal de menos na frente é "EXPENSE".
+        - Em extratos com seções "entradas" e "saídas", transações sob "entradas" são "INCOME" e sob "saídas" são "EXPENSE".
+        - Termos como "Transferência recebida", "PIX RECEBIDO", "Crédito em conta" indicam "INCOME".
+        - Termos como "Transferência enviada", "PIX ENVIADO", "Pagamento de fatura", "Compra no débito" indicam "EXPENSE".
+3. A saída final DEVE ser apenas um array JSON válido desses objetos de transação. Não inclua nenhum outro texto, explicações ou blocos de markdown como \`\`\`json. Se nenhuma transação for encontrada, retorne um array vazio [].
+
+Exemplo do formato de saída esperado:
+[
+  {"date": "2025-06-30", "description": "PIX ENVIADO XODO DA TERRA LTDA", "amount": 10.00, "type": "EXPENSE"},
+  {"date": "2025-06-30", "description": "PIX RECEBIDO Gilmara Aparecida Alves O", "amount": 195.29, "type": "INCOME"}
+]
+
+Agora, analise a imagem fornecida e extraia as transações.`;
+};
 
 
 const safeGenerateContent = async (
@@ -1193,6 +1219,50 @@ export const fetchDebtViabilityAnalysis = async (debt: Partial<Debt>, context: F
         return null;
     } catch (error) {
         console.error("Error fetching debt viability analysis:", error);
+        return null;
+    }
+};
+
+export const parseTransactionsFromStatement = async (
+    imageBase64: string,
+    mimeType: string
+): Promise<ExtractedTransaction[] | null> => {
+    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
+        console.warn("Gemini API not available for statement parsing.");
+        return null;
+    }
+
+    const prompt = constructPromptForStatementParsing();
+    const imagePart = {
+        inlineData: {
+            mimeType: mimeType,
+            data: imageBase64,
+        },
+    };
+    const textPart = { text: prompt };
+
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-04-17",
+            contents: { parts: [imagePart, textPart] },
+            config: { responseMimeType: "application/json" },
+        });
+
+        let jsonStr = response.text?.trim() || '[]';
+        const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+        const match = jsonStr.match(fenceRegex);
+        if (match && match[2]) {
+            jsonStr = match[2].trim();
+        }
+
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed)) {
+            // Further validation can be added here to ensure objects match ExtractedTransaction structure
+            return parsed as ExtractedTransaction[];
+        }
+        return null;
+    } catch (error) {
+        console.error("Error parsing statement with Gemini:", error);
         return null;
     }
 };
