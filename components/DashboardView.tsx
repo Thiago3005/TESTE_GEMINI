@@ -3,6 +3,8 @@
 
 
 
+
+
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
 import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState } from '../types'; 
@@ -22,7 +24,7 @@ import TrendingUpIcon from './icons/TrendingUpIcon';
 import TrendingDownIcon from './icons/TrendingDownIcon';
 import ArrowPathIcon from './icons/ArrowPathIcon'; // For recalculate button
 import InfoTooltip from './InfoTooltip';
-import { LineChart, Line, BarChart, Bar, Tooltip as RechartsTooltip, YAxis, XAxis, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 
 interface DashboardViewProps {
@@ -142,17 +144,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     }
     return projection;
   }, [totalAccountBalance, upcomingTransactions]);
-  
-  const moneyBoxChartData = useMemo(() => {
-    return moneyBoxes.map(mb => {
-        const balance = calculateMoneyBoxBalance(mb.id);
-        return {
-            name: mb.name.length > 5 ? mb.name.substring(0, 4) + '.' : mb.name,
-            fullName: mb.name,
-            balance: balance,
-        };
-    });
-  }, [moneyBoxes, calculateMoneyBoxBalance]);
   
   const netWorthCalculations = useMemo(() => {
     const startOfMonth = new Date();
@@ -340,35 +331,36 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           <p className={`text-3xl font-bold ${totalMoneyBoxBalance >= 0 ? 'text-blue-500 dark:text-blue-400' : 'text-destructive dark:text-destructiveDark'}`}>
             {formatCurrency(totalMoneyBoxBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
-            {!isPrivacyModeEnabled && moneyBoxChartData.length > 0 && (
-                <div className="w-full h-16 mt-2 mb-1">
-                    <ResponsiveContainer>
-                        <BarChart data={moneyBoxChartData} margin={{ top: 5, right: 5, bottom: 0, left: -35 }}>
-                            <RechartsTooltip content={<MiniChartTooltip formatter={(v:number) => formatCurrency(v)} name="Guardado" />} cursor={{fill: 'rgba(0,0,0,0.05)'}}/>
-                            <Bar dataKey="balance" fill="#3B82F6" radius={[2,2,0,0]}/>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            )}
-            <h3 className="text-xs font-semibold text-textMuted dark:text-textMutedDark mt-2">METAS</h3>
-            <ul className="space-y-1 text-xs mt-1 overflow-y-auto max-h-[70px] flex-grow">
+            <ul className="space-y-3 text-xs mt-4 overflow-y-auto max-h-[140px] flex-grow pr-2">
             {isPrivacyModeEnabled ? <li className="text-center">...</li> : moneyBoxes.length > 0 ? (
                 moneyBoxes.map(mb => {
-                const balance = calculateMoneyBoxBalance(mb.id);
-                const progress = mb.goal_amount ? (balance / mb.goal_amount) * 100 : 0;
-                return (
-                    <li key={mb.id}>
-                    <div className="flex justify-between items-center">
-                        <span className="truncate" title={mb.name}>{mb.name}</span>
-                        <span className="font-semibold text-blue-600 dark:text-blue-500">
-                            {formatCurrency(balance)} {mb.goal_amount ? `(${(progress).toFixed(0)}%)` : ''}
-                        </span>
-                    </div>
-                    </li>
-                );
+                    const balance = calculateMoneyBoxBalance(mb.id);
+                    const goal = mb.goal_amount || 0;
+                    const progress = goal > 0 ? Math.min(100, (balance / goal) * 100) : 0;
+                    
+                    const progressBarWidth = 10;
+                    const filledChars = Math.round((progress / 100) * progressBarWidth);
+                    const emptyChars = progressBarWidth - filledChars;
+                    const progressBar = '█'.repeat(filledChars) + '░'.repeat(emptyChars);
+
+                    return (
+                        <li key={mb.id} className="text-xs">
+                            <p className="font-semibold text-textBase dark:text-textBaseDark truncate" title={mb.name}>{mb.name}</p>
+                            {goal > 0 ? (
+                                <div className="flex items-center space-x-2 mt-0.5">
+                                    <span className="font-mono text-primary dark:text-primaryDark" aria-label={`Progresso: ${progress.toFixed(0)}%`}>{progressBar}</span>
+                                    <span className="text-textMuted dark:text-textMutedDark whitespace-nowrap">
+                                        {formatCurrency(balance)} / {formatCurrency(goal)} ({progress.toFixed(1)}%)
+                                    </span>
+                                </div>
+                            ) : (
+                                <p className="text-textMuted dark:text-textMutedDark">{formatCurrency(balance)} (Sem meta)</p>
+                            )}
+                        </li>
+                    );
                 })
             ) : (
-                <p className="text-xs text-textMuted/70 dark:text-textMutedDark/70">Nenhuma caixinha criada.</p>
+                <p className="text-xs text-textMuted/70 dark:text-textMutedDark/70 text-center py-4">Nenhuma caixinha criada.</p>
             )}
             </ul>
         </div>
