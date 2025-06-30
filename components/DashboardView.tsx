@@ -5,6 +5,8 @@
 
 
 
+
+
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
 import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState } from '../types'; 
@@ -331,37 +333,50 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           <p className={`text-3xl font-bold ${totalMoneyBoxBalance >= 0 ? 'text-blue-500 dark:text-blue-400' : 'text-destructive dark:text-destructiveDark'}`}>
             {formatCurrency(totalMoneyBoxBalance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
-            <ul className="space-y-3 text-xs mt-4 overflow-y-auto max-h-[140px] flex-grow pr-2">
-            {isPrivacyModeEnabled ? <li className="text-center">...</li> : moneyBoxes.length > 0 ? (
-                moneyBoxes.map(mb => {
-                    const balance = calculateMoneyBoxBalance(mb.id);
-                    const goal = mb.goal_amount || 0;
-                    const progress = goal > 0 ? Math.min(100, (balance / goal) * 100) : 0;
-                    
-                    const progressBarWidth = 10;
-                    const filledChars = Math.round((progress / 100) * progressBarWidth);
-                    const emptyChars = progressBarWidth - filledChars;
-                    const progressBar = '█'.repeat(filledChars) + '░'.repeat(emptyChars);
-
-                    return (
-                        <li key={mb.id} className="text-xs">
-                            <p className="font-semibold text-textBase dark:text-textBaseDark truncate" title={mb.name}>{mb.name}</p>
-                            {goal > 0 ? (
-                                <div className="flex items-center space-x-2 mt-0.5">
-                                    <span className="font-mono text-primary dark:text-primaryDark" aria-label={`Progresso: ${progress.toFixed(0)}%`}>{progressBar}</span>
-                                    <span className="text-textMuted dark:text-textMutedDark whitespace-nowrap">
-                                        {formatCurrency(balance)} / {formatCurrency(goal)} ({progress.toFixed(1)}%)
-                                    </span>
-                                </div>
-                            ) : (
-                                <p className="text-textMuted dark:text-textMutedDark">{formatCurrency(balance)} (Sem meta)</p>
-                            )}
-                        </li>
-                    );
-                })
-            ) : (
-                <p className="text-xs text-textMuted/70 dark:text-textMutedDark/70 text-center py-4">Nenhuma caixinha criada.</p>
-            )}
+            <ul className="space-y-4 mt-4 overflow-y-auto max-h-[140px] flex-grow pr-2">
+                {isPrivacyModeEnabled ? <li className="text-center">...</li> : moneyBoxes.length > 0 ? (
+                    moneyBoxes.map(mb => {
+                        const balance = calculateMoneyBoxBalance(mb.id);
+                        const goal = mb.goal_amount || 0;
+                        const progress = goal > 0 ? Math.min(100, (balance / goal) * 100) : 0;
+                        
+                        return (
+                            <li key={mb.id} className="space-y-1.5">
+                                {goal > 0 ? (
+                                    <>
+                                        <div className="flex justify-between items-baseline">
+                                            <p className="font-semibold text-textBase dark:text-textBaseDark truncate" title={mb.name}>{mb.name}</p>
+                                            <p className="text-xs text-textMuted dark:text-textMutedDark whitespace-nowrap text-right">
+                                                {formatCurrency(balance)} / {formatCurrency(goal)}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                                                <div 
+                                                    className="bg-blue-400 dark:bg-blue-500 h-2 rounded-full transition-all duration-500" 
+                                                    style={{ width: `${progress}%` }}
+                                                    role="progressbar"
+                                                    aria-valuenow={progress}
+                                                    aria-valuemin={0}
+                                                    aria-valuemax={100}
+                                                    aria-label={`Progresso para ${mb.name}: ${progress.toFixed(1)}%`}
+                                                ></div>
+                                            </div>
+                                            <span className="font-semibold w-12 text-right text-xs">{progress.toFixed(1)}%</span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex justify-between items-center">
+                                        <p className="font-semibold text-textBase dark:text-textBaseDark truncate" title={mb.name}>{mb.name}</p>
+                                        <p className="text-textMuted dark:text-textMutedDark">{formatCurrency(balance)} (Sem meta)</p>
+                                    </div>
+                                )}
+                            </li>
+                        );
+                    })
+                ) : (
+                    <p className="text-xs text-textMuted/70 dark:text-textMutedDark/70 text-center py-4">Nenhuma caixinha criada.</p>
+                )}
             </ul>
         </div>
         <div className="bg-surface dark:bg-surfaceDark p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
