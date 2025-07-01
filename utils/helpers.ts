@@ -29,8 +29,20 @@ export const formatCurrency = (amount: number, currency: string = 'BRL', locale:
 };
 
 export const getISODateString = (dateInput: Date | string = new Date()): string => {
-  const date = typeof dateInput === 'string' ? new Date(dateInput.includes('T') ? dateInput : dateInput + 'T00:00:00') : dateInput;
-  return date.toISOString().split('T')[0];
+  // The original implementation had timezone issues when creating a new Date() and then using toISOString().
+  // This new implementation correctly formats the date based on its local year, month, and day parts,
+  // making it robust across different timezones.
+  const date = typeof dateInput === 'string' 
+    // For string inputs, ensure they are parsed as local time by adding T00:00:00.
+    // Otherwise, 'YYYY-MM-DD' might be interpreted as UTC midnight.
+    ? new Date(dateInput.includes('T') ? dateInput : dateInput + 'T00:00:00') 
+    : dateInput;
+    
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  
+  return `${year}-${month}-${day}`;
 };
 
 
