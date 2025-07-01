@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { useState, useMemo, useCallback, ChangeEvent } from 'react';
 import { Transaction, Account, Category, TransactionType, SimulatedTransactionForProjection } from '../types';
@@ -21,39 +22,55 @@ interface CashFlowViewProps {
 
 // Helper to calculate account balance up to a specific date
 const calculateBalanceAsOfDate = (
-  targetDate: string, // YYYY-MM-DD
-  initialAccounts: Account[],
+  targetDate: string,
+  allAccounts: Account[],
   allTransactions: Transaction[]
 ): number => {
-  let totalBalance = initialAccounts.reduce((sum, acc) => sum + acc.initial_balance, 0);
+  const totalInitialBalance = allAccounts.reduce((sum, acc) => sum + acc.initial_balance, 0);
 
-  for (const transaction of allTransactions) {
-    if (transaction.date > targetDate) continue;
+  const relevantTransactions = allTransactions.filter(t => t.date <= targetDate);
 
-    const isAccountRelevant = initialAccounts.some(acc => acc.id === transaction.account_id || acc.id === transaction.to_account_id);
-    if (!isAccountRelevant && transaction.type !== TransactionType.TRANSFER) continue; 
+  const netFlow = relevantTransactions.reduce((flow, transaction) => {
+    // Check if the transaction's primary account (account_id) is a cash account
+    const isPrimaryAccountCash = allAccounts.some(acc => acc.id === transaction.account_id);
+    // Check if the transfer destination account (to_account_id) is a cash account
+    const isDestinationAccountCash = transaction.to_account_id 
+      ? allAccounts.some(acc => acc.id === transaction.to_account_id) 
+      : false;
 
-    if (initialAccounts.some(acc => acc.id === transaction.account_id)) { 
-        if (transaction.type === TransactionType.INCOME) {
-            totalBalance += transaction.amount;
-        } else if (transaction.type === TransactionType.EXPENSE) {
-            totalBalance -= transaction.amount;
-        } else if (transaction.type === TransactionType.TRANSFER) {
-            if (!transaction.to_account_id || !initialAccounts.some(acc => acc.id === transaction.to_account_id)) {
-                 totalBalance -= transaction.amount;
-            }
+    switch (transaction.type) {
+      case TransactionType.INCOME:
+        // Income increases cash flow if it goes into a cash account.
+        if (isPrimaryAccountCash) {
+          return flow + transaction.amount;
         }
+        break;
+      case TransactionType.EXPENSE:
+        // Expense decreases cash flow if it comes from a cash account.
+        // (Credit card expenses are ignored because their account_id is not in allAccounts).
+        if (isPrimaryAccountCash) {
+          return flow - transaction.amount;
+        }
+        break;
+      case TransactionType.TRANSFER:
+        // Transfers between two cash accounts are net-zero, so they are ignored.
+        // Only transfers between a cash account and an external source affect cash flow.
+        if (isPrimaryAccountCash && !isDestinationAccountCash) {
+          // Cash account -> External
+          return flow - transaction.amount;
+        }
+        if (!isPrimaryAccountCash && isDestinationAccountCash) {
+          // External -> Cash account (this case is less common for 'TRANSFER' type)
+          return flow + transaction.amount;
+        }
+        break;
     }
     
-    if (transaction.to_account_id && initialAccounts.some(acc => acc.id === transaction.to_account_id)) {
-        if (transaction.type === TransactionType.TRANSFER) {
-            if (!initialAccounts.some(acc => acc.id === transaction.account_id)) {
-                totalBalance += transaction.amount;
-            }
-        }
-    }
-  }
-  return totalBalance;
+    // Return flow unchanged for transactions that don't affect total cash balance
+    return flow;
+  }, 0);
+
+  return totalInitialBalance + netFlow;
 };
 
 
