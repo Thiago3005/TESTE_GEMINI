@@ -197,19 +197,80 @@ const CashFlowView: React.FC<CashFlowViewProps> = ({
   // Data for Cumulative Balance Line Chart
   const cumulativeBalanceData = useMemo(() => {
     if (!accounts.length) return [];
-    const daysInRange: string[] = [];
-    let current = new Date(startDate + 'T00:00:00'); 
-    const end = new Date(endDate + 'T00:00:00');
-    while (current <= end) {
-        daysInRange.push(getISODateString(current));
-        current.setDate(current.getDate() + 1);
+
+    // 1. Calculate the starting balance for the period.
+    const dayBeforeStartDate = new Date(startDate + 'T00:00:00');
+    dayBeforeStartDate.setDate(dayBeforeStartDate.getDate() - 1);
+    const initialDateStr = getISODateString(dayBeforeStartDate);
+    let currentBalance = calculateBalanceAsOfDate(initialDateStr, accounts, transactions);
+
+    const dataPoints = [{
+        date: formatDate(initialDateStr, 'pt-BR', { day: '2-digit', month: 'short' }),
+        fullDate: initialDateStr,
+        balance: currentBalance,
+        key: `${initialDateStr}-start` // Unique key for the chart component
+    }];
+
+    // 2. Get and sort all cash-affecting transactions within the period.
+    const periodCashTransactions = transactions
+        .filter(t => {
+            const isPrimaryAccountCash = accounts.some(acc => acc.id === t.account_id);
+            if (t.type === TransactionType.INCOME && isPrimaryAccountCash) return true;
+            if (t.type === TransactionType.EXPENSE && isPrimaryAccountCash) return true;
+            if (t.type === TransactionType.TRANSFER) {
+                const isDestinationAccountCash = t.to_account_id ? accounts.some(acc => acc.id === t.to_account_id) : false;
+                return (isPrimaryAccountCash && !isDestinationAccountCash) || (!isPrimaryAccountCash && isDestinationAccountCash);
+            }
+            return false;
+        })
+        .filter(t => t.date >= startDate && t.date <= endDate)
+        .sort((a, b) => {
+            const dateComparison = new Date(a.date).getTime() - new Date(b.date).getTime();
+            if (dateComparison !== 0) return dateComparison;
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+
+    // 3. Create a data point for each transaction
+    periodCashTransactions.forEach((tx) => {
+        let balanceChange = 0;
+        switch (tx.type) {
+            case TransactionType.INCOME:
+                balanceChange = tx.amount;
+                break;
+            case TransactionType.EXPENSE:
+                balanceChange = -tx.amount;
+                break;
+            case TransactionType.TRANSFER:
+                if (accounts.some(acc => acc.id === tx.account_id)) {
+                    balanceChange = -tx.amount; // Out of cash
+                } else {
+                    balanceChange = tx.amount; // Into cash
+                }
+                break;
+        }
+        
+        currentBalance += balanceChange;
+        
+        dataPoints.push({
+            date: formatDate(tx.date, 'pt-BR', { day: '2-digit', month: 'short' }),
+            fullDate: tx.date,
+            balance: currentBalance,
+            key: tx.id // A unique key is important
+        });
+    });
+    
+    // To ensure the line chart extends to the end of the period even if the last transaction is not on the last day.
+    const lastDataPointDate = dataPoints.length > 1 ? dataPoints[dataPoints.length - 1].fullDate : initialDateStr;
+    if (lastDataPointDate < endDate) {
+        dataPoints.push({
+            date: formatDate(endDate, 'pt-BR', { day: '2-digit', month: 'short' }),
+            fullDate: endDate,
+            balance: currentBalance,
+            key: `${endDate}-end`
+        });
     }
 
-    return daysInRange.map(day => ({
-        date: formatDate(day, 'pt-BR', { day: '2-digit', month: 'short' }), 
-        fullDate: day, 
-        balance: calculateBalanceAsOfDate(day, accounts, transactions),
-    }));
+    return dataPoints;
   }, [startDate, endDate, accounts, transactions]);
 
   // Data for Income vs. Expense Bar Chart
