@@ -4,7 +4,7 @@ import React from 'react';
 import { useState, useMemo, useCallback, ChangeEvent, useRef }from 'react'; 
 import { Transaction, Account, Category, TransactionType, Tag, InstallmentPurchase } from '../types';
 import { PERIOD_FILTER_OPTIONS, TRANSACTION_TYPE_OPTIONS } from '../constants';
-import { getISODateString } from '../utils/helpers';
+import { getISODateString, formatCurrency } from '../utils/helpers';
 import TransactionItem from './TransactionItem';
 import Button from './Button';
 import PlusIcon from './icons/PlusIcon';
@@ -104,7 +104,8 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
       items = items.filter(t => 
         (t.description && t.description.toLowerCase().includes(lowerSearchTerm)) ||
         (t.category_id && categories.find(c=>c.id === t.category_id)?.name.toLowerCase().includes(lowerSearchTerm)) ||
-        (t.payee_name && t.payee_name.toLowerCase().includes(lowerSearchTerm))
+        (t.payee_name && t.payee_name.toLowerCase().includes(lowerSearchTerm)) ||
+        (t.date.includes(lowerSearchTerm)) // Search by date
       );
     }
     
@@ -117,6 +118,22 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
     return items;
   }, [transactions, filterPeriod, filterType, filterAccount, filterCategory, filterTags, searchTerm, categories, sortOrder]);
   
+  const summary = useMemo(() => {
+    return filteredTransactions.reduce(
+        (acc, transaction) => {
+            if (transaction.type === TransactionType.INCOME) {
+                acc.income += transaction.amount;
+            } else if (transaction.type === TransactionType.EXPENSE) {
+                acc.expense += transaction.amount;
+            }
+            return acc;
+        },
+        { income: 0, expense: 0 }
+    );
+  }, [filteredTransactions]);
+
+  const balance = summary.income - summary.expense;
+
   const toggleSortOrder = useCallback(() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'), []);
 
   const handleTagFilterChange = (e: ChangeEvent<HTMLSelectElement>) => {
@@ -169,9 +186,26 @@ const TransactionsView: React.FC<TransactionsViewProps> = ({
                 placeholder="Todas as Tags"
             />
         )}
-        <Input label="Buscar Descrição/Destinatário" type="text" placeholder="Ex: Supermercado, João" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} containerClassName={tags.length === 0 ? 'lg:col-span-2' : ''} />
+        <Input label="Buscar (Descrição, Dest., Data...)" type="text" placeholder="Ex: Mercado, 2024-07-15" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} containerClassName={tags.length === 0 ? 'lg:col-span-2' : ''} />
       </div>
       
+      {filteredTransactions.length > 0 && (
+        <div className="p-4 bg-surface dark:bg-surfaceDark rounded-lg shadow-sm flex flex-col sm:flex-row sm:justify-around items-center gap-4">
+            <div className="text-center">
+                <p className="text-sm font-medium text-textMuted dark:text-textMutedDark">Total Receitas</p>
+                <p className="text-xl font-bold text-secondary dark:text-secondaryDark">{formatCurrency(summary.income, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+            </div>
+            <div className="text-center">
+                <p className="text-sm font-medium text-textMuted dark:text-textMutedDark">Total Despesas</p>
+                <p className="text-xl font-bold text-destructive dark:text-destructiveDark">{formatCurrency(summary.expense, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+            </div>
+            <div className="text-center">
+                <p className="text-sm font-medium text-textMuted dark:text-textMutedDark">Saldo do Período</p>
+                <p className={`text-xl font-bold ${balance >= 0 ? 'text-textBase dark:text-textBaseDark' : 'text-destructive dark:text-destructiveDark'}`}>{formatCurrency(balance, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+            </div>
+        </div>
+      )}
+
       <div className="flex justify-end">
           <Button variant="ghost" size="sm" onClick={toggleSortOrder}>
               Ordenar por Data: {sortOrder === 'desc' ? 'Mais Recentes' : 'Mais Antigas'}

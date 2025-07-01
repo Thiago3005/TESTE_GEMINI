@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { useState } from 'react';
 import { CreditCard, InstallmentPurchase } from '../types';
@@ -52,6 +53,7 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
     return sum + (installmentValue * remainingInstallments);
   }, 0);
   const availableLimit = card.card_limit - totalOutstandingDebt;
+  const usedPercentage = card.card_limit > 0 ? Math.min((totalOutstandingDebt / card.card_limit) * 100, 100) : 0;
 
   const { billAmount, eligibleInstallments } = React.useMemo(() => {
     const eligible = getEligibleInstallmentsForBillingCycle(cardInstallments, card, new Date());
@@ -74,7 +76,26 @@ const CreditCardItem: React.FC<CreditCardItemProps> = ({
           <p className={`text-md font-medium ${availableLimit >=0 ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark'}`}>
             Disponível: {formatCurrency(availableLimit, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
           </p>
-          <p className="text-xs text-textMuted dark:text-textMutedDark">Fechamento: Dia {card.closing_day} | Vencimento: Dia {card.due_day}</p>
+          
+          <div className="mt-2">
+            <div className="flex justify-between text-xs text-textMuted dark:text-textMutedDark mb-1">
+              <span>Usado: {formatCurrency(totalOutstandingDebt, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
+              <span>{usedPercentage.toFixed(1)}%</span>
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
+              <div 
+                className={`h-2.5 rounded-full transition-all duration-500 ${usedPercentage > 90 ? 'bg-destructive' : usedPercentage > 75 ? 'bg-amber-500' : 'bg-primary dark:bg-primaryDark'}`}
+                style={{ width: `${usedPercentage}%` }}
+                role="progressbar"
+                aria-valuenow={usedPercentage}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Limite do cartão usado ${usedPercentage.toFixed(1)}%`}
+              ></div>
+            </div>
+          </div>
+
+          <p className="text-xs text-textMuted dark:text-textMutedDark mt-2">Fechamento: Dia {card.closing_day} | Vencimento: Dia {card.due_day}</p>
         </div>
         <div className="flex flex-col items-end space-y-1.5">
           <div className="flex space-x-1">
