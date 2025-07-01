@@ -126,6 +126,7 @@ const AppContent: React.FC = () => {
   const [activeView, setActiveView] = useState<AppView>('DASHBOARD');
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | Partial<Transaction> | null>(null);
+  const [convertingFuturePurchaseId, setConvertingFuturePurchaseId] = useState<string | null>(null);
 
   // Statement Import State
   const [isStatementModalOpen, setIsStatementModalOpen] = useState(false);
@@ -849,6 +850,13 @@ const AppContent: React.FC = () => {
     if (mainTransaction) {
         setIsTransactionModalOpen(false);
         setEditingTransaction(null);
+
+        if (convertingFuturePurchaseId) {
+            await handleDeleteFuturePurchase(convertingFuturePurchaseId, false);
+            addToast("Compra futura convertida em transação e removida da lista.", 'success');
+            setConvertingFuturePurchaseId(null);
+        }
+        
         if (mainTransaction.type !== TransactionType.TRANSFER) { // AI comments not for transfers
             handleGenerateCommentForTransaction(mainTransaction);
             handleAnalyzeSpendingForCategory(mainTransaction);
@@ -1347,10 +1355,16 @@ const AppContent: React.FC = () => {
     addOrUpdateRecord('future_purchases', purchaseData, setFuturePurchases, (a: FuturePurchase,b: FuturePurchase) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
   };
   const handleUpdateFuturePurchase = (data: FuturePurchase) => addOrUpdateRecord('future_purchases', data, setFuturePurchases, (a: FuturePurchase,b: FuturePurchase) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(), true);
-  const handleDeleteFuturePurchase = (id: string) => { if (window.confirm('Excluir esta compra futura?')) deleteRecord('future_purchases', id, setFuturePurchases); };
+  const handleDeleteFuturePurchase = (id: string, confirm: boolean = true) => {
+    if (confirm && !window.confirm('Excluir esta compra futura?')) {
+        return;
+    }
+    deleteRecord('future_purchases', id, setFuturePurchases);
+  };
   
   const handleInitiateTransactionFromFuturePurchase = (purchase: FuturePurchase) => {
     if (!user || !activeUserProfile) return;
+    setConvertingFuturePurchaseId(purchase.id);
     const prefillData: Partial<Transaction> = {
         type: TransactionType.EXPENSE,
         amount: purchase.estimated_cost,
@@ -1941,10 +1955,22 @@ const AppContent: React.FC = () => {
       </div>
 
       {isTransactionModalOpen && (
-        <Modal isOpen={isTransactionModalOpen} onClose={() => { setIsTransactionModalOpen(false); setEditingTransaction(null);}} title={editingTransaction && 'id' in editingTransaction ? 'Editar Transação' : 'Nova Transação'} size="lg">
+        <Modal 
+          isOpen={isTransactionModalOpen} 
+          onClose={() => { 
+            setIsTransactionModalOpen(false); 
+            setEditingTransaction(null);
+            setConvertingFuturePurchaseId(null);
+          }} 
+          title={editingTransaction && 'id' in editingTransaction ? 'Editar Transação' : 'Nova Transação'} 
+          size="lg">
           <TransactionForm
             onSubmit={handleAddOrUpdateTransaction}
-            onCancel={() => { setIsTransactionModalOpen(false); setEditingTransaction(null); }}
+            onCancel={() => { 
+              setIsTransactionModalOpen(false); 
+              setEditingTransaction(null); 
+              setConvertingFuturePurchaseId(null);
+            }}
             accounts={accounts}
             creditCards={creditCards}
             moneyBoxes={moneyBoxes}
