@@ -54,7 +54,7 @@ const calculateNextDueDateInternal = (startDateStr: string, frequency: Recurring
 interface RecurringTransactionFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (rt: Omit<RecurringTransaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => void;
+  onSave: (rt: Omit<RecurringTransaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>, postNow: boolean) => void;
   accounts: Account[];
   creditCards: CreditCard[]; // Added creditCards
   categories: Category[];
@@ -78,6 +78,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
   const [occurrences, setOccurrences] = useState('');
   const [isPaused, setIsPaused] = useState(false);
   const [notes, setNotes] = useState('');
+  const [postFirstTransactionNow, setPostFirstTransactionNow] = useState(true);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -103,6 +104,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
         setOccurrences(existingRT.occurrences?.toString() || '');
         setIsPaused(existingRT.is_paused || false);
         setNotes(existingRT.notes || '');
+        setPostFirstTransactionNow(false);
       } else {
         setDescription('');
         setAmount('');
@@ -117,6 +119,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
         setOccurrences('');
         setIsPaused(false);
         setNotes('');
+        setPostFirstTransactionNow(true);
       }
       setErrors({});
     }
@@ -190,7 +193,7 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
       notes: notes.trim() || undefined,
     };
     const finalData = existingRT ? { ...rtData, id: existingRT.id } : rtData;
-    onSave(finalData as any);
+    onSave(finalData as any, !existingRT ? postFirstTransactionNow : false);
     onClose();
   };
   
@@ -261,6 +264,13 @@ const RecurringTransactionFormModal: React.FC<RecurringTransactionFormModalProps
           <input type="checkbox" id="rtIsPaused" checked={isPaused} onChange={e => setIsPaused(e.target.checked)} className="h-4 w-4 text-primary rounded border-neutral/50 focus:ring-primary dark:text-primaryDark dark:border-neutralDark/50 dark:focus:ring-primaryDark" />
           <label htmlFor="rtIsPaused" className="ml-2 block text-sm text-textMuted dark:text-textMutedDark">Pausar esta recorrência</label>
         </div>
+
+        {!existingRT && (
+            <div className="flex items-center">
+                <input type="checkbox" id="rtPostNow" checked={postFirstTransactionNow} onChange={e => setPostFirstTransactionNow(e.target.checked)} className="h-4 w-4 text-primary rounded border-neutral/50 focus:ring-primary dark:text-primaryDark dark:border-neutralDark/50 dark:focus:ring-primaryDark" />
+                <label htmlFor="rtPostNow" className="ml-2 block text-sm text-textMuted dark:text-textMutedDark">Lançar primeira ocorrência agora (na data de início)</label>
+            </div>
+        )}
 
         <div className="flex justify-end space-x-3 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>

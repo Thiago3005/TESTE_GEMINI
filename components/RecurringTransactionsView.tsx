@@ -14,7 +14,7 @@ interface RecurringTransactionsViewProps {
   accounts: Account[];
   creditCards: CreditCard[]; // Added creditCards
   categories: Category[];
-  onAddRecurringTransaction: (rt: Omit<RecurringTransaction, 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>) => void;
+  onAddRecurringTransaction: (rt: Omit<RecurringTransaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>, postNow: boolean) => void;
   onUpdateRecurringTransaction: (rt: RecurringTransaction) => void;
   onDeleteRecurringTransaction: (rtId: string) => void;
   onProcessRecurringTransactions: () => Promise<{ count: number; errors: string[] }>; 
@@ -48,6 +48,18 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
     setEditingRT(rt);
     setIsModalOpen(true);
   };
+
+  const handleModalSave = (
+      rtData: Omit<RecurringTransaction, 'id' | 'user_id' | 'profile_id' | 'created_at' | 'updated_at'>,
+      postNow: boolean
+  ) => {
+      if (editingRT) {
+          onUpdateRecurringTransaction({ ...rtData, id: editingRT.id } as RecurringTransaction);
+      } else {
+          onAddRecurringTransaction(rtData, postNow);
+      }
+  };
+
 
   const handleProcess = async () => {
     setIsProcessing(true);
@@ -146,7 +158,7 @@ const RecurringTransactionsView: React.FC<RecurringTransactionsViewProps> = ({
       <RecurringTransactionFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSave={editingRT ? onUpdateRecurringTransaction : onAddRecurringTransaction}
+        onSave={handleModalSave}
         accounts={accounts}
         creditCards={creditCards} // Pass creditCards here
         categories={categories}

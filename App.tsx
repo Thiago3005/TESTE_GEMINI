@@ -1065,7 +1065,41 @@ const AppContent: React.FC = () => {
   const handleDeleteTag = (id: string) => { if (window.confirm('Excluir esta tag?')) deleteRecord('tags', id, setTags); };
   
   // Recurring Transaction Handlers
-  const handleAddRecurringTransaction = (data: Omit<RecurringTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>) => addOrUpdateRecord('recurring_transactions', data, setRecurringTransactions, (a: RecurringTransaction,b: RecurringTransaction) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
+  const handleAddRecurringTransaction = async (data: Omit<RecurringTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'>, postNow: boolean) => {
+    if (!user || !activeUserProfile) return;
+
+    let rtDataForDb: Omit<RecurringTransaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = { ...data };
+
+    if (postNow) {
+        // 1. Create the first transaction
+        const transactionData: Omit<Transaction, 'id'|'user_id'|'profile_id'|'created_at'|'updated_at'> = {
+            type: data.type,
+            amount: data.amount,
+            category_id: data.category_id,
+            description: `Recorrência: ${data.description}`,
+            date: data.start_date, // Post on the start date
+            account_id: data.account_id,
+            to_account_id: data.to_account_id,
+        };
+        await handleAddOrUpdateTransaction(transactionData);
+
+        // 2. Update the RT data for DB
+        rtDataForDb.last_posted_date = data.start_date;
+        rtDataForDb.next_due_date = geminiService.calculateNextDueDate(data.start_date, data.frequency, data.custom_interval_days);
+        
+        if (rtDataForDb.remaining_occurrences !== undefined && rtDataForDb.remaining_occurrences > 0) {
+            rtDataForDb.remaining_occurrences -= 1;
+        }
+    }
+    
+    // 3. Save the recurring transaction record
+    await addOrUpdateRecord(
+        'recurring_transactions', 
+        rtDataForDb, 
+        setRecurringTransactions, 
+        (a: RecurringTransaction,b: RecurringTransaction) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime()
+    );
+  };
   const handleUpdateRecurringTransaction = (data: RecurringTransaction) => addOrUpdateRecord('recurring_transactions', data, setRecurringTransactions, (a: RecurringTransaction,b: RecurringTransaction) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime(), true);
   const handleDeleteRecurringTransaction = (id: string) => { if (window.confirm('Excluir esta recorrência?')) deleteRecord('recurring_transactions', id, setRecurringTransactions); };
   const handleProcessRecurringTransactions = async (): Promise<{ count: number; errors: string[] }> => {
