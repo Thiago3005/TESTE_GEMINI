@@ -8,8 +8,10 @@ import UsersIcon from './icons/UsersIcon';
 import Button from './Button';
 import CategoryChart from './CategoryChart';
 import DailySummaryBarChart from './CategoryBarChart'; 
+import DailySummaryLineChart from './DailySummaryLineChart'; // Import new chart component
 import ChartPieIcon from './icons/ChartPieIcon'; 
 import BarChartIcon from './icons/BarChartIcon'; 
+import PresentationChartLineIcon from './icons/PresentationChartLineIcon'; // Import new icon
 import BillsAlerts from './BillsAlerts'; 
 import LightBulbIcon from './icons/LightBulbIcon';
 import SparklesIcon from './icons/SparklesIcon';
@@ -66,7 +68,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     onFetchSafeToSpendToday, 
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
-  const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'bar' | 'pie'>('bar'); 
+  const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'bar' | 'pie' | 'line'>('bar'); 
   const currentMonthYYYYMM = getISODateString(new Date()).substring(0, 7); 
   
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthYYYYMM);
@@ -483,6 +485,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                     <Button variant={monthlyChartDisplayMode === 'pie' ? 'primary' : 'ghost'} size="sm" onClick={() => setMonthlyChartDisplayMode('pie')} className="!p-1.5" title="Gráfico de Pizza">
                         <ChartPieIcon className="w-4 h-4" />
                     </Button>
+                    <Button variant={monthlyChartDisplayMode === 'line' ? 'primary' : 'ghost'} size="sm" onClick={() => setMonthlyChartDisplayMode('line')} className="!p-1.5" title="Gráfico de Linha">
+                        <PresentationChartLineIcon className="w-4 h-4" />
+                    </Button>
                 </div>
             </div>
         </div>
@@ -495,8 +500,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               type={expenseIncomeChartType} 
               month={selectedMonth} 
             />
-        ) : (
+        ) : monthlyChartDisplayMode === 'bar' ? (
             <DailySummaryBarChart
+              transactions={transactions} 
+              type={expenseIncomeChartType} 
+              month={selectedMonth} 
+              isPrivacyModeEnabled={isPrivacyModeEnabled}
+            />
+        ) : (
+            <DailySummaryLineChart
               transactions={transactions} 
               type={expenseIncomeChartType} 
               month={selectedMonth} 
