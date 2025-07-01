@@ -29,7 +29,7 @@ const MoneyBoxFormModal: React.FC<MoneyBoxFormModalProps> = ({ isOpen, onClose, 
   const [name, setName] = useState('');
   const [goalAmount, setGoalAmount] = useState('');
   const [color, setColor] = useState<string>(defaultColors[0]);
-  // Icon state can be added later if more icons are available
+  const [isEmergencyFund, setIsEmergencyFund] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -37,10 +37,12 @@ const MoneyBoxFormModal: React.FC<MoneyBoxFormModalProps> = ({ isOpen, onClose, 
       setName(existingMoneyBox.name);
       setGoalAmount(existingMoneyBox.goal_amount?.toString() || '');
       setColor(existingMoneyBox.color || defaultColors[0]);
+      setIsEmergencyFund(!!existingMoneyBox.is_emergency_fund);
     } else {
       setName('');
       setGoalAmount('');
       setColor(defaultColors[0]);
+      setIsEmergencyFund(false);
     }
     setErrors({});
   }, [existingMoneyBox, isOpen]);
@@ -64,6 +66,7 @@ const MoneyBoxFormModal: React.FC<MoneyBoxFormModalProps> = ({ isOpen, onClose, 
       goal_amount: goalAmount ? parseFloat(goalAmount) : undefined,
       icon: 'piggy-bank', // Default icon for now
       color: color,
+      is_emergency_fund: isEmergencyFund,
     };
     const finalData = existingMoneyBox ? { ...moneyBoxData, id: existingMoneyBox.id } : moneyBoxData;
     onSave(finalData as any);
@@ -107,6 +110,23 @@ const MoneyBoxFormModal: React.FC<MoneyBoxFormModalProps> = ({ isOpen, onClose, 
             ))}
           </div>
         </div>
+
+        <div className="pt-2">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                id="isEmergencyFund"
+                checked={isEmergencyFund}
+                onChange={(e) => setIsEmergencyFund(e.target.checked)}
+                className="rounded text-primary dark:text-primaryDark focus:ring-primary dark:focus:ring-primaryDark bg-surface dark:bg-surfaceDark border-borderBase dark:border-borderBaseDark shadow-sm"
+              />
+              <span className="text-sm text-textMuted dark:text-textMutedDark">
+                Marcar como Reserva de Emergência
+              </span>
+            </label>
+            <p className="text-xs text-textMuted dark:text-textMutedDark/70 mt-1 ml-6">Apenas uma caixinha pode ser a reserva de emergência. Ela será usada para calcular seu Score de Saúde Financeira.</p>
+        </div>
+
 
         {errors.form && <p className="text-sm text-destructive dark:text-destructiveDark/90">{errors.form}</p>}
         <div className="flex justify-end space-x-3 pt-2">

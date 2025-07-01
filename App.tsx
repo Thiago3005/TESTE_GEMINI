@@ -15,7 +15,7 @@ import {
   FuturePurchase, FuturePurchaseStatus, FuturePurchasePriority, ToastType, UserProfile,
   Debt, DebtPayment, DebtStrategy, DebtProjection, AuthModalType,
   MoneyBoxRelatedTransactionData, SimulatedTransactionForProjection, SafeToSpendTodayState, SafeToSpendTodayInfo, DebtRateAnalysis, DebtViabilityAnalysis,
-  ExtractedTransaction, ReviewedTransaction
+  ExtractedTransaction, ReviewedTransaction, FinancialHealthState
 } from './types';
 import { APP_NAME, getInitialCategories as getSeedCategories, getInitialAccounts as getSeedAccounts, TRANSACTION_TYPE_OPTIONS } from './constants'; // Added TRANSACTION_TYPE_OPTIONS
 import { generateId as generateClientSideId, getISODateString, formatDate, formatCurrency, getEligibleInstallmentsForBillingCycle } from './utils/helpers';
@@ -141,6 +141,13 @@ const AppContent: React.FC = () => {
     error: null,
   });
   const safeToSpendIntervalRef = useRef<number | null>(null);
+  
+  const [financialHealth, setFinancialHealth] = useState<FinancialHealthState>({
+    score: -1, // -1 indicates not yet calculated
+    insight: null,
+    isLoading: false,
+    error: null,
+  });
 
 
   const isFetchingDataRef = useRef(false);
@@ -164,6 +171,7 @@ const AppContent: React.FC = () => {
     setCurrentUserPreferences(null);
     setAiConfigState({ isEnabled: false, apiKeyStatus: 'unknown', monthlyIncome: null, autoBackupToFileEnabled: false });
     setSafeToSpendToday({ safeAmount: null, explanation: 'Clique em "Recalcular".', calculationDate: null, lastCalculatedDisplay: null, isLoading: false, error: null });
+    setFinancialHealth({ score: -1, insight: null, isLoading: false, error: null });
     setShowOnboardingWizard(false);
   };
 
@@ -596,7 +604,7 @@ const AppContent: React.FC = () => {
     }, 0);
   }, [moneyBoxTransactions, user, activeUserProfile]);
   
-  const generateFinancialContext = useCallback((simulatedTx?: SimulatedTransactionForProjection): FinancialContext | null => {
+  const generateFinancialContext = useCallback((): FinancialContext | null => {
     if (!user || !activeUserProfile) return null;
     const currentDateObj = new Date();
     const currentDate = getISODateString(currentDateObj);
@@ -606,6 +614,8 @@ const AppContent: React.FC = () => {
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
     let effectiveTransactions = [...transactions];
+    // This is a stub for if a simulated transaction is ever passed here. Currently it is not.
+    const simulatedTx: SimulatedTransactionForProjection | undefined = undefined;
     if (simulatedTx) {
         const tempSimulatedTx: Transaction = {
             id: `simulated-${generateClientSideId()}`,
@@ -634,7 +644,7 @@ const AppContent: React.FC = () => {
         accountBalances: accounts.map(a => ({ accountId: a.id, balance: calculateAccountBalance(a.id) })),
         categories: categories.map(c => ({ id: c.id, name: c.name, type: c.type, monthly_budget: c.monthly_budget })),
         transactions: effectiveTransactions,
-        moneyBoxes: moneyBoxes.map(mb => ({ id: mb.id, name: mb.name, goal_amount: mb.goal_amount })),
+        moneyBoxes: moneyBoxes.map(mb => ({ id: mb.id, name: mb.name, goal_amount: mb.goal_amount, is_emergency_fund: mb.is_emergency_fund })),
         moneyBoxBalances: moneyBoxes.map(mb => ({ moneyBoxId: mb.id, balance: calculateMoneyBoxBalance(mb.id) })),
         loans: loans.map(l => ({ id: l.id, person_name: l.person_name, total_amount_to_reimburse: l.total_amount_to_reimburse })),
         outstandingLoanBalances: loans.map(l => {
@@ -731,6 +741,52 @@ const AppContent: React.FC = () => {
         }
     };
   }, [activeView, aiConfig.isEnabled, aiConfig.apiKeyStatus, handleFetchSafeToSpendToday, safeToSpendToday.calculationDate, safeToSpendToday.isLoading]);
+  
+  const handleFetchFinancialHealthSummary = async () => {
+    if (!aiConfig.isEnabled || aiConfig.apiKeyStatus !== 'available' || !user || !activeUserProfile) {
+      setFinancialHealth(prev => ({
+        ...prev,
+        error: "AI Coach desativado ou não configurado para esta análise.",
+        isLoading: false,
+      }));
+      return;
+    }
+    setFinancialHealth(prev => ({ ...prev, isLoading: true, error: null, score: prev.score === -1 ? -1 : prev.score }));
+    const context = generateFinancialContext();
+    if (context) {
+      const result = await geminiService.fetchFinancialHealthSummary(context);
+      if (result) {
+        setFinancialHealth({
+          score: result.score,
+          insight: result.insight,
+          isLoading: false,
+          error: result.error || null,
+        });
+        if (!result.error) {
+          await handleAddAIInsight({
+            timestamp: new Date().toISOString(),
+            type: 'financial_health_summary',
+            content: `Seu score de saúde financeira é ${result.score}/100. ${result.insight}`,
+            is_read: false,
+          });
+        }
+      } else {
+        setFinancialHealth({
+          score: -1,
+          insight: "Não foi possível obter a análise da IA no momento.",
+          isLoading: false,
+          error: "Resposta nula da IA.",
+        });
+      }
+    } else {
+      setFinancialHealth({
+        score: -1,
+        insight: "Não foi possível gerar contexto financeiro para a análise.",
+        isLoading: false,
+        error: "Contexto financeiro indisponível.",
+      });
+    }
+  };
 
 
 
@@ -1293,10 +1349,14 @@ const AppContent: React.FC = () => {
         addToast("AI Coach desativado ou API Key não configurada.", 'warning');
         return;
     }
-    let context = generateFinancialContext(simulatedTransaction);
+    let context = generateFinancialContext(); // Re-evaluating context here as generateFinancialContext does not take args in this version
     if (!context) {
         addToast("Não foi possível gerar contexto financeiro para a projeção.", 'error');
         return;
+    }
+    // Manually inject simulated transaction into the generated context
+    if(simulatedTransaction){
+        context = { ...context, simulatedTransactionData: simulatedTransaction };
     }
     
     const insightData = await geminiService.fetchCashFlowProjectionInsight(context, projectionPeriodDays);
@@ -1889,7 +1949,7 @@ const AppContent: React.FC = () => {
         </header>
 
         <main className={`flex-1 overflow-y-auto bg-background dark:bg-backgroundDark text-textBase dark:text-textBaseDark`}>
-            {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} onFetchSavingOpportunities={handleFetchSavingOpportunities} safeToSpendToday={safeToSpendToday} onFetchSafeToSpendToday={handleFetchSafeToSpendToday} />}
+            {activeView === 'DASHBOARD' && <DashboardView transactions={transactions} accounts={accounts} categories={categories} creditCards={creditCards} installmentPurchases={installmentPurchases} moneyBoxes={moneyBoxes} loans={loans} loanRepayments={loanRepayments} recurringTransactions={recurringTransactions} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} calculateAccountBalance={calculateAccountBalance} calculateMoneyBoxBalance={calculateMoneyBoxBalance} onViewRecurringTransaction={(rtId) => setActiveView('RECURRING_TRANSACTIONS')} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchGeneralAdvice={handleFetchGeneralAdvice} onFetchSavingOpportunities={handleFetchSavingOpportunities} safeToSpendToday={safeToSpendToday} onFetchSafeToSpendToday={handleFetchSafeToSpendToday} financialHealth={financialHealth} onFetchFinancialHealthSummary={handleFetchFinancialHealthSummary} />}
             {activeView === 'CASH_FLOW' && <CashFlowView transactions={transactions} accounts={accounts} categories={categories} isPrivacyModeEnabled={isPrivacyModeEnabled} onFetchCashFlowProjection={handleFetchCashFlowProjection} />}
             {activeView === 'TRANSACTIONS' && <TransactionsView transactions={transactions} accounts={accounts} categories={categories} tags={tags} installmentPurchases={installmentPurchases} onAddTransaction={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} onEditTransaction={(tx) => { setEditingTransaction(tx); setIsTransactionModalOpen(true); }} onDeleteTransaction={handleDeleteTransaction} onImportStatement={handleImportStatement} isLoading={isLoadingData} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
             {activeView === 'ACCOUNTS' && <AccountsView accounts={accounts} transactions={transactions} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} calculateAccountBalance={calculateAccountBalance} isPrivacyModeEnabled={isPrivacyModeEnabled} />}
