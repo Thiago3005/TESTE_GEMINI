@@ -69,6 +69,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
   const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'bar' | 'pie' | 'line'>('bar'); 
+  const [isOverlayMode, setIsOverlayMode] = useState(false); // New state for comparison mode
   const currentMonthYYYYMM = getISODateString(new Date()).substring(0, 7); 
   
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthYYYYMM);
@@ -223,6 +224,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   const handleRecalculateSafeToSpend = () => {
     onFetchSafeToSpendToday();
   };
+
+  const overlayType = expenseIncomeChartType === TransactionType.INCOME ? TransactionType.EXPENSE : TransactionType.INCOME;
 
 
   return (
@@ -489,6 +492,19 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                         <PresentationChartLineIcon className="w-4 h-4" />
                     </Button>
                 </div>
+                {monthlyChartDisplayMode !== 'pie' && (
+                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                        <Button
+                            variant={isOverlayMode ? 'primary' : 'ghost'}
+                            size="sm"
+                            onClick={() => setIsOverlayMode(!isOverlayMode)}
+                            className="!px-3 !py-1 text-xs"
+                            title="Comparar Receitas e Despesas"
+                        >
+                            Comparar
+                        </Button>
+                    </div>
+                )}
             </div>
         </div>
         {isPrivacyModeEnabled ? (
@@ -506,6 +522,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               type={expenseIncomeChartType} 
               month={selectedMonth} 
               isPrivacyModeEnabled={isPrivacyModeEnabled}
+              overlayType={isOverlayMode ? overlayType : undefined}
             />
         ) : (
             <DailySummaryLineChart
@@ -513,6 +530,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               type={expenseIncomeChartType} 
               month={selectedMonth} 
               isPrivacyModeEnabled={isPrivacyModeEnabled}
+              overlayType={isOverlayMode ? overlayType : undefined}
             />
         )}
       </div>

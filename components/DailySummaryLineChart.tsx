@@ -8,60 +8,56 @@ interface DailySummaryLineChartProps {
   type: TransactionType.INCOME | TransactionType.EXPENSE;
   month: string; // YYYY-MM
   isPrivacyModeEnabled?: boolean;
+  overlayType?: TransactionType.INCOME | TransactionType.EXPENSE;
 }
 
 const CustomTooltip: React.FC<any> = ({ active, payload, label, isPrivacyModeEnabled }) => {
   if (active && payload && payload.length) {
-    const colorClass = payload[0].stroke === '#00C49F' ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark';
-    const descriptions = payload[0].payload.descriptions || [];
     return (
       <div className="bg-surface dark:bg-surfaceDark p-3 border border-borderBase dark:border-borderBaseDark rounded shadow-lg backdrop-blur-sm">
         <p className="text-sm font-semibold text-textBase dark:text-textBaseDark">Dia {label}</p>
-        <p className={`text-sm font-medium ${colorClass}`}>
-          {payload[0].name}: {formatCurrency(payload[0].value, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
-        </p>
-        {descriptions.length > 0 && (
-          <div className="mt-2 pt-1 border-t border-borderBase/50 dark:border-borderBaseDark/50 max-w-xs">
-            <ul className="text-xs text-textMuted dark:text-textMutedDark list-disc list-inside space-y-0.5">
-              {descriptions.slice(0, 5).map((desc: string, index: number) => (
-                <li key={index} className="truncate">{desc}</li>
-              ))}
-              {descriptions.length > 5 && <li>... e mais {descriptions.length - 5}</li>}
-            </ul>
-          </div>
-        )}
+        {payload.map((p: any, index: number) => (
+          p.value > 0 && (
+            <div key={index} className="mt-1">
+              <p className="text-sm font-medium" style={{ color: p.stroke }}>
+                {p.name}: {formatCurrency(p.value, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+              </p>
+            </div>
+          )
+        ))}
       </div>
     );
   }
   return null;
 };
 
-const DailySummaryLineChart: React.FC<DailySummaryLineChartProps> = ({ transactions, type, month, isPrivacyModeEnabled }) => {
-  const data: ChartData[] = React.useMemo(() => {
+const DailySummaryLineChart: React.FC<DailySummaryLineChartProps> = ({ transactions, type, month, isPrivacyModeEnabled, overlayType }) => {
+  const data = React.useMemo(() => {
     const [year, monthNum] = month.split('-').map(Number);
     const daysInMonth = new Date(year, monthNum, 0).getDate();
     
-    const dailyData: ChartData[] = Array.from({ length: daysInMonth }, (_, i) => ({
-      name: (i + 1).toString().padStart(2, '0'), // Day as "01", "02", ...
+    const dailyData: (ChartData & { value2?: number })[] = Array.from({ length: daysInMonth }, (_, i) => ({
+      name: (i + 1).toString().padStart(2, '0'),
       value: 0,
-      descriptions: [],
+      value2: 0,
     }));
 
     transactions.forEach(t => {
-      if (t.type === type && t.date.startsWith(month)) {
-        const dayOfMonth = parseInt(t.date.split('-')[2], 10) - 1; // 0-indexed
+      if (t.date.startsWith(month)) {
+        const dayOfMonth = parseInt(t.date.split('-')[2], 10) - 1;
         if (dayOfMonth >= 0 && dayOfMonth < daysInMonth && dailyData[dayOfMonth]) {
-          dailyData[dayOfMonth].value += t.amount;
-          if (dailyData[dayOfMonth].descriptions) {
-            dailyData[dayOfMonth].descriptions!.push(t.description || (type === TransactionType.INCOME ? "Receita" : "Despesa"));
+          if (t.type === type) {
+            dailyData[dayOfMonth].value += t.amount;
+          } else if (overlayType && t.type === overlayType) {
+            dailyData[dayOfMonth].value2! += t.amount;
           }
         }
       }
     });
     return dailyData;
-  }, [transactions, type, month]);
+  }, [transactions, type, month, overlayType]);
 
-  const hasData = data.some(d => d.value > 0);
+  const hasData = data.some(d => d.value > 0 || (d.value2 && d.value2 > 0));
   const isCurrentMonth = month === getISODateString(new Date()).substring(0, 7);
   const dataPointsCount = data.filter(d => d.value > 0).length;
 
@@ -76,7 +72,9 @@ const DailySummaryLineChart: React.FC<DailySummaryLineChartProps> = ({ transacti
     return value.toString();
   };
   
-  const lineColor = type === TransactionType.INCOME ? '#00C49F' : '#FF8042';
+  const primaryColor = type === TransactionType.INCOME ? '#00C49F' : '#FF8042';
+  const overlayColor = overlayType ? (overlayType === TransactionType.INCOME ? '#00C49F' : '#FF8042') : '';
+
 
   return (
     <div className="w-full h-80 md:h-96">
@@ -111,11 +109,24 @@ const DailySummaryLineChart: React.FC<DailySummaryLineChartProps> = ({ transacti
             formatter={(value) => <span className="text-textMuted dark:text-textMutedDark text-sm">{value}</span>} 
             wrapperStyle={{ paddingTop: '20px' }}
           />
+          {overlayType && (
+            <Line 
+              type="monotone" 
+              dataKey="value2" 
+              name={overlayType === TransactionType.INCOME ? "Receitas (Comparativo)" : "Despesas (Comparativo)"} 
+              stroke={overlayColor} 
+              strokeWidth={2} 
+              strokeOpacity={0.5} 
+              dot={false}
+              activeDot={{ r: 5 }}
+              strokeDasharray="5 5"
+            />
+          )}
           <Line 
             type="monotone" 
             dataKey="value" 
             name={type === TransactionType.INCOME ? "Receitas" : "Despesas"} 
-            stroke={lineColor} 
+            stroke={primaryColor} 
             strokeWidth={2} 
             dot={{ r: 3 }}
             activeDot={{ r: 6 }}
