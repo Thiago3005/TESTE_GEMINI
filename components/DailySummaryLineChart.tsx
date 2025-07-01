@@ -13,12 +13,23 @@ interface DailySummaryLineChartProps {
 const CustomTooltip: React.FC<any> = ({ active, payload, label, isPrivacyModeEnabled }) => {
   if (active && payload && payload.length) {
     const colorClass = payload[0].stroke === '#00C49F' ? 'text-secondary dark:text-secondaryDark' : 'text-destructive dark:text-destructiveDark';
+    const descriptions = payload[0].payload.descriptions || [];
     return (
       <div className="bg-surface dark:bg-surfaceDark p-3 border border-borderBase dark:border-borderBaseDark rounded shadow-lg backdrop-blur-sm">
         <p className="text-sm font-semibold text-textBase dark:text-textBaseDark">Dia {label}</p>
         <p className={`text-sm font-medium ${colorClass}`}>
           {payload[0].name}: {formatCurrency(payload[0].value, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
         </p>
+        {descriptions.length > 0 && (
+          <div className="mt-2 pt-1 border-t border-borderBase/50 dark:border-borderBaseDark/50 max-w-xs">
+            <ul className="text-xs text-textMuted dark:text-textMutedDark list-disc list-inside space-y-0.5">
+              {descriptions.slice(0, 5).map((desc: string, index: number) => (
+                <li key={index} className="truncate">{desc}</li>
+              ))}
+              {descriptions.length > 5 && <li>... e mais {descriptions.length - 5}</li>}
+            </ul>
+          </div>
+        )}
       </div>
     );
   }
@@ -33,6 +44,7 @@ const DailySummaryLineChart: React.FC<DailySummaryLineChartProps> = ({ transacti
     const dailyData: ChartData[] = Array.from({ length: daysInMonth }, (_, i) => ({
       name: (i + 1).toString().padStart(2, '0'), // Day as "01", "02", ...
       value: 0,
+      descriptions: [],
     }));
 
     transactions.forEach(t => {
@@ -40,6 +52,9 @@ const DailySummaryLineChart: React.FC<DailySummaryLineChartProps> = ({ transacti
         const dayOfMonth = parseInt(t.date.split('-')[2], 10) - 1; // 0-indexed
         if (dayOfMonth >= 0 && dayOfMonth < daysInMonth && dailyData[dayOfMonth]) {
           dailyData[dayOfMonth].value += t.amount;
+          if (dailyData[dayOfMonth].descriptions) {
+            dailyData[dayOfMonth].descriptions!.push(t.description || (type === TransactionType.INCOME ? "Receita" : "Despesa"));
+          }
         }
       }
     });
