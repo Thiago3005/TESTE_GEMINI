@@ -500,6 +500,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               transactions={transactions} 
               type={expenseIncomeChartType} 
               month={selectedMonth} 
+              isPrivacyModeEnabled={isPrivacyModeEnabled}
             />
         )}
       </div>
