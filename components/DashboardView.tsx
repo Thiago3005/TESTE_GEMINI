@@ -1,12 +1,3 @@
-
-
-
-
-
-
-
-
-
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
 import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState } from '../types'; 
@@ -27,6 +18,7 @@ import TrendingDownIcon from './icons/TrendingDownIcon';
 import ArrowPathIcon from './icons/ArrowPathIcon'; // For recalculate button
 import InfoTooltip from './InfoTooltip';
 import { LineChart, Line, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import Select from './Select';
 
 
 interface DashboardViewProps {
@@ -74,8 +66,26 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     onFetchSafeToSpendToday, 
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
-  const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'pie' | 'bar'>('bar'); 
+  const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'bar' | 'pie'>('bar'); 
   const currentMonthYYYYMM = getISODateString(new Date()).substring(0, 7); 
+  
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthYYYYMM);
+
+  const monthOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    const date = new Date();
+    for (let i = 0; i < 12; i++) {
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const monthStr = (month + 1).toString().padStart(2, '0');
+        const value = `${year}-${monthStr}`;
+        const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(date);
+        options.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
+        date.setMonth(date.getMonth() - 1);
+    }
+    return options;
+  }, []);
+
 
   const totalAccountBalance = useMemo(() => {
     return accounts.reduce((sum, acc) => sum + calculateAccountBalance(acc.id), 0);
@@ -201,12 +211,12 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
     budgetedCategories.forEach(cat => {
         const spending = transactions
-            .filter(t => t.category_id === cat.id && t.date.startsWith(currentMonthYYYYMM) && t.type === TransactionType.EXPENSE)
+            .filter(t => t.category_id === cat.id && t.date.startsWith(selectedMonth) && t.type === TransactionType.EXPENSE)
             .reduce((sum, t) => sum + t.amount, 0);
         totalSpentInBudgetedCategories += spending;
     });
     return { totalBudgeted, totalSpentInBudgetedCategories };
-  }, [budgetedCategories, transactions, currentMonthYYYYMM]);
+  }, [budgetedCategories, transactions, selectedMonth]);
 
   const handleRecalculateSafeToSpend = () => {
     onFetchSafeToSpendToday();
@@ -445,42 +455,35 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       />
       
       <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold text-textBase dark:text-textBaseDark">Resumo Mensal ({currentMonthYYYYMM.split('-')[1]}/{currentMonthYYYYMM.split('-')[0]})</h2>
-            <div className="flex flex-wrap gap-2 items-center">
-                <Button 
-                    variant={expenseIncomeChartType === TransactionType.EXPENSE ? 'primary' : 'ghost'}
-                    size="sm"
-                    onClick={() => setExpenseIncomeChartType(TransactionType.EXPENSE)}
-                >
-                    Despesas
-                </Button>
-                <Button 
-                    variant={expenseIncomeChartType === TransactionType.INCOME ? 'secondary' : 'ghost'}
-                    size="sm"
-                    onClick={() => setExpenseIncomeChartType(TransactionType.INCOME)}
-                >
-                    Receitas
-                </Button>
-                <div className="h-6 border-l border-borderBase dark:border-borderBaseDark mx-1 sm:mx-2"></div>
-                <Button 
-                    variant={monthlyChartDisplayMode === 'pie' ? 'primary' : 'ghost'}
-                    size="sm"
-                    onClick={() => setMonthlyChartDisplayMode('pie')}
-                    className="!px-2"
-                    title="Gráfico de Pizza"
-                >
-                    <ChartPieIcon className="w-4 h-4" />
-                </Button>
-                 <Button 
-                    variant={monthlyChartDisplayMode === 'bar' ? 'primary' : 'ghost'}
-                    size="sm"
-                    onClick={() => setMonthlyChartDisplayMode('bar')}
-                    className="!px-2"
-                    title="Gráfico de Barras"
-                >
-                    <BarChartIcon className="w-4 h-4" />
-                </Button>
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold text-textBase dark:text-textBaseDark">
+                Resumo Mensal
+            </h2>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 w-full sm:w-auto justify-start sm:justify-end">
+                <Select 
+                    options={monthOptions}
+                    value={selectedMonth}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMonth(e.target.value)}
+                    containerClassName="flex-grow sm:flex-grow-0 sm:w-48"
+                />
+                
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                     <Button variant={expenseIncomeChartType === TransactionType.EXPENSE ? 'primary' : 'ghost'} size="sm" onClick={() => setExpenseIncomeChartType(TransactionType.EXPENSE)} className="!px-3 !py-1 text-xs">
+                        Despesas
+                    </Button>
+                    <Button variant={expenseIncomeChartType === TransactionType.INCOME ? 'secondary' : 'ghost'} size="sm" onClick={() => setExpenseIncomeChartType(TransactionType.INCOME)} className="!px-3 !py-1 text-xs">
+                        Receitas
+                    </Button>
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                     <Button variant={monthlyChartDisplayMode === 'bar' ? 'primary' : 'ghost'} size="sm" onClick={() => setMonthlyChartDisplayMode('bar')} className="!p-1.5" title="Gráfico de Barras">
+                        <BarChartIcon className="w-4 h-4" />
+                    </Button>
+                    <Button variant={monthlyChartDisplayMode === 'pie' ? 'primary' : 'ghost'} size="sm" onClick={() => setMonthlyChartDisplayMode('pie')} className="!p-1.5" title="Gráfico de Pizza">
+                        <ChartPieIcon className="w-4 h-4" />
+                    </Button>
+                </div>
             </div>
         </div>
         {isPrivacyModeEnabled ? (
@@ -490,20 +493,20 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               transactions={transactions} 
               categories={categories.filter(c => c.type === expenseIncomeChartType)} 
               type={expenseIncomeChartType} 
-              month={currentMonthYYYYMM} 
+              month={selectedMonth} 
             />
         ) : (
             <DailySummaryBarChart
               transactions={transactions} 
               type={expenseIncomeChartType} 
-              month={currentMonthYYYYMM} 
+              month={selectedMonth} 
             />
         )}
       </div>
       
       {budgetedCategories.length > 0 && (
         <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-          <h2 className="text-lg sm:text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Orçamento Mensal ({currentMonthYYYYMM.split('-')[1]}/{currentMonthYYYYMM.split('-')[0]})</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-textBase dark:text-textBaseDark mb-4">Orçamento ({monthOptions.find(o => o.value === selectedMonth)?.label})</h2>
           <div className="mb-3">
             <div className="flex justify-between text-sm">
               <span>Total Gasto (Orçado): {formatCurrency(budgetSummary.totalSpentInBudgetedCategories, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</span>
@@ -522,7 +525,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           <ul className="space-y-2 max-h-48 overflow-y-auto">
             {budgetedCategories.map(cat => {
                 const spending = transactions
-                    .filter(t => t.category_id === cat.id && t.date.startsWith(currentMonthYYYYMM) && t.type === TransactionType.EXPENSE)
+                    .filter(t => t.category_id === cat.id && t.date.startsWith(selectedMonth) && t.type === TransactionType.EXPENSE)
                     .reduce((sum, t) => sum + t.amount, 0);
                 const progress = cat.monthly_budget ? Math.min((spending / cat.monthly_budget) * 100, 100) : 0;
                 const isOver = cat.monthly_budget ? spending > cat.monthly_budget : false;
