@@ -1,7 +1,15 @@
 
+
+
+
+
+
+
+
+
 import React from 'react'; 
 import { useState, useMemo }from 'react'; 
-import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState, FinancialHealthState } from '../types'; 
+import { Transaction, Account, Category, TransactionType, InstallmentPurchase, CreditCard, MoneyBox, Loan, LoanRepayment, RecurringTransaction, SafeToSpendTodayState } from '../types'; 
 import { formatCurrency, getISODateString, formatDate } from '../utils/helpers'; 
 import PlusIcon from './icons/PlusIcon';
 import ScaleIcon from './icons/ScaleIcon'; 
@@ -19,8 +27,6 @@ import TrendingDownIcon from './icons/TrendingDownIcon';
 import ArrowPathIcon from './icons/ArrowPathIcon'; // For recalculate button
 import InfoTooltip from './InfoTooltip';
 import { LineChart, Line, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
-import GaugeChart from './GaugeChart';
-import TrophyIcon from './icons/TrophyIcon';
 
 
 interface DashboardViewProps {
@@ -40,10 +46,8 @@ interface DashboardViewProps {
   isPrivacyModeEnabled?: boolean; 
   onFetchGeneralAdvice: () => void;
   onFetchSavingOpportunities: () => void;
-  safeToSpendToday: SafeToSpendTodayState;
-  onFetchSafeToSpendToday: () => void;
-  financialHealth: FinancialHealthState;
-  onFetchFinancialHealthSummary: () => void;
+  safeToSpendToday: SafeToSpendTodayState; // New prop
+  onFetchSafeToSpendToday: () => void; // New prop
 }
 
 const MiniChartTooltip = ({ active, payload, label, formatter, name }: any) => {
@@ -68,8 +72,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     onFetchSavingOpportunities,
     safeToSpendToday, 
     onFetchSafeToSpendToday, 
-    financialHealth,
-    onFetchFinancialHealthSummary,
 }) => {
   const [expenseIncomeChartType, setExpenseIncomeChartType] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
   const [monthlyChartDisplayMode, setMonthlyChartDisplayMode] = useState<'pie' | 'bar'>('bar'); 
@@ -421,62 +423,26 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
             )}
         </div>
+        
+        {/* This takes the 4th slot on large screens, now we have more cards, this might break layout on some screens */}
+        <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30 md:col-span-2 lg:col-span-4">
+            <div className="flex items-center w-full justify-between">
+                 <h2 className="text-sm font-semibold text-textMuted dark:text-textMutedDark mb-1">A RECEBER (EMPRÉSTIMOS) ({outstandingLoans.length})</h2>
+                 <UsersIcon className="w-5 h-5 text-textMuted dark:text-textMutedDark" />
+            </div>
+          <p className={`text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-500`}>
+            {formatCurrency(totalOutstandingLoanReceivables, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
+          </p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Financial Health Card */}
-          <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-            <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                    <TrophyIcon className="w-6 h-6 text-amber-500 dark:text-amber-400" />
-                    <h2 className="text-base font-semibold text-textMuted dark:text-textMutedDark">SAÚDE FINANCEIRA</h2>
-                </div>
-                 <Button
-                  onClick={onFetchFinancialHealthSummary}
-                  variant="ghost" size="sm"
-                  disabled={financialHealth.isLoading}
-                  className="!text-xs !py-1 !px-2"
-                  title="Recalcular análise da IA"
-              >
-                  <ArrowPathIcon className={`w-3 h-3 mr-1 ${financialHealth.isLoading ? 'animate-spin' : ''}`} />
-                  Analisar
-              </Button>
-            </div>
-            <GaugeChart score={isPrivacyModeEnabled ? -1 : financialHealth.score} />
-            <div className="mt-3 text-center">
-                {financialHealth.isLoading ? (
-                    <p className="text-sm text-textMuted dark:text-textMutedDark animate-pulse">Analisando sua saúde financeira...</p>
-                ) : financialHealth.error ? (
-                    <p className="text-sm text-destructive dark:text-destructiveDark">{financialHealth.error}</p>
-                ) : (
-                    <p className="text-sm text-textBase dark:text-textBaseDark min-h-[40px]">{financialHealth.insight || 'Clique em "Analisar" para obter um insight da IA.'}</p>
-                )}
-            </div>
-          </div>
-
-          {/* Loans Receivable Card */}
-          <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-              <div className="flex items-center w-full justify-between mb-2">
-                 <h2 className="text-base font-semibold text-textMuted dark:text-textMutedDark">A RECEBER (EMPRÉSTIMOS)</h2>
-                 <UsersIcon className="w-6 h-6 text-textMuted dark:text-textMutedDark" />
-              </div>
-              <p className={`text-3xl font-bold text-green-600 dark:text-green-500`}>
-                {formatCurrency(totalOutstandingLoanReceivables, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
-              </p>
-              <p className="text-sm text-textMuted dark:text-textMutedDark">em {outstandingLoans.length} empréstimos ativos</p>
-          </div>
-          
-          {/* Bill Alerts Card */}
-          <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
-            <BillsAlerts 
-                recurringTransactions={recurringTransactions} 
-                accounts={accounts} 
-                categories={categories}
-                onViewTransaction={onViewRecurringTransaction} 
-                isPrivacyModeEnabled={isPrivacyModeEnabled}
-            />
-          </div>
-      </div>
+      <BillsAlerts 
+        recurringTransactions={recurringTransactions} 
+        accounts={accounts} 
+        categories={categories}
+        onViewTransaction={onViewRecurringTransaction} 
+        isPrivacyModeEnabled={isPrivacyModeEnabled}
+      />
       
       <div className="bg-surface dark:bg-surfaceDark p-4 sm:p-6 rounded-xl shadow-lg dark:shadow-neutralDark/30">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
@@ -592,29 +558,25 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               if (tx.type === TransactionType.INCOME) txColor = 'text-secondary dark:text-secondaryDark';
               else if (tx.type === TransactionType.EXPENSE) txColor = 'text-destructive dark:text-destructiveDark';
               
-              let descriptionText = tx.description || (category ? category.name : 'Transação');
-              if (tx.type === TransactionType.TRANSFER && tx.payee_name) {
-                  descriptionText = `Transferência para ${tx.payee_name}`;
-              } else if (tx.type === TransactionType.TRANSFER && tx.to_account_id) {
-                  const toAcc = accounts.find(a => a.id === tx.to_account_id);
-                  descriptionText = `Transferência para ${toAcc?.name || 'outra conta'}`;
+              let descriptionText = tx.description || (tx.type === TransactionType.TRANSFER ? 'Transferência' : category?.name) || 'Transação';
+              if (tx.type === TransactionType.TRANSFER) {
+                const toAccount = accounts.find(a => a.id === tx.to_account_id);
+                descriptionText += ` para ${toAccount?.name || 'N/A'}`;
               }
 
               return (
-              <li key={tx.id} className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-textBase dark:text-textBaseDark">{descriptionText}</p>
-                  <p className="text-sm text-textMuted dark:text-textMutedDark">{formatDate(tx.date)} &bull; {account?.name}</p>
-                </div>
-                <span className={`font-semibold ${txColor}`}>
-                  {tx.type === TransactionType.INCOME ? '+' : tx.type === TransactionType.EXPENSE ? '-' : ''}
-                  {formatCurrency(tx.amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}
-                </span>
-              </li>
-            )})}
+                <li key={tx.id} className="flex justify-between items-center py-2 border-b border-borderBase/50 dark:border-borderBaseDark/50 last:border-b-0">
+                  <div>
+                    <p className="font-medium text-textBase dark:text-textBaseDark">{descriptionText}</p>
+                    <p className="text-sm text-textMuted dark:text-textMutedDark">{account?.name} &bull; {formatDate(tx.date)}</p> 
+                  </div>
+                  <p className={`font-semibold ${txColor}`}>{formatCurrency(tx.amount, 'BRL', 'pt-BR', isPrivacyModeEnabled)}</p>
+                </li>
+              );
+            })}
           </ul>
         ) : (
-          <p className="text-center text-textMuted dark:text-textMutedDark">Nenhuma transação recente.</p>
+          <p className="text-textMuted dark:text-textMutedDark">Nenhuma transação recente.</p>
         )}
       </div>
     </div>

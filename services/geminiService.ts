@@ -37,7 +37,7 @@ export interface FinancialContext {
   accountBalances: { accountId: string, balance: number }[];
   categories: Pick<Category, 'id' | 'name' | 'type' | 'monthly_budget'>[];
   transactions?: Transaction[]; 
-  moneyBoxes?: Pick<MoneyBox, 'id' | 'name' | 'goal_amount' | 'is_emergency_fund'>[];
+  moneyBoxes?: Pick<MoneyBox, 'id' | 'name' | 'goal_amount'>[];
   moneyBoxBalances?: { moneyBoxId: string, balance: number }[];
   loans?: Pick<Loan, 'id' | 'person_name' | 'total_amount_to_reimburse'>[]; 
   outstandingLoanBalances?: { loanId: string, outstanding: number }[];
@@ -1249,105 +1249,6 @@ export const fetchDebtViabilityAnalysis = async (debt: Partial<Debt>, context: F
     } catch (error) {
         console.error("Error fetching debt viability analysis:", error);
         return null;
-    }
-};
-
-const constructPromptForFinancialHealth = (context: FinancialContext): string => {
-    const totalAccountBalance = context.accountBalances.reduce((sum, acc) => sum + acc.balance, 0);
-    const totalSavings = context.moneyBoxBalances?.reduce((sum, mb) => sum + mb.balance, 0) || 0;
-    const totalDebt = context.debts?.reduce((sum, d) => sum + d.current_balance, 0) || 0;
-    const totalMinimumDebtPayments = context.debts?.reduce((sum, d) => sum + d.minimum_payment, 0) || 0;
-
-    const { totalIncome, totalExpenses } = context.transactions
-        ? context.transactions
-            .filter(t => t.date.startsWith(context.currentDate.substring(0, 7)))
-            .reduce((acc, t) => {
-                if (t.type === 'INCOME') acc.totalIncome += t.amount;
-                if (t.type === 'EXPENSE') acc.totalExpenses += t.amount;
-                return acc;
-            }, { totalIncome: 0, totalExpenses: 0 })
-        : { totalIncome: 0, totalExpenses: 0 };
-        
-    const emergencyFund = context.moneyBoxes?.find(mb => mb.is_emergency_fund);
-    const emergencyFundBalance = emergencyFund ? context.moneyBoxBalances?.find(b => b.moneyBoxId === emergencyFund.id)?.balance || 0 : 0;
-    const emergencyFundCoverageMonths = totalExpenses > 0 ? (emergencyFundBalance / totalExpenses).toFixed(1) : 'N/A';
-    
-    const dti = context.monthlyIncome && totalMinimumDebtPayments > 0 && context.monthlyIncome > 0 ? ((totalMinimumDebtPayments / context.monthlyIncome) * 100).toFixed(1) : 'N/A';
-    const savingsRate = context.monthlyIncome && context.monthlyIncome > 0 ? (((context.monthlyIncome - totalExpenses) / context.monthlyIncome) * 100).toFixed(1) : 'N/A';
-
-    return `Você é um analista financeiro sênior. Sua tarefa é calcular um "Score de Saúde Financeira" de 0 a 100 para o usuário e fornecer um insight conciso.
-
-    Contexto Financeiro:
-    - Renda Mensal: ${context.monthlyIncome ? formatCurrency(context.monthlyIncome) : 'Não informada'}
-    - Saldo Total em Contas: ${formatCurrency(totalAccountBalance)}
-    - Total em Metas/Economias: ${formatCurrency(totalSavings)}
-    - Total de Dívidas (sem ser cartão): ${formatCurrency(totalDebt)}
-    - Pagamentos Mínimos Mensais (Dívidas): ${formatCurrency(totalMinimumDebtPayments)}
-    - Taxa de Poupança (baseado na renda vs despesas do mês atual): ${savingsRate}%
-    - Relação Dívida/Renda (DTI, baseado nos pagamentos mínimos): ${dti}%
-    - Fundo de Emergência: ${emergencyFund ? `Sim (Saldo: ${formatCurrency(emergencyFundBalance)}, cobre aprox. ${emergencyFundCoverageMonths} meses de despesas)` : 'Não configurado'}
-
-    Critérios de Pontuação (Peso Sugerido):
-    1.  **Relação Dívida/Renda (DTI) (Peso 40%)**: Ideal < 15% (nota alta), aceitável < 36%, preocupante > 43% (nota baixa).
-    2.  **Taxa de Poupança (Peso 30%)**: Ideal > 20% (nota alta), bom > 10%, precisa de atenção < 5% (nota baixa).
-    3.  **Fundo de Emergência (Peso 30%)**: Ideal > 3 meses de despesas (nota alta), algum fundo (nota média), nenhum fundo (nota baixa).
-
-    Com base nestes critérios e pesos, calcule uma pontuação final de 0 a 100.
-    Depois, escreva um insight de UMA FRASE que resuma o ponto mais importante (positivo ou negativo) da saúde financeira do usuário.
-    
-    Responda APENAS com um objeto JSON com as chaves:
-    - "score": number (o score calculado de 0 a 100, arredondado para inteiro)
-    - "insight": string (a frase de insight)
-
-    Exemplo de resposta: {"score": 78, "insight": "Sua taxa de poupança está excelente, continue assim para atingir suas metas mais rápido!"}
-    Outro exemplo: {"score": 45, "insight": "Seu nível de endividamento está alto; foque em quitar dívidas para melhorar sua saúde financeira."}
-
-    Análise:`;
-};
-
-export const fetchFinancialHealthSummary = async (context: FinancialContext): Promise<{ score: number; insight: string; error?: string | null } | null> => {
-    if (!ai || !ai.models || !isGeminiApiKeyAvailable()) {
-        console.warn("Gemini API or ai.models not available for fetchFinancialHealthSummary.");
-        return { score: 0, insight: "AI Coach indisponível.", error: "AI Coach indisponível." };
-    }
-
-    const prompt = constructPromptForFinancialHealth(context);
-    try {
-        const response: GenerateContentResponse = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-04-17",
-            contents: prompt,
-            config: { responseMimeType: "application/json" }
-        });
-        
-        let jsonStr = response.text?.trim() || '{}';
-        const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
-        const match = jsonStr.match(fenceRegex);
-        if (match && match[2]) {
-            jsonStr = match[2].trim();
-        }
-        
-        const parsed = JSON.parse(jsonStr) as { score: number; insight: string };
-
-        if (parsed && typeof parsed.score === 'number' && typeof parsed.insight === 'string') {
-            return { ...parsed, score: Math.round(parsed.score) };
-        }
-        
-        return {
-            score: 0,
-            insight: "Não foi possível obter a análise da IA no momento (resposta inválida).",
-            error: "Resposta inválida da IA."
-        };
-    } catch (error) {
-        console.error("Error fetching financial health summary from Gemini:", error);
-        let errorMessage = "Desculpe, não consegui calcular sua saúde financeira.";
-        if (error instanceof Error) {
-            errorMessage += ` Detalhe: ${error.message}`;
-        }
-        return {
-            score: 0,
-            insight: errorMessage,
-            error: errorMessage
-        };
     }
 };
 

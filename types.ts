@@ -65,7 +65,6 @@ export interface MoneyBox extends SupabaseManaged {
   goal_amount?: number;
   icon?: string;
   color?: string;
-  is_emergency_fund?: boolean; // New field for Financial Health score
 }
 
 export enum MoneyBoxTransactionType {
@@ -166,7 +165,6 @@ export type AIInsightType =
   | 'debt_analysis' // New insight type for storing debt analysis
   | 'debt_rate_analysis' // For specific rate analysis
   | 'debt_viability_analysis' // For specific viability analysis
-  | 'financial_health_summary' // For the new dashboard score
   | 'error_message';
 
 export interface AIInsight extends SupabaseManaged {
@@ -305,14 +303,6 @@ export interface SafeToSpendTodayInfo { // For AI response
 export interface SafeToSpendTodayState extends SafeToSpendTodayInfo { // For App.tsx state
   isLoading: boolean;
   lastCalculatedDisplay: string | null; // Formatted for display
-}
-
-// For Dashboard Financial Health Score
-export interface FinancialHealthState {
-    score: number;
-    insight: string | null;
-    isLoading: boolean;
-    error: string | null;
 }
 
 
